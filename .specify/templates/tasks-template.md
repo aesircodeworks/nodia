@@ -9,7 +9,7 @@ description: "Task list template for feature implementation"
 
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
-**Tests**: The examples below include test tasks. Tests are OPTIONAL - only include them if explicitly requested in the feature specification.
+**Tests**: Constitution Principle X makes some tests mandatory: architecture, tenant isolation, and concurrency coverage for the feature, and test-first tasks for invariant-bearing code (inventory accounting, ledger, state machines). Other test tasks are optional and included only if requested in the feature specification.
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
