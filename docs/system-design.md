@@ -38,7 +38,7 @@ Each decision is recorded as an ADR in [`docs/decisions/`](decisions/) using the
 | Email | Resend via the official Laravel driver | [010](decisions/010-resend-for-transactional-email.md) |
 | Deployment | OCI container images as the artifact; orchestrator chosen before production, not now | [017](decisions/017-containers-first-defer-orchestrator.md) |
 | Identifiers | UUIDv7 primary keys; no sequential IDs exposed externally | [005](decisions/005-uuidv7-identifiers.md) |
-| Money | Integer minor units (cents) with an explicit currency on every monetary record | |
+| Money | Integer minor units (cents) with an explicit currency on every monetary record | [018](decisions/018-integer-minor-units-for-money.md) |
 
 The implementation roadmap is tracked outside this document.
 
@@ -675,6 +675,8 @@ Notes:
 ### 9.1 Transactional Outbox as Event Log
 
 Every domain event is written to an append-only `outbox_events` table (monotonic sequence number, event ID, type, tenant ID, aggregate reference, payload, correlation ID) in the same transaction as the state change that caused it. The outbox is the durable source of truth for domain events. Rows are retained after dispatch rather than deleted, so the table doubles as the replay log: projections (ledger, reporting aggregates, search index) are rebuilt by rescanning it in sequence order. Old rows are archived to object storage on a retention schedule independent of delivery state.
+
+The sequence is assigned at insert, so gaps are permanent and a lower sequence can commit after a higher one. Replay and ordered consumers never treat the sequence as gapless; the sweeper and projections read past a stability window (rows older than a short grace period) rather than assuming the highest sequence seen is final.
 
 The outbox machinery (event model, dispatcher, delivery tracking, sweeper) is shared infrastructure in `app/Support/Outbox`; each context's `Events/` classes are the payloads it records.
 

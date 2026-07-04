@@ -5,7 +5,7 @@ Rules every migration and model must follow. The conceptual data model lives in 
 ## Tables and Keys
 
 - Standard Eloquent conventions: snake_case plural table names, conventional foreign key names (`event_id`), `created_at` and `updated_at` timestamps.
-- Primary key is `id`, UUIDv7, generated via the `HasUuids` trait (UUIDv7 is its default; ADR [005](decisions/005-uuidv7-identifiers.md)). No auto-increment columns, including internal ones.
+- Primary key is `id`, UUIDv7, generated via the `HasUuids` trait (UUIDv7 is its default; ADR [005](decisions/005-uuidv7-identifiers.md)). No auto-increment columns, including internal ones. Sole exception: `outbox_events.sequence` (bigint identity), which provides the global replay order required by [event-conventions.md](event-conventions.md).
 - Timestamps are stored in UTC. Event-level timezones are data (`events.timezone`), never encoded into stored timestamps.
 - Indexes and constraints use Laravel's default generated names; custom names only when the builder cannot express the index (partial or expression indexes), formatted `{table}_{purpose}_idx`.
 
