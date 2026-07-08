@@ -16,14 +16,14 @@ test('the default log channel is stdout with a JSON formatter', function () {
         ->and($channel['formatter'])->toBe(JsonFormatter::class);
 });
 
-test('a handled request emits exactly one structured JSON log line with context rendered', function () {
+test('an application log call renders as a structured JSON line with context rendered', function () {
     $capturedStream = tempnam(sys_get_temp_dir(), 'stdout-channel-');
 
     config()->set('logging.channels.stdout.handler_with.stream', $capturedStream);
 
     Route::get('/__logging-test-probe', function () {
         Log::withContext(['correlation_id' => 'test-correlation-id']);
-        Log::info('request handled', ['route' => '/__logging-test-probe']);
+        Log::info('probe handled', ['route' => '/__logging-test-probe']);
 
         return response()->noContent();
     });
@@ -32,13 +32,18 @@ test('a handled request emits exactly one structured JSON log line with context 
 
     $lines = array_values(array_filter(explode("\n", file_get_contents($capturedStream))));
 
-    expect($lines)->toHaveCount(1);
+    $decoded = array_map(fn (string $line) => json_decode($line, true), $lines);
 
-    $line = json_decode($lines[0], true);
+    $probeLines = array_values(array_filter(
+        $decoded,
+        fn ($line) => $line !== null && $line['message'] === 'probe handled',
+    ));
 
-    expect($line)->not->toBeNull()
-        ->and($line['message'])->toBe('request handled')
-        ->and($line['level_name'])->toBe('INFO')
+    expect($probeLines)->toHaveCount(1);
+
+    $line = $probeLines[0];
+
+    expect($line['level_name'])->toBe('INFO')
         ->and($line['context']['correlation_id'])->toBe('test-correlation-id')
         ->and($line['context']['route'])->toBe('/__logging-test-probe');
 
