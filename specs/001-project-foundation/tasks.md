@@ -108,11 +108,11 @@ Monorepo per plan.md: `apps/api` (Laravel), `apps/storefront` and `apps/admin` (
 
 ### Implementation for User Story 3
 
-- [ ] T036 [US3] Write the first Pest architecture test in `apps/api/tests/Architecture/ContextBoundariesTest.php`, green on the empty skeleton and ready to fail on the first cross-context import, and wire the architecture suite as a distinct required job in `.github/workflows/api.yml` (spec FR-012, constitution Principle V)
-- [ ] T037 [P] [US3] Wire the tenant isolation and concurrency suite harnesses as Pest suites in `apps/api/tests/Isolation/` and `apps/api/tests/Concurrency/` with distinct CI jobs in `.github/workflows/api.yml` that pass while empty and fail the pipeline once they contain failing cases (spec FR-012; populated by Phases 1 and 3 of the roadmap)
-- [ ] T038 [P] [US3] Add ESLint rules to `eslint.config.mjs` enforcing the mechanically checkable ui conventions in app code: no hardcoded user-facing string literals in JSX (i18n layer required) and no hardcoded color values (tokens required), failing lint on violation (spec FR-010, docs/ui-conventions.md, quickstart.md scenario 5)
-- [ ] T039 [US3] Verify the four convention documents exist at the constitution-named locations (`docs/api-conventions.md`, `docs/data-conventions.md`, `docs/event-conventions.md`, `docs/ui-conventions.md`) and are linked as binding from `README.md` (spec FR-009, SC-005)
-- [ ] T040 [US3] Validate quickstart.md scenario 5: all four convention docs discoverable from the README, architecture suite green as a required job, a hardcoded string literal or color in a frontend health display fails lint
+- [x] T036 [US3] Write the first Pest architecture test in `apps/api/tests/Architecture/ContextBoundariesTest.php`, green on the empty skeleton and ready to fail on the first cross-context import, and wire the architecture suite as a distinct required job in `.github/workflows/api.yml` (spec FR-012, constitution Principle V)
+- [x] T037 [P] [US3] Wire the tenant isolation and concurrency suite harnesses as Pest suites in `apps/api/tests/Isolation/` and `apps/api/tests/Concurrency/` with distinct CI jobs in `.github/workflows/api.yml` that pass while empty and fail the pipeline once they contain failing cases (spec FR-012; populated by Phases 1 and 3 of the roadmap)
+- [x] T038 [P] [US3] Add ESLint rules to `eslint.config.mjs` enforcing the mechanically checkable ui conventions in app code: no hardcoded user-facing string literals in JSX (i18n layer required) and no hardcoded color values (tokens required), failing lint on violation (spec FR-010, docs/ui-conventions.md, quickstart.md scenario 5)
+- [x] T039 [US3] Verify the four convention documents exist at the constitution-named locations (`docs/api-conventions.md`, `docs/data-conventions.md`, `docs/event-conventions.md`, `docs/ui-conventions.md`) and are linked as binding from `README.md` (spec FR-009, SC-005)
+- [x] T040 [US3] Validate quickstart.md scenario 5: all four convention docs discoverable from the README, architecture suite green as a required job, a hardcoded string literal or color in a frontend health display fails lint
 
 **Checkpoint**: All three user stories are independently functional.
 

@@ -48,7 +48,7 @@ A healthy stack returns HTTP 200 with `status: ok` and `database`, `redis`, and 
 
 Every push and pull request runs path-filtered workflows under `.github/workflows/`: one per app (`api.yml`, `storefront.yml`, `admin.yml`, `checkin.yml`) plus `packages.yml` for the shared packages. Each workflow detects whether its paths changed; when they did not, its jobs skip and count as passing. Branch protection on `main` marks all of the following checks required, so any failing job blocks merge:
 
-- API: `API Pint`, `API Larastan`, `API Pest`, `API Contract Drift`
+- API: `API Pint`, `API Larastan`, `API Pest`, `API Architecture`, `API Isolation`, `API Concurrency`, `API Contract Drift`
 - Storefront: `Storefront ESLint`, `Storefront Typecheck`, `Storefront Vitest`, `Storefront Build`
 - Admin: `Admin ESLint`, `Admin Typecheck`, `Admin Vitest`, `Admin Build`
 - Check-in: `Checkin ESLint`, `Checkin Typecheck`, `Checkin Vitest`, `Checkin Build`

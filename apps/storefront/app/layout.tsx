@@ -15,6 +15,8 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
+const tokenCss = `:root {\n${tokenSetToCss(defaultTokens)}\n}`;
+
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('app');
 
@@ -34,7 +36,7 @@ export default async function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <style>{`:root {\n${tokenSetToCss(defaultTokens)}\n}`}</style>
+        <style>{tokenCss}</style>
         <NextIntlClientProvider>{children}</NextIntlClientProvider>
       </body>
     </html>
