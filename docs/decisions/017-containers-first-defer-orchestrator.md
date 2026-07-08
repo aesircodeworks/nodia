@@ -6,9 +6,9 @@ A production orchestrator (Kubernetes, ECS, Nomad, Compose on VMs) must eventual
 
 ## Considered Options
 
-* OCI images as the artifact now; orchestrator chosen just before production
-* Commit to Kubernetes now
-* Deploy to a PaaS
+- OCI images as the artifact now; orchestrator chosen just before production
+- Commit to Kubernetes now
+- Deploy to a PaaS
 
 ## Decision Outcome
 

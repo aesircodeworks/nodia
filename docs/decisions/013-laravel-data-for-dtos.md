@@ -6,9 +6,9 @@ Data crossing context and API boundaries needs typed, validated objects, and the
 
 ## Considered Options
 
-* spatie/laravel-data
-* Valinor
-* Plain arrays with form requests only
+- spatie/laravel-data
+- Valinor
+- Plain arrays with form requests only
 
 ## Decision Outcome
 

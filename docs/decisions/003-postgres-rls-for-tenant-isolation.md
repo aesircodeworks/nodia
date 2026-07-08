@@ -6,10 +6,10 @@ Tenant data isolation is the platform's hardest compliance and trust requirement
 
 ## Considered Options
 
-* Shared schema with `tenant_id` on every table, enforced by PostgreSQL row-level security
-* Schema per tenant
-* Database per tenant
-* Application-level scoping only (global Eloquent scopes)
+- Shared schema with `tenant_id` on every table, enforced by PostgreSQL row-level security
+- Schema per tenant
+- Database per tenant
+- Application-level scoping only (global Eloquent scopes)
 
 ## Decision Outcome
 
@@ -17,5 +17,5 @@ Chosen option: "Shared schema with row-level security", because RLS enforces iso
 
 ### Consequences
 
-* Good, because a missed application scope is a performance bug, not a data leak.
-* Bad, because every request must run inside a transaction with `SET LOCAL app.tenant_id`, and RLS policies need continuous automated testing.
+- Good, because a missed application scope is a performance bug, not a data leak.
+- Bad, because every request must run inside a transaction with `SET LOCAL app.tenant_id`, and RLS policies need continuous automated testing.

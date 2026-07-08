@@ -6,9 +6,9 @@ Externally visible identifiers must not be enumerable (order counts, ticket IDs 
 
 ## Considered Options
 
-* UUIDv7 everywhere
-* UUIDv4 everywhere
-* Sequential bigints internally with separate public identifiers
+- UUIDv7 everywhere
+- UUIDv4 everywhere
+- Sequential bigints internally with separate public identifiers
 
 ## Decision Outcome
 

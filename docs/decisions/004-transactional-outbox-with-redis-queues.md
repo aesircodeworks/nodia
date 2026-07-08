@@ -6,9 +6,9 @@ Side effects of state changes (ticket emails, ledger projection, search indexing
 
 ## Considered Options
 
-* Transactional outbox in PostgreSQL, delivered via Redis (Horizon) queues, reconciled by a sweeper
-* Direct queue dispatch after commit, no durable event log
-* Dedicated event broker (Kafka) from the start
+- Transactional outbox in PostgreSQL, delivered via Redis (Horizon) queues, reconciled by a sweeper
+- Direct queue dispatch after commit, no durable event log
+- Dedicated event broker (Kafka) from the start
 
 ## Decision Outcome
 

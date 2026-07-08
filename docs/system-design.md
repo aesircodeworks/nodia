@@ -20,25 +20,25 @@ Key features:
 
 Each decision is recorded as an ADR in [`docs/decisions/`](decisions/) using the MADR minimal format.
 
-| Decision | Choice | ADR |
-| --- | --- | --- |
-| Backend shape | Single Laravel application (modular monolith), organized by bounded contexts with Laravel-native internals, API only | [002](decisions/002-laravel-modular-monolith-with-bounded-contexts.md) |
-| Runtime | Laravel Octane on FrankenPHP, official FrankenPHP Docker image | [009](decisions/009-octane-on-frankenphp.md) |
-| Frontend | React with Next.js (storefront and admin portal); separate offline-first check-in PWA | [016](decisions/016-nextjs-monorepo-frontends.md), [015](decisions/015-separate-checkin-pwa.md) |
-| Repository | Monorepo containing the API and frontend projects | [016](decisions/016-nextjs-monorepo-frontends.md) |
-| Async processing | Transactional outbox in PostgreSQL as the durable event log; Redis (Laravel Horizon) queues for delivery; sweeper reconciles the two | [004](decisions/004-transactional-outbox-with-redis-queues.md) |
-| Database | PostgreSQL with row-level security for tenant isolation | [003](decisions/003-postgres-rls-for-tenant-isolation.md) |
-| Card data | Never stored; tokenization via gateway-hosted fields (PCI SAQ-A scope) | [006](decisions/006-merchant-of-record-with-submerchant-gateways.md) |
-| Gateway selection | Tenants enable any gateway the platform provides an adapter for; no region restriction | [008](decisions/008-tenant-selected-gateways-no-regions.md) |
-| Identity | Staff on the default Laravel `users` table with multi-tenant memberships; customers tenant-scoped in their own table | [007](decisions/007-staff-on-default-users-table-customers-separate.md) |
-| Roles | Custom RBAC: global role templates plus per-tenant custom roles, evaluated through Gates and Policies | [012](decisions/012-custom-rbac-over-laravel-permission.md) |
-| Authentication | OAuth 2.0 via Laravel Passport, JWT access tokens | [011](decisions/011-passport-oauth2-for-authentication.md) |
-| DTOs and contracts | spatie/laravel-data objects as the source of truth for API shapes | [013](decisions/013-laravel-data-for-dtos.md) |
-| Cross-cutting packages | spatie medialibrary, activitylog, translatable, query-builder for commodity concerns | [014](decisions/014-spatie-utility-packages.md) |
-| Email | Resend via the official Laravel driver | [010](decisions/010-resend-for-transactional-email.md) |
-| Deployment | OCI container images as the artifact; orchestrator chosen before production, not now | [017](decisions/017-containers-first-defer-orchestrator.md) |
-| Identifiers | UUIDv7 primary keys; no sequential IDs exposed externally | [005](decisions/005-uuidv7-identifiers.md) |
-| Money | Integer minor units (cents) with an explicit currency on every monetary record | [018](decisions/018-integer-minor-units-for-money.md) |
+| Decision               | Choice                                                                                                                               | ADR                                                                                             |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Backend shape          | Single Laravel application (modular monolith), organized by bounded contexts with Laravel-native internals, API only                 | [002](decisions/002-laravel-modular-monolith-with-bounded-contexts.md)                          |
+| Runtime                | Laravel Octane on FrankenPHP, official FrankenPHP Docker image                                                                       | [009](decisions/009-octane-on-frankenphp.md)                                                    |
+| Frontend               | React with Next.js (storefront and admin portal); separate offline-first check-in PWA                                                | [016](decisions/016-nextjs-monorepo-frontends.md), [015](decisions/015-separate-checkin-pwa.md) |
+| Repository             | Monorepo containing the API and frontend projects                                                                                    | [016](decisions/016-nextjs-monorepo-frontends.md)                                               |
+| Async processing       | Transactional outbox in PostgreSQL as the durable event log; Redis (Laravel Horizon) queues for delivery; sweeper reconciles the two | [004](decisions/004-transactional-outbox-with-redis-queues.md)                                  |
+| Database               | PostgreSQL with row-level security for tenant isolation                                                                              | [003](decisions/003-postgres-rls-for-tenant-isolation.md)                                       |
+| Card data              | Never stored; tokenization via gateway-hosted fields (PCI SAQ-A scope)                                                               | [006](decisions/006-merchant-of-record-with-submerchant-gateways.md)                            |
+| Gateway selection      | Tenants enable any gateway the platform provides an adapter for; no region restriction                                               | [008](decisions/008-tenant-selected-gateways-no-regions.md)                                     |
+| Identity               | Staff on the default Laravel `users` table with multi-tenant memberships; customers tenant-scoped in their own table                 | [007](decisions/007-staff-on-default-users-table-customers-separate.md)                         |
+| Roles                  | Custom RBAC: global role templates plus per-tenant custom roles, evaluated through Gates and Policies                                | [012](decisions/012-custom-rbac-over-laravel-permission.md)                                     |
+| Authentication         | OAuth 2.0 via Laravel Passport, JWT access tokens                                                                                    | [011](decisions/011-passport-oauth2-for-authentication.md)                                      |
+| DTOs and contracts     | spatie/laravel-data objects as the source of truth for API shapes                                                                    | [013](decisions/013-laravel-data-for-dtos.md)                                                   |
+| Cross-cutting packages | spatie medialibrary, activitylog, translatable, query-builder for commodity concerns                                                 | [014](decisions/014-spatie-utility-packages.md)                                                 |
+| Email                  | Resend via the official Laravel driver                                                                                               | [010](decisions/010-resend-for-transactional-email.md)                                          |
+| Deployment             | OCI container images as the artifact; orchestrator chosen before production, not now                                                 | [017](decisions/017-containers-first-defer-orchestrator.md)                                     |
+| Identifiers            | UUIDv7 primary keys; no sequential IDs exposed externally                                                                            | [005](decisions/005-uuidv7-identifiers.md)                                                      |
+| Money                  | Integer minor units (cents) with an explicit currency on every monetary record                                                       | [018](decisions/018-integer-minor-units-for-money.md)                                           |
 
 The implementation roadmap is tracked outside this document.
 

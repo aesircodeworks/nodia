@@ -6,9 +6,9 @@ The platform sends transactional email (order confirmations, tickets, account fl
 
 ## Considered Options
 
-* Resend via the official `resend/resend-laravel` driver
-* SMTP-compatible provider (Postmark, Mailgun)
-* Self-hosted SMTP
+- Resend via the official `resend/resend-laravel` driver
+- SMTP-compatible provider (Postmark, Mailgun)
+- Self-hosted SMTP
 
 ## Decision Outcome
 

@@ -8,7 +8,7 @@
 
 **Input**: User description: "Phase 0: Project Foundation from the docs/roadmap.md"
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Developer Runs the Full Stack Locally (Priority: P1)
 
@@ -65,7 +65,7 @@ A developer starting work on a later phase finds binding convention documents fo
 - What happens when the pipeline infrastructure itself fails (not the code)? The result is distinguishable from a code failure so developers do not chase phantom bugs.
 - What happens on a machine with none of the prerequisites installed? The setup documentation lists every prerequisite so the developer is never blocked by an undocumented dependency.
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -82,7 +82,7 @@ A developer starting work on a later phase finds binding convention documents fo
 - **FR-011**: The repository MUST document the developer setup: prerequisites, startup commands, default ports, and how to verify the stack is healthy.
 - **FR-012**: The pipeline MUST include the constitution's mandatory test suites as blocking jobs from this phase: the architecture boundary suite runs (green on the empty skeleton), and the tenant isolation and concurrency suites exist as wired harnesses that fail the pipeline once they contain cases (they are populated by Phases 1 and 3 respectively).
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 

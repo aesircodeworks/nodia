@@ -1,0 +1,18 @@
+{
+  "app": {
+    "title": "Nodia Storefront"
+  },
+  "health": {
+    "heading": "Backend status",
+    "loading": "Checking backend status",
+    "healthy": "Backend healthy",
+    "degraded": "Backend degraded",
+    "unreachable": "Backend unreachable",
+    "retry": "Retry",
+    "checks": {
+      "database": "Database",
+      "redis": "Redis",
+      "storage": "Storage"
+    }
+  }
+}

@@ -6,9 +6,9 @@ Architectural decisions were embedded in the system design document, where their
 
 ## Considered Options
 
-* MADR minimal format in `docs/decisions/`
-* MADR full format
-* No ADRs, decisions live only in the SDD
+- MADR minimal format in `docs/decisions/`
+- MADR full format
+- No ADRs, decisions live only in the SDD
 
 ## Decision Outcome
 
