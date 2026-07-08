@@ -1,0 +1,93 @@
+name: Storefront
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Storefront Changes
+    runs-on: ubuntu-latest
+    outputs:
+      storefront: ${{ steps.filter.outputs.storefront }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            storefront:
+              - 'apps/storefront/**'
+              - 'packages/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'eslint.config.mjs'
+              - '.github/workflows/storefront.yml'
+
+  eslint:
+    name: Storefront ESLint
+    needs: changes
+    if: needs.changes.outputs.storefront == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter storefront run lint
+
+  typecheck:
+    name: Storefront Typecheck
+    needs: changes
+    if: needs.changes.outputs.storefront == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter storefront run typecheck
+
+  vitest:
+    name: Storefront Vitest
+    needs: changes
+    if: needs.changes.outputs.storefront == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter storefront run test
+
+  build:
+    name: Storefront Build
+    needs: changes
+    if: needs.changes.outputs.storefront == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter storefront run build

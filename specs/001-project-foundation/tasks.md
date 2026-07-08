@@ -87,12 +87,12 @@ Monorepo per plan.md: `apps/api` (Laravel), `apps/storefront` and `apps/admin` (
 
 ### Implementation for User Story 2
 
-- [ ] T028 [P] [US2] Create the API workflow in `.github/workflows/api.yml`: path filters on `apps/api/**`, jobs for Pint in check mode, Larastan, and Pest running against real PostgreSQL and Redis service containers (research.md R3)
-- [ ] T029 [P] [US2] Create the storefront workflow in `.github/workflows/storefront.yml`: path filters on `apps/storefront/**` and `packages/**`, jobs for ESLint, `tsc --noEmit`, Vitest, and a production `next build` (research.md R3)
-- [ ] T030 [P] [US2] Create the admin workflow in `.github/workflows/admin.yml`: path filters on `apps/admin/**` and `packages/**`, jobs for ESLint, `tsc --noEmit`, Vitest, and a production `next build` (research.md R3)
-- [ ] T031 [P] [US2] Create the check-in workflow in `.github/workflows/checkin.yml`: path filters on `apps/checkin/**` and `packages/**`, jobs for ESLint, `tsc --noEmit`, Vitest, and a production `vite build` (research.md R3)
-- [ ] T032 [P] [US2] Create the shared packages workflow in `.github/workflows/packages.yml`: path filters on `packages/**`, jobs for ESLint, `tsc --noEmit`, Vitest, and builds for `packages/api-client` and `packages/ui` (research.md R3)
-- [ ] T033 [US2] Add the contract drift gate to `.github/workflows/api.yml`: run `composer types:generate` and fail the job if it produces a diff against the committed `packages/api-client/src/generated/` output (research.md R8, constitution Principle VI)
+- [x] T028 [P] [US2] Create the API workflow in `.github/workflows/api.yml`: path filters on `apps/api/**`, jobs for Pint in check mode, Larastan, and Pest running against real PostgreSQL and Redis service containers (research.md R3)
+- [x] T029 [P] [US2] Create the storefront workflow in `.github/workflows/storefront.yml`: path filters on `apps/storefront/**` and `packages/**`, jobs for ESLint, `tsc --noEmit`, Vitest, and a production `next build` (research.md R3)
+- [x] T030 [P] [US2] Create the admin workflow in `.github/workflows/admin.yml`: path filters on `apps/admin/**` and `packages/**`, jobs for ESLint, `tsc --noEmit`, Vitest, and a production `next build` (research.md R3)
+- [x] T031 [P] [US2] Create the check-in workflow in `.github/workflows/checkin.yml`: path filters on `apps/checkin/**` and `packages/**`, jobs for ESLint, `tsc --noEmit`, Vitest, and a production `vite build` (research.md R3)
+- [x] T032 [P] [US2] Create the shared packages workflow in `.github/workflows/packages.yml`: path filters on `packages/**`, jobs for ESLint, `tsc --noEmit`, Vitest, and builds for `packages/api-client` and `packages/ui` (research.md R3)
+- [x] T033 [US2] Add the contract drift gate to `.github/workflows/api.yml`: run `composer types:generate` and fail the job if it produces a diff against the committed `packages/api-client/src/generated/` output (research.md R8, constitution Principle VI)
 - [ ] T034 [US2] Configure branch protection on `main` marking every workflow job required so a failing check blocks merge (via `gh api` or repository settings), and document the required-checks list in `README.md` (spec FR-008)
 - [ ] T035 [US2] Validate quickstart.md scenario 3: a trivial passing change runs green on the PR; a deliberate Pint violation, Larastan error, and failing test each fail their job and block merge; a storefront-only change skips API jobs via path filters
 
