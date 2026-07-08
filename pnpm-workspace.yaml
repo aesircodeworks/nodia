@@ -4,3 +4,7 @@ packages:
   - "apps/checkin"
   - "packages/api-client"
   - "packages/ui"
+
+allowBuilds:
+  sharp: true
+  unrs-resolver: true
