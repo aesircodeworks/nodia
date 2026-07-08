@@ -1,3 +1,4 @@
+export type CheckResult = 'ok' | 'failed';
 export type CursorPaginatedDataCollection<TKey, TValue> = CursorPaginator<TKey, TValue>;
 export type CursorPaginator<TKey, TValue> = {
   data: TKey extends string ? Record<TKey, TValue> : TValue[];
@@ -16,6 +17,17 @@ export type CursorPaginator<TKey, TValue> = {
   };
 };
 export type CursorPaginatorInterface<TKey, TValue> = CursorPaginator<TKey, TValue>;
+export type HealthChecksData = {
+  database: CheckResult;
+  redis: CheckResult;
+  storage: CheckResult;
+};
+export type HealthReportData = {
+  status: HealthStatus;
+  checks: HealthChecksData;
+  checked_at: string;
+};
+export type HealthStatus = 'ok';
 export type LengthAwarePaginator<TKey, TValue> = {
   data: TKey extends string ? Record<TKey, TValue> : TValue[];
   links: {
