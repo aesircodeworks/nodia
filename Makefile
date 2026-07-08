@@ -9,20 +9,23 @@ APP_ENV_FILES := apps/api/.env apps/storefront/.env apps/admin/.env apps/checkin
 COMPOSE := docker compose -f infra/compose/docker-compose.yml --env-file $(CURDIR)/.env
 
 # Copy each .env.example to .env where missing; never overwrites an existing .env.
-.env: .env.example
-	cp $< $@
+# The example is an order-only prerequisite (after the |) so a newer .env.example
+# (e.g. re-stamped by a git pull) does not trigger a rebuild that would clobber a
+# developer's customized .env; the recipe runs only when .env itself is missing.
+.env: | .env.example
+	cp $| $@
 
-apps/api/.env: apps/api/.env.example
-	cp $< $@
+apps/api/.env: | apps/api/.env.example
+	cp $| $@
 
-apps/storefront/.env: apps/storefront/.env.example
-	cp $< $@
+apps/storefront/.env: | apps/storefront/.env.example
+	cp $| $@
 
-apps/admin/.env: apps/admin/.env.example
-	cp $< $@
+apps/admin/.env: | apps/admin/.env.example
+	cp $| $@
 
-apps/checkin/.env: apps/checkin/.env.example
-	cp $< $@
+apps/checkin/.env: | apps/checkin/.env.example
+	cp $| $@
 
 ## Copy every .env.example to .env where missing, then install Composer and pnpm dependencies.
 setup: .env $(APP_ENV_FILES)
