@@ -87,7 +87,7 @@ class HealthController extends Controller
             $config = config('filesystems.disks.'.config('filesystems.default'));
 
             if (($config['driver'] ?? null) === 's3') {
-                $config['options']['http'] = [
+                $config['http'] = [
                     'connect_timeout' => self::TIMEOUT_SECONDS,
                     'timeout' => self::TIMEOUT_SECONDS,
                 ];
