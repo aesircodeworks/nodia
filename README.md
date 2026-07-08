@@ -44,6 +44,18 @@ curl -s localhost:8000/v1/health
 
 A healthy stack returns HTTP 200 with `status: ok` and `database`, `redis`, and `storage` checks all `ok`. When a backing service is down, the endpoint returns HTTP 503 as an RFC 9457 problem document naming the failed check. Each frontend shows the same status on its landing page: [storefront](http://localhost:3000), [admin portal](http://localhost:3001), [check-in](http://localhost:5173).
 
+## Continuous Integration
+
+Every push and pull request runs path-filtered workflows under `.github/workflows/`: one per app (`api.yml`, `storefront.yml`, `admin.yml`, `checkin.yml`) plus `packages.yml` for the shared packages. Each workflow detects whether its paths changed; when they did not, its jobs skip and count as passing. Branch protection on `main` marks all of the following checks required, so any failing job blocks merge:
+
+- API: `API Pint`, `API Larastan`, `API Pest`, `API Contract Drift`
+- Storefront: `Storefront ESLint`, `Storefront Typecheck`, `Storefront Vitest`, `Storefront Build`
+- Admin: `Admin ESLint`, `Admin Typecheck`, `Admin Vitest`, `Admin Build`
+- Check-in: `Checkin ESLint`, `Checkin Typecheck`, `Checkin Vitest`, `Checkin Build`
+- Packages: `Packages ESLint`, `Packages Typecheck`, `Packages Vitest`, `Packages Build`
+
+`API Contract Drift` regenerates the TypeScript contract types with `composer types:generate` and fails if the output differs from what is committed in `packages/api-client/src/generated`.
+
 ## Binding Conventions
 
 These documents are binding for all code in this repository:
