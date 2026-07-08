@@ -50,6 +50,15 @@ test('GET /v1/health echoes a client-provided X-Correlation-Id', function () {
     expect($response->headers->get('X-Correlation-Id'))->toBe('health-correlation-id');
 });
 
+test('GET /v1/health allows cross-origin reads and exposes the correlation header', function () {
+    $response = $this->withHeader('Origin', 'http://localhost:3000')
+        ->getJson('/v1/health');
+
+    $response->assertOk()
+        ->assertHeader('Access-Control-Allow-Origin', '*')
+        ->assertHeader('Access-Control-Expose-Headers', 'X-Correlation-Id');
+});
+
 test('GET /v1/health generates and echoes a UUIDv7 X-Correlation-Id when none is sent', function () {
     $response = $this->getJson('/v1/health');
 
