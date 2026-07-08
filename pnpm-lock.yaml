@@ -122,6 +122,12 @@ importers:
         specifier: ~6.0.2
         version: 6.0.3
 
+  packages/ui:
+    devDependencies:
+      typescript:
+        specifier: ~6.0.2
+        version: 6.0.3
+
 packages:
 
   '@alloc/quick-lru@5.2.0':
