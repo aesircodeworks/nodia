@@ -11,5 +11,15 @@
     "lint": "pnpm --if-present -r run lint",
     "typecheck": "pnpm --if-present -r run typecheck",
     "test": "pnpm --if-present -r run test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.7.0",
+    "prettier": "^3.9.4",
+    "typescript-eslint": "^8.63.0"
   }
 }
