@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+.git
+.idea
+.vscode
+.phpunit.result.cache
+node_modules
+vendor
+tests
+frankenphp
+frankenphp-worker.php
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/testing/*
+storage/framework/views/*

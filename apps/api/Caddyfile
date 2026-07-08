@@ -1,0 +1,34 @@
+# FrankenPHP/Octane worker configuration for the containerized API (docs/decisions/009-octane-on-frankenphp.md).
+#
+# Runs frankenphp directly in worker mode against Octane's worker script, instead of
+# through `php artisan octane:frankenphp` (that command is a host-native dev convenience
+# wrapper: its Symfony Process layer buffers and discards the worker's stdout instead of
+# forwarding it, which would silently swallow the app's structured JSON request logs).
+
+{
+	admin localhost:2019
+	auto_https disable_redirects
+
+	frankenphp {
+		worker {
+			file /app/public/frankenphp-worker.php
+			num 4
+		}
+	}
+}
+
+:8000 {
+	log {
+		output stdout
+		format json
+	}
+
+	root * /app/public
+	encode zstd br gzip
+
+	php_server {
+		index frankenphp-worker.php
+		try_files {path} frankenphp-worker.php
+		resolve_root_symlink
+	}
+}
