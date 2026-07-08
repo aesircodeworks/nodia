@@ -46,6 +46,6 @@ COPY Caddyfile /etc/frankenphp/Caddyfile
 EXPOSE 8000
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=5 \
-    CMD curl -f http://127.0.0.1:8000/up || exit 1
+    CMD curl -f http://127.0.0.1:8000/v1/health || exit 1
 
 CMD ["frankenphp", "run", "--config", "/etc/frankenphp/Caddyfile"]
