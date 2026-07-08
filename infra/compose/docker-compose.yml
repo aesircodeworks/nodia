@@ -113,10 +113,10 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: null
 
-      # Wired to MinIO so the s3 disk works once league/flysystem-aws-s3-v3 is
-      # installed and FILESYSTEM_DISK is switched to s3; default disk stays local
-      # until then, matching apps/api/.env.example.
-      FILESYSTEM_DISK: ${FILESYSTEM_DISK:-local}
+      # Defaults to the s3 disk backed by the MinIO service below so the
+      # /v1/health storage check probes the provisioned object store instead
+      # of the container filesystem.
+      FILESYSTEM_DISK: ${FILESYSTEM_DISK:-s3}
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-nodia}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-nodia12345}
       AWS_DEFAULT_REGION: us-east-1
