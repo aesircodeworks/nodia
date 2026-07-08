@@ -1,0 +1,6 @@
+packages:
+  - "apps/storefront"
+  - "apps/admin"
+  - "apps/checkin"
+  - "packages/api-client"
+  - "packages/ui"

@@ -1,0 +1,15 @@
+{
+  "name": "nodia",
+  "private": true,
+  "packageManager": "pnpm@11.10.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pnpm --if-present -r --parallel run dev",
+    "build": "pnpm --if-present -r run build",
+    "lint": "pnpm --if-present -r run lint",
+    "typecheck": "pnpm --if-present -r run typecheck",
+    "test": "pnpm --if-present -r run test"
+  }
+}
