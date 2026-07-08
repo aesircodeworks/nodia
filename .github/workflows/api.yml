@@ -150,6 +150,170 @@ jobs:
         working-directory: apps/api
         run: composer run test
 
+  architecture:
+    name: API Architecture
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - name: Get Composer cache directory
+        id: composer-cache
+        working-directory: apps/api
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+      - name: Install dependencies
+        working-directory: apps/api
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Prepare application environment
+        working-directory: apps/api
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+      - name: Architecture suite
+        working-directory: apps/api
+        run: php artisan test --testsuite=Architecture
+
+  isolation:
+    name: API Isolation
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: nodia
+          POSTGRES_PASSWORD: nodia
+          POSTGRES_DB: nodia_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nodia"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: nodia_test
+      DB_USERNAME: nodia
+      DB_PASSWORD: nodia
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_pgsql, redis
+          coverage: none
+      - name: Get Composer cache directory
+        id: composer-cache
+        working-directory: apps/api
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+      - name: Install dependencies
+        working-directory: apps/api
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Prepare application environment
+        working-directory: apps/api
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+      - name: Tenant isolation suite
+        working-directory: apps/api
+        run: php artisan test --testsuite=Isolation
+
+  concurrency-suite:
+    name: API Concurrency
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: nodia
+          POSTGRES_PASSWORD: nodia
+          POSTGRES_DB: nodia_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nodia"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: nodia_test
+      DB_USERNAME: nodia
+      DB_PASSWORD: nodia
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_pgsql, redis
+          coverage: none
+      - name: Get Composer cache directory
+        id: composer-cache
+        working-directory: apps/api
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+      - name: Install dependencies
+        working-directory: apps/api
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Prepare application environment
+        working-directory: apps/api
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+      - name: Concurrency suite
+        working-directory: apps/api
+        run: php artisan test --testsuite=Concurrency
+
   contract-drift:
     name: API Contract Drift
     needs: changes
