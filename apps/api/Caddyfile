@@ -18,10 +18,10 @@
 }
 
 :8000 {
-	log {
-		output stdout
-		format json
-	}
+	# No site access-log block on purpose: Caddy's `log` directive would emit its
+	# own per-request JSON line to stdout, uncorrelated with the app's single
+	# request.handled line (CorrelationId middleware). The app owns that one line;
+	# Caddy's runtime/error logger is separate and still reaches stderr by default.
 
 	root * /app/public
 	encode zstd br gzip

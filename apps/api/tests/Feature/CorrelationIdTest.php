@@ -4,6 +4,9 @@ use Illuminate\Support\Facades\Route;
 
 beforeEach(function () {
     Route::get('/__correlation-probe', fn () => response()->noContent());
+    Route::get('/__correlation-throwing-probe', function () {
+        throw new RuntimeException('boom');
+    });
 });
 
 test('echoes a client-provided X-Correlation-Id header on the response', function () {
@@ -44,6 +47,39 @@ test('logs exactly one request line carrying the correlation id in the log conte
         ->and($line['context']['method'])->toBe('GET')
         ->and($line['context']['path'])->toBe('/__correlation-probe')
         ->and($line['context']['status'])->toBe(204)
+        ->and($line['context'])->toHaveKey('duration_ms');
+
+    unlink($stream);
+});
+
+test('a throwing request still echoes the header and logs exactly one request line with status 500', function () {
+    $stream = tempnam(sys_get_temp_dir(), 'correlation-stdout-');
+
+    config()->set('logging.channels.stdout.handler_with.stream', $stream);
+
+    $response = $this->withHeader('X-Correlation-Id', 'error-correlation-id')
+        ->get('/__correlation-throwing-probe');
+
+    $response->assertStatus(500);
+
+    expect($response->headers->get('X-Correlation-Id'))->toBe('error-correlation-id');
+
+    $requestLines = array_values(array_filter(
+        array_map(
+            fn (string $line) => json_decode($line, true),
+            array_filter(explode("\n", file_get_contents($stream))),
+        ),
+        fn ($line) => $line !== null && $line['message'] === 'request.handled',
+    ));
+
+    expect($requestLines)->toHaveCount(1);
+
+    $line = $requestLines[0];
+
+    expect($line['context']['correlation_id'])->toBe('error-correlation-id')
+        ->and($line['context']['method'])->toBe('GET')
+        ->and($line['context']['path'])->toBe('/__correlation-throwing-probe')
+        ->and($line['context']['status'])->toBe(500)
         ->and($line['context'])->toHaveKey('duration_ms');
 
     unlink($stream);

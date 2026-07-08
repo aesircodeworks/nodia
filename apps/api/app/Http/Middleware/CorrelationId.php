@@ -25,17 +25,22 @@ class CorrelationId
         // RequestReceived), so this id cannot leak into a later request on the same worker.
         Log::withContext(['correlation_id' => $correlationId]);
 
-        $response = $next($request);
+        $status = 500;
 
-        $response->headers->set(self::HEADER, $correlationId);
+        try {
+            $response = $next($request);
+            $status = $response->getStatusCode();
 
-        Log::info('request.handled', [
-            'method' => $request->getMethod(),
-            'path' => '/'.ltrim($request->path(), '/'),
-            'status' => $response->getStatusCode(),
-            'duration_ms' => round((microtime(true) - $startedAt) * 1000, 2),
-        ]);
+            $response->headers->set(self::HEADER, $correlationId);
 
-        return $response;
+            return $response;
+        } finally {
+            Log::info('request.handled', [
+                'method' => $request->getMethod(),
+                'path' => '/'.ltrim($request->path(), '/'),
+                'status' => $status,
+                'duration_ms' => round((microtime(true) - $startedAt) * 1000, 2),
+            ]);
+        }
     }
 }
