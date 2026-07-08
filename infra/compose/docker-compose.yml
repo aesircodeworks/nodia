@@ -104,7 +104,7 @@ services:
       DB_USERNAME: ${DB_USERNAME:-nodia}
       DB_PASSWORD: ${DB_PASSWORD:-nodia}
 
-      CACHE_STORE: ${CACHE_STORE:-database}
+      CACHE_STORE: ${CACHE_STORE:-redis}
       QUEUE_CONNECTION: redis
       SESSION_DRIVER: ${SESSION_DRIVER:-database}
 
