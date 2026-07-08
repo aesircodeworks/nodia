@@ -14,6 +14,9 @@ apps/api/bootstrap/cache
 apps/api/public/build
 apps/api/public/hot
 
+# Generated contract-pipeline bookkeeping (transformer-owned, rewritten each run)
+packages/api-client/src/generated/typescript-transformer-manifest.json
+
 # Tool-managed scaffolding (Spec Kit and Claude Code), not project source
 .claude
 .specify
