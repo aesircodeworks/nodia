@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { HealthStatus } from './health-status';
@@ -60,5 +60,30 @@ describe('HealthStatus', () => {
 
     expect(await screen.findByText(t('health.unreachable'))).toBeDefined();
     expect(screen.getByRole('button', { name: t('health.retry') })).toBeDefined();
+  });
+
+  it('recovers to healthy after clicking retry once the API responds', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError('fetch failed'))
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              status: 'ok',
+              checks: { database: 'ok', redis: 'ok', storage: 'ok' },
+              checked_at: '2026-07-04T12:00:00Z',
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+        ),
+    );
+
+    render(<HealthStatus baseUrl="http://localhost:8000" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: t('health.retry') }));
+
+    expect(await screen.findByText(t('health.healthy'))).toBeDefined();
   });
 });

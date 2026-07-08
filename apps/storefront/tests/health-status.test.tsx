@@ -1,5 +1,5 @@
 import { NextIntlClientProvider } from 'next-intl';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import messages from '../messages/en.json';
@@ -69,5 +69,30 @@ describe('HealthStatus', () => {
 
     expect(await screen.findByText(messages.health.unreachable)).toBeDefined();
     expect(screen.getByRole('button', { name: messages.health.retry })).toBeDefined();
+  });
+
+  it('recovers to healthy after clicking retry once the API responds', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError('fetch failed'))
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              status: 'ok',
+              checks: { database: 'ok', redis: 'ok', storage: 'ok' },
+              checked_at: '2026-07-04T12:00:00Z',
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+        ),
+    );
+
+    renderHealthStatus();
+
+    fireEvent.click(await screen.findByRole('button', { name: messages.health.retry }));
+
+    expect(await screen.findByText(messages.health.healthy)).toBeDefined();
   });
 });

@@ -5,7 +5,7 @@ export type * from './generated';
 export type HealthDegradedProblem = {
   type: string;
   title: string;
-  status: number;
+  status: 503;
   detail?: string;
   code: 'health.degraded';
   checks: HealthChecksData;
