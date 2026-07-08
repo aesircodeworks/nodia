@@ -73,7 +73,7 @@ Monorepo per plan.md: `apps/api` (Laravel), `apps/storefront` and `apps/admin` (
 - [x] T024 [P] [US1] Build the check-in app health status view in `apps/checkin`: lightweight i18n message catalog matching the ui conventions, health status view consuming `packages/api-client` and `packages/ui`, with a Vitest component test (spec FR-006, research.md R9)
 - [x] T025 [P] [US1] Seed the repository OpenAPI specification at `docs/openapi/openapi.yaml` with the `/v1/health` contract merged from `specs/001-project-foundation/contracts/v1-health.openapi.yaml` (research.md R8)
 - [x] T026 [US1] Write the root `README.md` developer setup documentation: prerequisites list, setup and startup commands, default ports and how to change them, how to verify the stack is healthy, and links to the four convention docs (spec FR-011, edge cases for occupied ports and missing prerequisites)
-- [ ] T027 [US1] Validate quickstart.md scenarios 1 and 2: `make up` to healthy stack, all three frontends display healthy status, curl of `/v1/health` returns 200 with structured JSON logs and correlation ID echo, stopping Redis yields a fast 503 problem document naming `checks.redis: failed`, restart returns 200
+- [x] T027 [US1] Validate quickstart.md scenarios 1 and 2: `make up` to healthy stack, all three frontends display healthy status, curl of `/v1/health` returns 200 with structured JSON logs and correlation ID echo, stopping Redis yields a fast 503 problem document naming `checks.redis: failed`, restart returns 200
 
 **Checkpoint**: User Story 1 is fully functional: clone, documented steps, running stack, visible healthy status in all three frontends.
 
