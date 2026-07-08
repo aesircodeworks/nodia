@@ -122,7 +122,7 @@ Monorepo per plan.md: `apps/api` (Laravel), `apps/storefront` and `apps/admin` (
 
 **Purpose**: End-to-end validation of the phase exit criteria.
 
-- [ ] T041 Run the full quickstart.md validation end to end on a fresh clone, timing clone-to-running-stack to confirm it lands under 15 minutes with only the documented steps (spec SC-001, SC-002)
+- [x] T041 Run the full quickstart.md validation end to end on a fresh clone, timing clone-to-running-stack to confirm it lands under 15 minutes with only the documented steps (spec SC-001, SC-002)
 - [x] T042 Cleanup pass across all workspaces: remove bootstrap leftovers and example code, confirm `.env.example` files cover every required variable, confirm workspace scripts are consistent, and confirm no auto-increment column exists anywhere in the schema (research.md R10)
 
 ---
