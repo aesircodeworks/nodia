@@ -23,15 +23,15 @@ Monorepo per plan.md: `apps/api` (Laravel), `apps/storefront` and `apps/admin` (
 
 **Purpose**: Instantiate the monorepo layout from system-design.md 16.1 and bootstrap all four applications and both shared packages with their QA toolchains.
 
-- [ ] T001 Create the monorepo skeleton at the repository root: `pnpm-workspace.yaml` covering `apps/storefront`, `apps/admin`, `apps/checkin`, `packages/api-client`, `packages/ui`; root `package.json` with workspace-wide scripts; `.nvmrc` pinned to the current Node.js LTS; root `.gitignore`; directories `apps/`, `packages/`, `infra/compose/`, `.github/workflows/`
-- [ ] T002 [P] Bootstrap the Laravel API in `apps/api` with the Laravel installer at the latest stable release, install Octane with FrankenPHP (ADR 009), and pin the PHP version in `apps/api/composer.json` `require.php` (research.md R1)
-- [ ] T003 [P] Bootstrap the storefront with `create-next-app` (TypeScript, App Router) in `apps/storefront` with strict mode in `apps/storefront/tsconfig.json`
-- [ ] T004 [P] Bootstrap the admin portal with `create-next-app` (TypeScript, App Router) in `apps/admin` with strict mode in `apps/admin/tsconfig.json`
-- [ ] T005 [P] Bootstrap the check-in app with `create-vite` (React, TypeScript) in `apps/checkin` and add the Vite PWA plugin with manifest and service worker registration scaffolded, offline behavior deferred (research.md R5)
-- [ ] T006 [P] Scaffold `packages/api-client`: `packages/api-client/package.json`, strict `packages/api-client/tsconfig.json`, `packages/api-client/src/index.ts`, and `packages/api-client/src/generated/` reserved for generated output only (research.md R8)
-- [ ] T007 [P] Scaffold `packages/ui`: `packages/ui/package.json`, strict `packages/ui/tsconfig.json`, `packages/ui/src/index.ts` entry point
-- [ ] T008 Configure the shared frontend QA toolchain from the repo root: ESLint flat config in `eslint.config.mjs`, Prettier config, Vitest scaffolding in every JS workspace, and `dev`, `build`, `lint`, `typecheck`, `test` scripts in each workspace `package.json` (research.md R2, R9)
-- [ ] T009 Install and configure the API QA toolchain in `apps/api`: Laravel Pint with `apps/api/pint.json`, Larastan with `apps/api/phpstan.neon`, Pest with `apps/api/tests/Architecture/`, `apps/api/tests/Feature/`, and `apps/api/tests/Unit/` directories
+- [x] T001 Create the monorepo skeleton at the repository root: `pnpm-workspace.yaml` covering `apps/storefront`, `apps/admin`, `apps/checkin`, `packages/api-client`, `packages/ui`; root `package.json` with workspace-wide scripts; `.nvmrc` pinned to the current Node.js LTS; root `.gitignore`; directories `apps/`, `packages/`, `infra/compose/`, `.github/workflows/`
+- [x] T002 [P] Bootstrap the Laravel API in `apps/api` with the Laravel installer at the latest stable release, install Octane with FrankenPHP (ADR 009), and pin the PHP version in `apps/api/composer.json` `require.php` (research.md R1)
+- [x] T003 [P] Bootstrap the storefront with `create-next-app` (TypeScript, App Router) in `apps/storefront` with strict mode in `apps/storefront/tsconfig.json`
+- [x] T004 [P] Bootstrap the admin portal with `create-next-app` (TypeScript, App Router) in `apps/admin` with strict mode in `apps/admin/tsconfig.json`
+- [x] T005 [P] Bootstrap the check-in app with `create-vite` (React, TypeScript) in `apps/checkin` and add the Vite PWA plugin with manifest and service worker registration scaffolded, offline behavior deferred (research.md R5)
+- [x] T006 [P] Scaffold `packages/api-client`: `packages/api-client/package.json`, strict `packages/api-client/tsconfig.json`, `packages/api-client/src/index.ts`, and `packages/api-client/src/generated/` reserved for generated output only (research.md R8)
+- [x] T007 [P] Scaffold `packages/ui`: `packages/ui/package.json`, strict `packages/ui/tsconfig.json`, `packages/ui/src/index.ts` entry point
+- [x] T008 Configure the shared frontend QA toolchain from the repo root: ESLint flat config in `eslint.config.mjs`, Prettier config, Vitest scaffolding in every JS workspace, and `dev`, `build`, `lint`, `typecheck`, `test` scripts in each workspace `package.json` (research.md R2, R9)
+- [x] T009 Install and configure the API QA toolchain in `apps/api`: Laravel Pint with `apps/api/pint.json`, Larastan with `apps/api/phpstan.neon`, Pest with `apps/api/tests/Architecture/`, `apps/api/tests/Feature/`, and `apps/api/tests/Unit/` directories
 
 **Checkpoint**: All seven workspaces exist, install cleanly, and their local lint/test/build commands run.
 

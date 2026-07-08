@@ -6,8 +6,8 @@ Money must flow from buyers through the platform to organizers with correct fee 
 
 ## Considered Options
 
-* Platform as merchant of record using gateways with marketplace/split-payment support (Stripe Connect, Adyen for Platforms, Pagar.me, Mercado Pago)
-* Organizers as merchants using their own gateway accounts, platform invoices commission separately
+- Platform as merchant of record using gateways with marketplace/split-payment support (Stripe Connect, Adyen for Platforms, Pagar.me, Mercado Pago)
+- Organizers as merchants using their own gateway accounts, platform invoices commission separately
 
 ## Decision Outcome
 
@@ -15,5 +15,5 @@ Chosen option: "Platform as merchant of record with sub-merchant gateways", beca
 
 ### Consequences
 
-* Good, because organizer onboarding, payouts, and splits are delegated to the gateway.
-* Bad, because the platform carries refund and chargeback liability and must maintain an append-only ledger as the source of truth for balances.
+- Good, because organizer onboarding, payouts, and splits are delegated to the gateway.
+- Bad, because the platform carries refund and chargeback liability and must maintain an append-only ledger as the source of truth for balances.

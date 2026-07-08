@@ -6,9 +6,9 @@ Ticket on-sales produce sharp request spikes where per-request framework bootstr
 
 ## Considered Options
 
-* Laravel Octane on FrankenPHP, using the official FrankenPHP Docker image
-* PHP-FPM behind nginx
-* Octane on Swoole or RoadRunner
+- Laravel Octane on FrankenPHP, using the official FrankenPHP Docker image
+- PHP-FPM behind nginx
+- Octane on Swoole or RoadRunner
 
 ## Decision Outcome
 
@@ -16,5 +16,5 @@ Chosen option: "Octane on FrankenPHP", because it removes framework bootstrap fr
 
 ### Consequences
 
-* Good, because request latency drops and the container story is one official image.
-* Bad, because long-lived workers demand state discipline: no mutable static state, request-scoped services must reset between requests, and leaks surface as cross-request bugs.
+- Good, because request latency drops and the container story is one official image.
+- Bad, because long-lived workers demand state discipline: no mutable static state, request-scoped services must reset between requests, and leaks surface as cross-request bugs.

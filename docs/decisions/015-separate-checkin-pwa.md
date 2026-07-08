@@ -6,8 +6,8 @@ Check-in happens at venue doors with unreliable connectivity, on shared devices,
 
 ## Considered Options
 
-* Dedicated offline-first PWA (`apps/checkin`), future native mobile app against the same API
-* Check-in screens inside the admin portal
+- Dedicated offline-first PWA (`apps/checkin`), future native mobile app against the same API
+- Check-in screens inside the admin portal
 
 ## Decision Outcome
 

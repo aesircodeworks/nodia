@@ -6,9 +6,9 @@ Authorization needs global role templates plus per-tenant custom roles, with a u
 
 ## Considered Options
 
-* Custom RBAC: `roles` with nullable `tenant_id` and capability sets, assigned via `memberships`, checked through Gates and Policies
-* spatie/laravel-permission with the teams feature (`team_id` as tenant)
-* spatie/laravel-permission without teams
+- Custom RBAC: `roles` with nullable `tenant_id` and capability sets, assigned via `memberships`, checked through Gates and Policies
+- spatie/laravel-permission with the teams feature (`team_id` as tenant)
+- spatie/laravel-permission without teams
 
 ## Decision Outcome
 
@@ -16,5 +16,5 @@ Chosen option: "Custom RBAC", because the teams feature is ruled out for this pr
 
 ### Consequences
 
-* Good, because role assignment lives on the membership, precisely matching the identity model.
-* Bad, because we maintain the RBAC tables and checks ourselves instead of leaning on a maintained package.
+- Good, because role assignment lives on the membership, precisely matching the identity model.
+- Bad, because we maintain the RBAC tables and checks ourselves instead of leaning on a maintained package.

@@ -6,8 +6,8 @@ The design includes several commodity concerns (file attachments, audit trail, t
 
 ## Considered Options
 
-* Adopt spatie packages: laravel-medialibrary, laravel-activitylog, laravel-translatable, laravel-query-builder
-* Bespoke implementations (custom media, audit_log, and translations tables; hand-rolled filtering)
+- Adopt spatie packages: laravel-medialibrary, laravel-activitylog, laravel-translatable, laravel-query-builder
+- Bespoke implementations (custom media, audit_log, and translations tables; hand-rolled filtering)
 
 ## Decision Outcome
 

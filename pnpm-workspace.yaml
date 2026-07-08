@@ -1,9 +1,9 @@
 packages:
-  - "apps/storefront"
-  - "apps/admin"
-  - "apps/checkin"
-  - "packages/api-client"
-  - "packages/ui"
+  - 'apps/storefront'
+  - 'apps/admin'
+  - 'apps/checkin'
+  - 'packages/api-client'
+  - 'packages/ui'
 
 allowBuilds:
   sharp: true

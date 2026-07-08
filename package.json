@@ -7,10 +7,12 @@
   },
   "scripts": {
     "dev": "pnpm --if-present -r --parallel run dev",
-    "build": "pnpm --if-present -r run build",
-    "lint": "pnpm --if-present -r run lint",
+    "build": "pnpm --if-present -r run build && composer -d apps/api run analyse",
+    "lint": "pnpm --if-present -r run lint && composer -d apps/api run lint",
     "typecheck": "pnpm --if-present -r run typecheck",
-    "test": "pnpm --if-present -r run test"
+    "test": "pnpm --if-present -r run test && composer -d apps/api run test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

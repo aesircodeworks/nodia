@@ -6,9 +6,9 @@ The platform spans several distinct subdomains (tenancy, catalog, inventory, ord
 
 ## Considered Options
 
-* Modular monolith: one context folder per subdomain under `app/`, Laravel-native internals (Eloquent models, Actions, Jobs, Policies)
-* Modular monolith with DDD layering (Domain/Application/Infrastructure, repositories, mapped entities)
-* Microservices per subdomain
+- Modular monolith: one context folder per subdomain under `app/`, Laravel-native internals (Eloquent models, Actions, Jobs, Policies)
+- Modular monolith with DDD layering (Domain/Application/Infrastructure, repositories, mapped entities)
+- Microservices per subdomain
 
 ## Decision Outcome
 
@@ -16,6 +16,6 @@ Chosen option: "Modular monolith with Laravel-native internals", because context
 
 ### Consequences
 
-* Good, because framework conventions reduce ceremony and onboarding cost.
-* Good, because the outbox event contracts remain a seam for extracting a context later.
-* Bad, because boundary discipline relies on architecture tests instead of compiler-enforced layers.
+- Good, because framework conventions reduce ceremony and onboarding cost.
+- Good, because the outbox event contracts remain a seam for extracting a context later.
+- Bad, because boundary discipline relies on architecture tests instead of compiler-enforced layers.

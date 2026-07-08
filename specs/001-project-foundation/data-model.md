@@ -16,11 +16,11 @@ Only Laravel's framework-default migrations ship, adjusted before the first migr
 
 The single contract of this phase. Defined as a laravel-data object, exported to TypeScript, documented in [contracts/v1-health.openapi.yaml](contracts/v1-health.openapi.yaml).
 
-| Field | Type | Constraints |
-|-------|------|-------------|
-| `status` | string enum | Always `ok` on a 200 response; a degraded system returns the problem document below instead |
-| `checks` | object | Keys `database`, `redis`, `storage`; each value is `ok` or `failed` |
-| `checked_at` | string | ISO 8601 UTC timestamp of check execution |
+| Field        | Type        | Constraints                                                                                 |
+| ------------ | ----------- | ------------------------------------------------------------------------------------------- |
+| `status`     | string enum | Always `ok` on a 200 response; a degraded system returns the problem document below instead |
+| `checks`     | object      | Keys `database`, `redis`, `storage`; each value is `ok` or `failed`                         |
+| `checked_at` | string      | ISO 8601 UTC timestamp of check execution                                                   |
 
 Validation rules: `status` is derived server-side from `checks` (never client-computed, consistent with the API-computes-derived-values posture of docs/api-conventions.md); all three check keys are always present; no additional dependency details (hostnames, versions, latencies) are exposed.
 

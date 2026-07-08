@@ -6,8 +6,8 @@ An earlier revision routed payments by tenant region (BR, US, EU), with each reg
 
 ## Considered Options
 
-* Tenants enable any gateway the platform provides an adapter for
-* Region-based gateway routing
+- Tenants enable any gateway the platform provides an adapter for
+- Region-based gateway routing
 
 ## Decision Outcome
 
@@ -15,5 +15,5 @@ Chosen option: "Tenants enable any available gateway", because the real constrai
 
 ### Consequences
 
-* Good, because the tenant model loses a `region` attribute and the routing rules disappear.
-* Bad, because nothing prevents a tenant from enabling a gateway that is a poor fit commercially; that becomes an onboarding-guidance concern.
+- Good, because the tenant model loses a `region` attribute and the routing rules disappear.
+- Bad, because nothing prevents a tenant from enabling a gateway that is a poor fit commercially; that becomes an onboarding-guidance concern.

@@ -6,9 +6,9 @@ The platform has two identity populations: staff (organizer and platform employe
 
 ## Considered Options
 
-* Staff on the default `users` table with a `memberships` join to tenants; customers in a separate tenant-scoped `customers` table
-* Dedicated `staff_users` table plus separate `customers` table
-* Single `users` table with a type flag for both populations
+- Staff on the default `users` table with a `memberships` join to tenants; customers in a separate tenant-scoped `customers` table
+- Dedicated `staff_users` table plus separate `customers` table
+- Single `users` table with a type flag for both populations
 
 ## Decision Outcome
 

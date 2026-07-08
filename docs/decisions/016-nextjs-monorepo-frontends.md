@@ -6,9 +6,9 @@ The platform needs a buyer-facing storefront (SEO, per-tenant branding on custom
 
 ## Considered Options
 
-* React with Next.js apps in a monorepo with the API and shared packages
-* Frontend apps in separate repositories
-* Server-rendered Blade or Inertia inside the Laravel app
+- React with Next.js apps in a monorepo with the API and shared packages
+- Frontend apps in separate repositories
+- Server-rendered Blade or Inertia inside the Laravel app
 
 ## Decision Outcome
 

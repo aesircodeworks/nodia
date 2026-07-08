@@ -6,8 +6,8 @@ The API authenticates two identity populations (staff and customers) across thre
 
 ## Considered Options
 
-* Laravel Passport (OAuth 2.0, JWT access tokens, refresh token rotation)
-* Laravel Sanctum (first-party SPA tokens)
+- Laravel Passport (OAuth 2.0, JWT access tokens, refresh token rotation)
+- Laravel Sanctum (first-party SPA tokens)
 
 ## Decision Outcome
 

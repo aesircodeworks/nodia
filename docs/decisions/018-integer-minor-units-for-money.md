@@ -6,9 +6,9 @@ Monetary values flow through orders, payments, the ledger, and payouts in multip
 
 ## Considered Options
 
-* Integer minor units with an explicit currency code on every monetary record
-* Decimal columns
-* Adopting a money library's storage model (brick/money, moneyphp)
+- Integer minor units with an explicit currency code on every monetary record
+- Decimal columns
+- Adopting a money library's storage model (brick/money, moneyphp)
 
 ## Decision Outcome
 
