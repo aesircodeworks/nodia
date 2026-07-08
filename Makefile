@@ -31,6 +31,8 @@ apps/checkin/.env: | apps/checkin/.env.example
 setup: .env $(APP_ENV_FILES)
 	composer install --working-dir=apps/api
 	pnpm install
+	@grep -q '^APP_KEY=base64:' .env || sed -i.bak "s|^APP_KEY=.*|APP_KEY=base64:$$(openssl rand -base64 32)|" .env && rm -f .env.bak
+	@grep -q '^APP_KEY=base64:' apps/api/.env || php apps/api/artisan key:generate
 
 ## Start postgres, redis, minio, and the api container.
 up: .env

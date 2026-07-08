@@ -91,7 +91,7 @@ services:
     environment:
       APP_ENV: ${APP_ENV:-local}
       APP_DEBUG: ${APP_DEBUG:-true}
-      APP_KEY: ${APP_KEY:-base64:+WkHmoGlRETXZ9S8PSOW11+hKN8zZAPMpABqJuK9pNs=}
+      APP_KEY: ${APP_KEY}
       APP_URL: http://localhost:${API_PORT:-8000}
 
       LOG_CHANNEL: stdout
