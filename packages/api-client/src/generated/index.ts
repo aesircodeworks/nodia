@@ -69,6 +69,10 @@ export type LengthAwarePaginator<TKey, TValue> = {
   };
 };
 export type LengthAwarePaginatorInterface<TKey, TValue> = LengthAwarePaginator<TKey, TValue>;
+export type Money = {
+  amount: number;
+  currency: string;
+};
 export type PaginatedDataCollection<TKey, TValue> = LengthAwarePaginator<TKey, TValue>;
 export type ProblemData = {
   type: string;

@@ -75,6 +75,26 @@ paths:
                     checked_at: '2026-07-04T12:00:00Z'
 components:
   schemas:
+    Money:
+      type: object
+      description: >-
+        Monetary value per docs/api-conventions.md: integer minor units paired
+        with an uppercase ISO 4217 currency code. Amounts never appear on the
+        wire without a currency, and never as floats.
+      required:
+        - amount
+        - currency
+      properties:
+        amount:
+          type: integer
+          description: >-
+            Amount in the currency's minor units (e.g. centavos). May be
+            negative (refunds, corrections).
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          description: Uppercase ISO 4217 currency code.
+      additionalProperties: false
     HealthReport:
       type: object
       required:
