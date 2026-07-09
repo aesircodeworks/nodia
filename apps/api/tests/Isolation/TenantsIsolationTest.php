@@ -17,20 +17,9 @@ use function Tests\Isolation\Support\actingAsRole;
  * are created only through the platform role (stage-02 plan, Data model).
  */
 
-beforeEach(function (): void {
-    actingAsRole(Rls::PLATFORM_ROLE, null, function (): void {
-        Tenant::factory()->create(['id' => TenantFixture::TENANT_A, 'name' => 'Tenant A']);
-        Tenant::factory()->create(['id' => TenantFixture::TENANT_B, 'name' => 'Tenant B']);
-    });
-});
+beforeEach(fn () => TenantFixture::seed());
 
-afterEach(function (): void {
-    actingAsRole(
-        Rls::PLATFORM_ROLE,
-        null,
-        fn () => DB::table('tenants')->where('id', '!=', config('tenancy.platform_tenant_id'))->delete(),
-    );
-});
+afterEach(fn () => TenantFixture::clean());
 
 it('shows a tenant exactly its own row: the sentinel and other tenants are invisible', function () {
     $rows = actingAsRole(
