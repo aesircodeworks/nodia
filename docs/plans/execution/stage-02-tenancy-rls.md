@@ -368,7 +368,7 @@ Deviations and decisions:
 ### task-14: stage close
 
 - Timestamp: Thu Jul 9 17:09:37 -03 2026
-- Commits: see the run summary below (single docs commit closing the stage)
+- Commits: `4890103` (docs: close stage 2 with the DomainVerified registration trigger decision), plus the SHA-recording follow-up carrying this line
 
 Decision, `DomainVerified` trigger semantics (the open question this stage owns; the plan requires it settled before this task closes): `DomainVerified` means registered. Stage 4 attaches the producer to `RegisterDomain`, recording the event in the same transaction as the row insert. No `verified_at` column and no DNS-challenge flow ship, because nothing in the design demands them. Rationale:
 
