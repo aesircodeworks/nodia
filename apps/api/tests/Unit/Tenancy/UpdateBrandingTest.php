@@ -70,6 +70,40 @@ it('accepts a combined locale change that keeps the invariant and returns Tenant
         ->and($fresh->supported_locales)->toBe(['fr', 'en']);
 });
 
+it('passes the opaque payout schedule through when present', function () {
+    $data = UpdateTenantData::from(['payout_schedule' => ['interval' => 'weekly']]);
+
+    app(TenantTransaction::class)->asPlatform(
+        fn () => app(UpdateBranding::class)($this->tenant, $data),
+    );
+
+    $fresh = app(TenantTransaction::class)->asPlatform(fn () => Tenant::query()->find($this->tenant->id));
+
+    expect($fresh->payout_schedule)->toBe(['interval' => 'weekly']);
+});
+
+it('clears the payout schedule on an explicit null and preserves it when absent', function () {
+    app(TenantTransaction::class)->asPlatform(
+        fn () => $this->tenant->update(['payout_schedule' => ['interval' => 'weekly']]),
+    );
+
+    app(TenantTransaction::class)->asPlatform(
+        fn () => app(UpdateBranding::class)($this->tenant, UpdateTenantData::from(['name' => 'Still Weekly'])),
+    );
+
+    $fresh = app(TenantTransaction::class)->asPlatform(fn () => Tenant::query()->find($this->tenant->id));
+
+    expect($fresh->payout_schedule)->toBe(['interval' => 'weekly']);
+
+    app(TenantTransaction::class)->asPlatform(
+        fn () => app(UpdateBranding::class)($this->tenant, UpdateTenantData::from(['payout_schedule' => null])),
+    );
+
+    $fresh = app(TenantTransaction::class)->asPlatform(fn () => Tenant::query()->find($this->tenant->id));
+
+    expect($fresh->payout_schedule)->toBeNull();
+});
+
 it('updates the name and branding settings leaving locales untouched', function () {
     $data = UpdateTenantData::from([
         'name' => 'After',

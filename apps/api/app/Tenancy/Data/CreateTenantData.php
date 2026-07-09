@@ -23,4 +23,20 @@ class CreateTenantData extends Data
         public array|Optional $enabledGateways,
         public array|Optional|null $payoutSchedule,
     ) {}
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public static function rules(): array
+    {
+        return [
+            'name' => ['required', 'string', 'max:255'],
+            'default_locale' => ['required', 'string'],
+            'supported_locales' => ['required', 'array', 'list', 'min:1'],
+            'supported_locales.*' => ['string', 'filled'],
+            'enabled_gateways' => ['sometimes', 'array', 'list'],
+            'enabled_gateways.*' => ['string', 'filled'],
+            'payout_schedule' => ['sometimes', 'nullable', 'array'],
+        ];
+    }
 }

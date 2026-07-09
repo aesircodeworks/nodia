@@ -2,7 +2,7 @@
 
 use App\Support\Problems\ErrorCode;
 
-test('the registry holds exactly the initial eight codes', function () {
+test('the registry holds exactly the known codes', function () {
     expect(array_map(fn (ErrorCode $code) => $code->value, ErrorCode::cases()))->toBe([
         'request.not_found',
         'request.method_not_allowed',
@@ -12,6 +12,9 @@ test('the registry holds exactly the initial eight codes', function () {
         'request.rate_limited',
         'server.internal_error',
         'health.degraded',
+        'invalid_query_parameter',
+        'tenant_not_found',
+        'default_locale_not_supported',
     ]);
 });
 
@@ -28,6 +31,9 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'request.rate_limited' => [ErrorCode::RequestRateLimited, 429, 'Too many requests', '/problems/request-rate-limited'],
     'server.internal_error' => [ErrorCode::ServerInternalError, 500, 'Internal server error', '/problems/server-internal-error'],
     'health.degraded' => [ErrorCode::HealthDegraded, 503, 'Service degraded', '/problems/health-degraded'],
+    'invalid_query_parameter' => [ErrorCode::InvalidQueryParameter, 400, 'Invalid query parameter', '/problems/invalid-query-parameter'],
+    'tenant_not_found' => [ErrorCode::TenantNotFound, 404, 'Tenant not found', '/problems/tenant-not-found'],
+    'default_locale_not_supported' => [ErrorCode::DefaultLocaleNotSupported, 422, 'Default locale not supported', '/problems/default-locale-not-supported'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

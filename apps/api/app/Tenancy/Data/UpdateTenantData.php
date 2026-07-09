@@ -23,4 +23,20 @@ class UpdateTenantData extends Data
         public array|Optional $enabledGateways,
         public array|Optional|null $payoutSchedule,
     ) {}
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public static function rules(): array
+    {
+        return [
+            'name' => ['sometimes', 'string', 'filled', 'max:255'],
+            'default_locale' => ['sometimes', 'string', 'filled'],
+            'supported_locales' => ['sometimes', 'array', 'list', 'min:1'],
+            'supported_locales.*' => ['string', 'filled'],
+            'enabled_gateways' => ['sometimes', 'array', 'list'],
+            'enabled_gateways.*' => ['string', 'filled'],
+            'payout_schedule' => ['sometimes', 'nullable', 'array'],
+        ];
+    }
 }

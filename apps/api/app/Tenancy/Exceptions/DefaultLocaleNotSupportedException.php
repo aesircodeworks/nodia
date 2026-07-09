@@ -2,9 +2,11 @@
 
 namespace App\Tenancy\Exceptions;
 
+use App\Support\Problems\ErrorCode;
+use App\Support\Problems\HasErrorCode;
 use InvalidArgumentException;
 
-final class DefaultLocaleNotSupportedException extends InvalidArgumentException
+final class DefaultLocaleNotSupportedException extends InvalidArgumentException implements HasErrorCode
 {
     /**
      * @param  list<string>  $supportedLocales
@@ -16,5 +18,10 @@ final class DefaultLocaleNotSupportedException extends InvalidArgumentException
             $defaultLocale,
             implode(', ', $supportedLocales),
         ));
+    }
+
+    public function errorCode(): ErrorCode
+    {
+        return ErrorCode::DefaultLocaleNotSupported;
     }
 }

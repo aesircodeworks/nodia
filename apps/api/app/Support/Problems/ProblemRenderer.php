@@ -7,6 +7,7 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Spatie\QueryBuilder\Exceptions\InvalidQuery;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
 
@@ -38,6 +39,27 @@ class ProblemRenderer
 
         if ($e instanceof AuthenticationException) {
             return $this->problemResponse(ErrorCode::AuthUnauthenticated, $correlationId);
+        }
+
+        if ($e instanceof HasErrorCode) {
+            $code = $e->errorCode();
+
+            return ProblemData::fromErrorCode(
+                $code,
+                $e->getMessage() !== '' ? $e->getMessage() : $this->detailFor($code),
+                $correlationId,
+            )->toProblemResponse();
+        }
+
+        // The query-builder allowlist exceptions are vendor classes, so they
+        // cannot implement HasErrorCode; mapped here before the generic
+        // HttpExceptionInterface arm swallows their 400.
+        if ($e instanceof InvalidQuery) {
+            return ProblemData::fromErrorCode(
+                ErrorCode::InvalidQueryParameter,
+                $e->getMessage() !== '' ? $e->getMessage() : $this->detailFor(ErrorCode::InvalidQueryParameter),
+                $correlationId,
+            )->toProblemResponse();
         }
 
         if ($e instanceof HttpExceptionInterface) {
@@ -76,6 +98,9 @@ class ProblemRenderer
             ErrorCode::RequestRateLimited => 'Too many requests were sent; retry after the interval in the Retry-After header.',
             ErrorCode::ServerInternalError => 'An unexpected error occurred; quote the correlation ID when contacting support.',
             ErrorCode::HealthDegraded => 'One or more backing services failed their health check.',
+            ErrorCode::InvalidQueryParameter => 'The request carries a filter or sort parameter outside the endpoint allowlist.',
+            ErrorCode::TenantNotFound => 'No tenant has this id.',
+            ErrorCode::DefaultLocaleNotSupported => 'The default locale is not one of the supported locales.',
         };
     }
 }

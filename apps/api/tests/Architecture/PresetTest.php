@@ -7,6 +7,7 @@ use App\Tenancy\Exceptions\DefaultLocaleNotSupportedException;
 use App\Tenancy\Exceptions\InvalidDomainNameException;
 use App\Tenancy\Exceptions\InvalidGatewayConfigurationException;
 use App\Tenancy\Exceptions\TenantDomainIsPrimaryException;
+use App\Tenancy\Exceptions\TenantNotFoundException;
 use App\Tenancy\Http\Middleware\RenderedErrorRollback;
 use App\Tenancy\TenancyServiceProvider;
 
@@ -18,10 +19,11 @@ arch()->preset()->security();
 // with the value objects and wrappers they protect (App\Support\Money per
 // ADR 018, App\Support\Tenancy) or in their bounded context's Exceptions
 // directory, not in App\Exceptions where the preset expects Throwables.
-// Eloquent models live in each bounded context's Models directory
-// (system-design 8, ContextBoundariesTest), not in App\Models where the
-// preset expects them, and each context ships its own service provider at
-// the context root (system-design 3.2), not in App\Providers.
+// Eloquent models and controllers live in each bounded context's Models and
+// Http\Controllers directories (system-design 8 and 3.2,
+// ContextBoundariesTest), not in App\Models and App\Http\Controllers where
+// the preset expects them, and each context ships its own service provider
+// at the context root (system-design 3.2), not in App\Providers.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     CurrencyMismatchException::class,
@@ -30,7 +32,9 @@ arch()->preset()->laravel()->ignoring([
     InvalidDomainNameException::class,
     InvalidGatewayConfigurationException::class,
     TenantDomainIsPrimaryException::class,
+    TenantNotFoundException::class,
     RenderedErrorRollback::class,
     TenancyServiceProvider::class,
     'App\Tenancy\Models',
+    'App\Tenancy\Http\Controllers',
 ]);

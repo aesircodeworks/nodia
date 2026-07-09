@@ -62,7 +62,7 @@ it('creates a tenant and returns its TenantData', function () {
 
     expect($tenant)->not->toBeNull()
         ->and($tenant->name)->toBe('Acme Tickets')
-        ->and($tenant->branding_settings)->toBe(['primary_color' => '#1a2b3c'])
+        ->and($tenant->branding_settings)->toEqualCanonicalizing(['primary_color' => '#1a2b3c', 'logo_url' => null])
         ->and($tenant->enabled_gateways)->toBe(['fake_gateway']);
 });
 
@@ -106,7 +106,9 @@ it('serializes TenantData with snake_case keys and ISO 8601 UTC timestamps', fun
         'created_at',
         'updated_at',
     ])
-        ->and($wire['branding_settings'])->toBe([])
+        // Both keys are always present so empty branding still serializes
+        // as a JSON object, never as [].
+        ->and($wire['branding_settings'])->toBe(['primary_color' => null, 'logo_url' => null])
         ->and($wire['created_at'])->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/')
         ->and($wire['updated_at'])->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/');
 });

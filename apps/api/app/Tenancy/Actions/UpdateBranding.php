@@ -22,6 +22,13 @@ final class UpdateBranding
             $attributes['branding_settings'] = $data->brandingSettings->toArray();
         }
 
+        // Opaque passthrough until the payouts stage defines the schema; no
+        // Action owns payout_schedule before then, so the tenant profile
+        // update carries it.
+        if (! $data->payoutSchedule instanceof Optional) {
+            $attributes['payout_schedule'] = $data->payoutSchedule;
+        }
+
         $defaultLocale = $data->defaultLocale;
 
         if ($defaultLocale instanceof Optional) {

@@ -1,15 +1,42 @@
 <?php
 
+use App\Support\Tenancy\TenantTransaction;
+use App\Tenancy\Models\Tenant;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Assert;
+use Tests\Support\MigratedDatabase;
 use Tests\Support\OpenApiSpec;
+use Tests\Support\PostgresTestDatabase;
+
+beforeEach(function (): void {
+    PostgresTestDatabase::use();
+    MigratedDatabase::ensure();
+});
+
+afterEach(function (): void {
+    app(TenantTransaction::class)->asPlatform(
+        fn () => Tenant::query()->whereKeyNot(config()->string('tenancy.platform_tenant_id'))->delete(),
+    );
+});
+
+function contractTenant(): Tenant
+{
+    return app(TenantTransaction::class)->asPlatform(
+        fn () => Tenant::factory()->create(['default_locale' => 'en', 'supported_locales' => ['en']]),
+    );
+}
 
 /**
  * ADR 019: conformance assertions only gate the responses tests exercise, so
  * every response documented in docs/openapi/openapi.yaml must register an
  * exerciser here that produces it. Documenting a new response without one
  * fails the coverage test until the exerciser (and the shape it proves) lands.
+ *
+ * Error-path exercisers stay schema-valid on the request side (the request
+ * schemas are deliberately loose there) so assertConformsToOpenApi can
+ * assert both directions on every documented response.
  *
  * @return array<string, Closure(): TestResponse<JsonResponse>>
  */
@@ -23,6 +50,36 @@ function documentedResponseExercisers(): array
 
             return test()->getJson('/v1/health');
         },
+        'post /v1/tenants 201' => fn (): TestResponse => test()->postJson('/v1/tenants', [
+            'name' => 'Contract Tenant',
+            'default_locale' => 'en',
+            'supported_locales' => ['en'],
+        ]),
+        'post /v1/tenants 422' => fn (): TestResponse => test()->postJson('/v1/tenants', [
+            'name' => '',
+            'default_locale' => 'en',
+            'supported_locales' => ['en'],
+        ]),
+        'get /v1/tenants 200' => function (): TestResponse {
+            contractTenant();
+
+            return test()->getJson('/v1/tenants');
+        },
+        'get /v1/tenants 400' => fn (): TestResponse => test()->getJson('/v1/tenants?sort=payout_schedule'),
+        'get /v1/tenants/{tenant} 200' => fn (): TestResponse => test()->getJson('/v1/tenants/'.contractTenant()->id),
+        'get /v1/tenants/{tenant} 404' => fn (): TestResponse => test()->getJson('/v1/tenants/'.Str::uuid7()),
+        'patch /v1/tenants/{tenant} 200' => fn (): TestResponse => test()->patchJson(
+            '/v1/tenants/'.contractTenant()->id,
+            ['name' => 'Renamed Contract Tenant'],
+        ),
+        'patch /v1/tenants/{tenant} 404' => fn (): TestResponse => test()->patchJson(
+            '/v1/tenants/'.Str::uuid7(),
+            ['name' => 'Ghost'],
+        ),
+        'patch /v1/tenants/{tenant} 422' => fn (): TestResponse => test()->patchJson(
+            '/v1/tenants/'.contractTenant()->id,
+            ['default_locale' => 'fr'],
+        ),
     ];
 }
 

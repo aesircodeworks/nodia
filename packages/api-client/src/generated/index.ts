@@ -1,6 +1,6 @@
 export type BrandingSettingsData = {
-  primary_color?: string;
-  logo_url?: string;
+  primary_color: string | null;
+  logo_url: string | null;
 };
 export type CheckResult = 'ok' | 'failed';
 export type CreateTenantData = {
@@ -42,7 +42,10 @@ export type ErrorCode =
   | 'auth.forbidden'
   | 'request.rate_limited'
   | 'server.internal_error'
-  | 'health.degraded';
+  | 'health.degraded'
+  | 'invalid_query_parameter'
+  | 'tenant_not_found'
+  | 'default_locale_not_supported';
 export type HealthChecksData = {
   database: CheckResult;
   redis: CheckResult;

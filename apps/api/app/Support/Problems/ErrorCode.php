@@ -15,6 +15,9 @@ enum ErrorCode: string
     case RequestRateLimited = 'request.rate_limited';
     case ServerInternalError = 'server.internal_error';
     case HealthDegraded = 'health.degraded';
+    case InvalidQueryParameter = 'invalid_query_parameter';
+    case TenantNotFound = 'tenant_not_found';
+    case DefaultLocaleNotSupported = 'default_locale_not_supported';
 
     public function status(): int
     {
@@ -27,6 +30,9 @@ enum ErrorCode: string
             self::RequestRateLimited => 429,
             self::ServerInternalError => 500,
             self::HealthDegraded => 503,
+            self::InvalidQueryParameter => 400,
+            self::TenantNotFound => 404,
+            self::DefaultLocaleNotSupported => 422,
         };
     }
 
@@ -41,6 +47,9 @@ enum ErrorCode: string
             self::RequestRateLimited => 'Too many requests',
             self::ServerInternalError => 'Internal server error',
             self::HealthDegraded => 'Service degraded',
+            self::InvalidQueryParameter => 'Invalid query parameter',
+            self::TenantNotFound => 'Tenant not found',
+            self::DefaultLocaleNotSupported => 'Default locale not supported',
         };
     }
 

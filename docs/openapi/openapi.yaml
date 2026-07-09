@@ -8,6 +8,158 @@ info:
     this document mirrors them and must not drift from them.
   version: 0.1.0
 paths:
+  /v1/tenants:
+    post:
+      operationId: createTenant
+      summary: Create a tenant
+      description: >-
+        Platform admin surface. Runs under the platform role posture; Stage 3
+        replaces the placeholder auth alias with Passport plus capability
+        policies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantCreateRequest'
+      responses:
+        '201':
+          description: Tenant created.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '422':
+          description: >-
+            Request validation failed (code request.validation_failed, with
+            the errors map) or the default locale is not one of the supported
+            locales (code default_locale_not_supported).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TenantUnprocessableProblem'
+    get:
+      operationId: listTenants
+      summary: List tenants
+      description: >-
+        Platform admin surface. Page pagination with the standard Laravel
+        paginator envelope. Allowed query-builder parameters are filter[name]
+        and sort in (name, created_at, -name, -created_at); unknown filters
+        or sorts are rejected with 400 invalid_query_parameter, never
+        ignored. The parameter schemas below stay loose on purpose: the
+        allowlist is enforced by the API, not by request-shape validation.
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          style: deepObject
+          explode: true
+          description: 'Allowed filters: filter[name] (partial match).'
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+            additionalProperties:
+              type: string
+        - name: sort
+          in: query
+          required: false
+          description: 'Allowed sorts: name, created_at, -name, -created_at.'
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: One page of tenants.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantPage'
+        '400':
+          description: Unknown filter or sort parameter.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/InvalidQueryParameterProblem'
+  /v1/tenants/{tenant}:
+    parameters:
+      - name: tenant
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getTenant
+      summary: Fetch one tenant
+      description: Platform admin surface.
+      responses:
+        '200':
+          description: The tenant.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '404':
+          description: No tenant has this id.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TenantNotFoundProblem'
+    patch:
+      operationId: updateTenant
+      summary: Update a tenant
+      description: >-
+        Platform admin surface. All fields are optional; absent fields are
+        left untouched. Branding and locale fields route to the
+        UpdateBranding action, gateway fields to ConfigureGateways.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantUpdateRequest'
+      responses:
+        '200':
+          description: The updated tenant.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '404':
+          description: No tenant has this id.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TenantNotFoundProblem'
+        '422':
+          description: >-
+            Request validation failed (code request.validation_failed, with
+            the errors map) or the effective default locale would fall
+            outside the effective supported locales (code
+            default_locale_not_supported).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TenantUnprocessableProblem'
   /v1/health:
     get:
       operationId: getHealth
@@ -74,7 +226,242 @@ paths:
                       storage: ok
                     checked_at: '2026-07-04T12:00:00Z'
 components:
+  headers:
+    XCorrelationId:
+      description: Echo of the request correlation ID per docs/api-conventions.md.
+      schema:
+        type: string
+        format: uuid
   schemas:
+    BrandingSettings:
+      type: object
+      description: >-
+        Tenant branding configuration. JSON configuration only in this stage;
+        the logo becomes a media upload when media infrastructure lands.
+      properties:
+        primary_color:
+          type: [string, 'null']
+        logo_url:
+          type: [string, 'null']
+      additionalProperties: false
+    Tenant:
+      type: object
+      required:
+        - id
+        - name
+        - branding_settings
+        - default_locale
+        - supported_locales
+        - enabled_gateways
+        - payout_schedule
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        branding_settings:
+          $ref: '#/components/schemas/BrandingSettings'
+        default_locale:
+          type: string
+        supported_locales:
+          type: array
+          items:
+            type: string
+        enabled_gateways:
+          type: array
+          items:
+            type: string
+        payout_schedule:
+          type: [object, 'null']
+          description: >-
+            Opaque configuration until the payouts stage defines and
+            validates its schema.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    TenantCreateRequest:
+      type: object
+      required:
+        - name
+        - default_locale
+        - supported_locales
+      properties:
+        name:
+          type: string
+        default_locale:
+          type: string
+        supported_locales:
+          type: array
+          items:
+            type: string
+        branding_settings:
+          $ref: '#/components/schemas/BrandingSettings'
+        enabled_gateways:
+          type: array
+          items:
+            type: string
+        payout_schedule:
+          type: [object, 'null']
+      additionalProperties: false
+    TenantUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        branding_settings:
+          $ref: '#/components/schemas/BrandingSettings'
+        default_locale:
+          type: string
+        supported_locales:
+          type: array
+          items:
+            type: string
+        enabled_gateways:
+          type: array
+          items:
+            type: string
+        payout_schedule:
+          type: [object, 'null']
+      additionalProperties: false
+    TenantPage:
+      type: object
+      description: >-
+        Laravel standard paginator envelope (data, links, meta) per
+        docs/api-conventions.md.
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tenant'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageLink'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      additionalProperties: false
+    PageLink:
+      type: object
+      required:
+        - url
+        - label
+        - page
+        - active
+      properties:
+        url:
+          type: [string, 'null']
+        label:
+          type: string
+        page:
+          type: [integer, 'null']
+        active:
+          type: boolean
+      additionalProperties: false
+    PageMeta:
+      type: object
+      required:
+        - current_page
+        - first_page_url
+        - from
+        - last_page
+        - last_page_url
+        - next_page_url
+        - path
+        - per_page
+        - prev_page_url
+        - to
+        - total
+      properties:
+        current_page:
+          type: integer
+        first_page_url:
+          type: string
+        from:
+          type: [integer, 'null']
+        last_page:
+          type: integer
+        last_page_url:
+          type: string
+        next_page_url:
+          type: [string, 'null']
+        path:
+          type: string
+        per_page:
+          type: integer
+        prev_page_url:
+          type: [string, 'null']
+        to:
+          type: [integer, 'null']
+        total:
+          type: integer
+      additionalProperties: false
+    TenantNotFoundProblem:
+      description: Problem document for a tenant id that references no tenant.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [404]
+            code:
+              type: string
+              enum: [tenant_not_found]
+      unevaluatedProperties: false
+    InvalidQueryParameterProblem:
+      description: >-
+        Problem document for an unknown filter or sort parameter on an
+        allowlisted list endpoint; unknown parameters are rejected, never
+        ignored.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [400]
+            code:
+              type: string
+              enum: [invalid_query_parameter]
+      unevaluatedProperties: false
+    TenantUnprocessableProblem:
+      description: >-
+        Problem document for a tenant write that cannot be processed: either
+        request validation failed (with the errors map) or the default
+        locale falls outside the supported locales.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - oneOf:
+            - type: object
+              required:
+                - errors
+              properties:
+                code:
+                  type: string
+                  enum: [request.validation_failed]
+                errors:
+                  type: object
+                  additionalProperties:
+                    type: array
+                    items:
+                      type: string
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum: [default_locale_not_supported]
+      unevaluatedProperties: false
     Money:
       type: object
       description: >-
