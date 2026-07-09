@@ -13,7 +13,7 @@ Update this table when a stage starts and when it merges.
 | Stage | Status |
 | --- | --- |
 | Stage 1: Delivery Kernel and Test Harness | Done |
-| Stage 2: Tenancy and RLS Regime | Not started |
+| Stage 2: Tenancy and RLS Regime | In progress |
 | Stage 3: Identity, AuthN, AuthZ | Not started |
 | Stage 4: Transactional Outbox | Not started |
 | Stage 5a: Catalog Core and Publish | Not started |
