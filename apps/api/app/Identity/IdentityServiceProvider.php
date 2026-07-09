@@ -2,6 +2,7 @@
 
 namespace App\Identity;
 
+use App\Identity\Authorization\CapabilityGate;
 use App\Identity\OAuth\IdentityAccessToken;
 use App\Identity\OAuth\IdentityRefreshTokenRepository;
 use DateInterval;
@@ -36,6 +37,8 @@ class IdentityServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        CapabilityGate::register();
+
         Passport::ignoreRoutes();
         Passport::enablePasswordGrant();
         Passport::useAccessTokenEntity(IdentityAccessToken::class);

@@ -29,6 +29,7 @@ enum ErrorCode: string
     case InvalidCredentials = 'invalid_credentials';
     case InvalidRefreshToken = 'invalid_refresh_token';
     case RefreshTokenReused = 'refresh_token_reused';
+    case MissingCapability = 'missing_capability';
 
     public function status(): int
     {
@@ -55,6 +56,7 @@ enum ErrorCode: string
             self::InvalidCredentials => 401,
             self::InvalidRefreshToken => 401,
             self::RefreshTokenReused => 401,
+            self::MissingCapability => 403,
         };
     }
 
@@ -83,6 +85,7 @@ enum ErrorCode: string
             self::InvalidCredentials => 'Invalid credentials',
             self::InvalidRefreshToken => 'Invalid refresh token',
             self::RefreshTokenReused => 'Refresh token reused',
+            self::MissingCapability => 'Missing capability',
         };
     }
 

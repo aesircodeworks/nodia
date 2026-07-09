@@ -6,6 +6,7 @@ use App\Identity\Enums\MembershipScope;
 use App\Identity\Exceptions\InvalidCredentialsException;
 use App\Identity\Exceptions\InvalidMembershipScopeException;
 use App\Identity\Exceptions\InvalidRefreshTokenException;
+use App\Identity\Exceptions\MissingCapabilityException;
 use App\Identity\Exceptions\RefreshTokenReusedException;
 use App\Identity\IdentityServiceProvider;
 use App\Support\Money\CurrencyMismatchException;
@@ -57,6 +58,7 @@ arch()->preset()->laravel()->ignoring([
     InvalidMembershipScopeException::class,
     InvalidRefreshTokenException::class,
     RefreshTokenReusedException::class,
+    MissingCapabilityException::class,
     DefaultLocaleNotSupportedException::class,
     DomainAlreadyRegisteredException::class,
     InvalidDomainNameException::class,

@@ -26,6 +26,7 @@ test('the registry holds exactly the known codes', function () {
         'invalid_credentials',
         'invalid_refresh_token',
         'refresh_token_reused',
+        'missing_capability',
     ]);
 });
 
@@ -56,6 +57,7 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'invalid_credentials' => [ErrorCode::InvalidCredentials, 401, 'Invalid credentials', '/problems/invalid-credentials'],
     'invalid_refresh_token' => [ErrorCode::InvalidRefreshToken, 401, 'Invalid refresh token', '/problems/invalid-refresh-token'],
     'refresh_token_reused' => [ErrorCode::RefreshTokenReused, 401, 'Refresh token reused', '/problems/refresh-token-reused'],
+    'missing_capability' => [ErrorCode::MissingCapability, 403, 'Missing capability', '/problems/missing-capability'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

@@ -112,6 +112,7 @@ class ProblemRenderer
             ErrorCode::InvalidCredentials => 'The email or password is incorrect.',
             ErrorCode::InvalidRefreshToken => 'The refresh token is invalid, expired, or unknown.',
             ErrorCode::RefreshTokenReused => 'This refresh token was already used; every token issued from its login has been revoked.',
+            ErrorCode::MissingCapability => 'The acting membership does not hold the capability this action requires.',
         };
     }
 }

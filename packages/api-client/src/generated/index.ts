@@ -77,7 +77,8 @@ export type ErrorCode =
   | 'unknown_domain'
   | 'invalid_credentials'
   | 'invalid_refresh_token'
-  | 'refresh_token_reused';
+  | 'refresh_token_reused'
+  | 'missing_capability';
 export type HealthChecksData = {
   database: CheckResult;
   redis: CheckResult;
