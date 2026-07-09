@@ -1,6 +1,9 @@
 <?php
 
+use App\Identity\Capability;
+use App\Identity\Enums\MembershipScope;
 use App\Identity\Exceptions\InvalidCredentialsException;
+use App\Identity\Exceptions\InvalidMembershipScopeException;
 use App\Identity\Exceptions\InvalidRefreshTokenException;
 use App\Identity\Exceptions\RefreshTokenReusedException;
 use App\Identity\IdentityServiceProvider;
@@ -34,12 +37,19 @@ arch()->preset()->security();
 // Http\Controllers directories (system-design 8 and 3.2,
 // ContextBoundariesTest), not in App\Models and App\Http\Controllers where
 // the preset expects them, and each context ships its own service provider
-// at the context root (system-design 3.2), not in App\Providers.
+// at the context root (system-design 3.2), not in App\Providers. Capability
+// and MembershipScope are enums the preset expects only under App\Enums
+// (stage-03 plan, Data model); they live with the bounded context whose
+// registry they are instead, like ErrorCode lives with the problem-document
+// renderer rather than App\Enums.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
+    Capability::class,
+    MembershipScope::class,
     CurrencyMismatchException::class,
     InvalidTenantIdException::class,
     InvalidCredentialsException::class,
+    InvalidMembershipScopeException::class,
     InvalidRefreshTokenException::class,
     RefreshTokenReusedException::class,
     DefaultLocaleNotSupportedException::class,

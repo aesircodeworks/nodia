@@ -2,6 +2,17 @@ export type BrandingSettingsData = {
   primary_color: string | null;
   logo_url: string | null;
 };
+export type Capability =
+  | 'roles.manage'
+  | 'memberships.manage'
+  | 'tenants.manage'
+  | 'events.view'
+  | 'events.manage'
+  | 'events.publish'
+  | 'orders.view'
+  | 'orders.refund'
+  | 'payouts.view'
+  | 'checkin.scan';
 export type CheckResult = 'ok' | 'failed';
 export type CreateTenantData = {
   name: string;
@@ -120,6 +131,7 @@ export type MembershipData = {
   role_name: string;
   scope: string;
 };
+export type MembershipScope = 'tenant' | 'platform';
 export type Money = {
   amount: number;
   currency: string;
