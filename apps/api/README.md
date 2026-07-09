@@ -21,6 +21,8 @@ docker compose -f infra/compose/docker-compose.yml exec postgres createdb -U nod
 
 To point the two suites at a different PostgreSQL server, set any of `NODIA_TEST_DB_HOST`, `NODIA_TEST_DB_PORT`, `NODIA_TEST_DB_DATABASE`, `NODIA_TEST_DB_USERNAME`, `NODIA_TEST_DB_PASSWORD`. When the environment already provides a `pgsql` default connection through `DB_*` variables, as the CI jobs do, it is used as-is and the overrides are ignored.
 
+Superusers and `BYPASSRLS` roles skip row-level security entirely, so the Isolation suite never trusts the configured user: when that user would bypass RLS (the compose stack's `nodia` user and the CI service user are the cluster superuser), the suite creates an unprivileged `nodia_isolation` login role through the privileged connection and reconnects as it before any isolation test runs. When the configured user is already unprivileged, the connection is used as-is.
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
