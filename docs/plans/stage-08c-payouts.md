@@ -89,7 +89,7 @@ Mirror of gateway payout objects (system-design 7.3, 8.3). Rows are created by w
 | tenant_id | uuid | non-null |
 | gateway | string | adapter key |
 | gateway_reference | string | the gateway's payout identifier |
-| amount | bigint | integer minor units; column name follows the system-design 8.3 diagram, which pairs bare `amount` with `currency` on `payments`, `refunds`, and `payouts` alike; Stage 8a set this precedent for `payments` |
+| amount | bigint | integer minor units; bare `amount` paired with `currency` per the data-conventions exception for rows that are themselves single monetary facts, following the system-design 8.3 diagram |
 | currency | string | the tenant settlement currency (system-design 12) |
 | status | string | enum `PayoutStatus`: `pending`, `in_transit`, `paid`, `failed`, `canceled` |
 | executed_at | timestamptz nullable | gateway-reported completion time, set on transition to `paid` |
@@ -221,7 +221,7 @@ Ordered; each is a small PR, independently mergeable unless noted, each carrying
 4. `payments`: `StartSubmerchantOnboarding` action, POST endpoint, list and detail endpoints, Data objects, OpenAPI paths, error codes, concurrency test on duplicate start (slice 2).
 5. `payments`: webhook normalization for sub-merchant status events, transition Action with the conditional-update matrix, refresh endpoint, concurrency test on parallel webhook and refresh transitions, duplicate-delivery test (slice 3).
 6. `payments`: checkout offer and payment initiation gating on active sub-merchant, `submerchant_not_active` code (slice 4; depends on task 5).
-7. `payments`: `payouts` migration with RLS policy, `Payout` model, `PayoutStatus` enum, factory, isolation tests; `docs`: amend the data-conventions money rule to bless bare `amount` on gateway-mirror money tables, the reconciliation promised in the open questions (slice 5, mergeable alone).
+7. `payments`: `payouts` migration with RLS policy, `Payout` model, `PayoutStatus` enum, factory, isolation tests (slice 5, mergeable alone).
 8. `payments`: `RecordGatewayPayout` action, payout webhook normalization, `PayoutExecuted` event class and payload Data object, outbox recording, concurrency test (slice 5; depends on task 7).
 9. `payments`: payout read endpoints with cursor pagination, Data objects, OpenAPI paths (slice 5; depends on task 7, parallel with task 8).
 10. `payments`: `ProjectLedgerEntries` subscription to `PayoutExecuted`, balanced entry pair, replay rebuild test (slice 6; depends on task 8).
@@ -248,7 +248,7 @@ The master plan's Stage 8 exit line, "the full purchase, confirmation, refund, a
 
 - Onboarding shape divergence at Stage 8d: real gateways split between hosted-redirect KYC (Stripe Connect onboarding links) and API-driven document flows (some Brazilian gateways). The interface here deliberately exposes only a reference, an optional URL, and an opaque requirements list; if the chosen gateway needs more (webhook-driven requirement re-collection, per-country fields), 8d may force additive interface growth. Mitigation: keep the fake's requirements list opaque strings, never typed fields.
 - Ledger account taxonomy: Stage 8b's `ledger_entries.account` enum is exactly `gateway_receivable`, `gateway_fees`, `platform_commission`, `tenant_net`, and the payout pair uses two of them (debit `tenant_net`, credit `gateway_receivable`), so no enum extension or balance sign-convention change is needed. If 8d's real gateway surfaces a genuine clearing step, adding an account value then is additive.
-- Column naming `amount` versus `*_amount`: data-conventions mandates `*_amount` columns while system-design 8.3 draws bare `amount` on `payments`, `refunds`, and `payouts`. This plan follows the diagram and the Stage 8a precedent (`payments.amount` shipped bare); task 7 carries the docs change amending data-conventions so the convention and the schema stop contradicting each other.
+- Column naming `amount` versus `*_amount`: resolved ahead of Stage 8a. data-conventions now records the exception blessing bare `amount` on rows that are themselves single monetary facts (`payments`, `refunds`, `payouts`, `ledger_entries`, per system-design 8.3), so the schemas and the convention agree and no stage merges in violation.
 - Onboarding domain events: Reporting (Stage 11) or tenant-facing notifications may eventually want `SubmerchantActivated` or `PayoutFailed`. The registry does not define them and no consumer exists, so this stage stays silent; adding them later is additive (new event types, registry updated in the same change per event-conventions).
 - Payout schedule changes after onboarding: `tenants.payout_schedule` is pushed once at `createSubmerchant`. Whether schedule edits re-push automatically (Tenancy event consumed by Payments) or manually is deferred to 8d, where the real gateway's schedule API determines what is possible.
 - Retry-after-rejection semantics vary by gateway (new account versus revived account). The fake gateway revives the same reference; 8d must confirm against the real gateway and may add a `superseded` state.

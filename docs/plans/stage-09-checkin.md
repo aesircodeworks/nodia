@@ -1,13 +1,13 @@
 # Stage 9: Check-in and Offline Reconciliation
 
-Status: Not started. This stage delivers the full check-in contract from system-design 11, not the roadmap Phase 5 reduced version. Per the master plan, Stage 9 is independent of Stages 10 and 11 and can start once the Stage 8 slices merge.
+Status: Not started. This stage delivers the full check-in contract from system-design 11, not the roadmap Phase 5 reduced version. Per the master plan, Stage 9 is independent of Stages 10 and 11 and can start once Stage 7 merges; only end-to-end coverage that starts from a purchase waits on slices 8a through 8c (8d, blocked on the ADR, is never a gate).
 
 ## Scope and non-goals
 
 ### Delivers
 
 - The manifest surface as two endpoints: a cursor-paginated ticket manifest (ticket IDs, status, rotation counter, check-in state) and a key-distribution endpoint carrying the event's signature keys. Together they cover system-design 11's manifest (ticket IDs, signature keys, and status), scoped to the event and to a check-in role, suitable for pre-doors device sync (ADR 015 makes these endpoints the shared contract for the PWA and the future native app).
-- Per-event QR signing keys with rotation: a key store, a rotation Action and endpoint, and verification that tries the event's keys newest-first, so devices holding synced keys can validate QR signatures offline across rotations (system-design 11, "manifest keys rotate per event").
+- Per-event QR signing keys with rotation: a key store, a rotation Action and endpoint, and verification that tries the event's keys newest-first, so devices holding synced keys can validate QR signatures offline across rotations (system-design 11, "manifest keys rotate per event"). Provider-swap continuity is part of this deliverable: an event's version 1 stored key is seeded from the exact Stage 7 HKDF derivation for that event, so QR payloads rendered before the swap (already in emails and PDFs) keep verifying after it.
 - Online scan recording as a first-scan-wins invariant: the guard is evaluated in the same statement that mutates, checked by affected-row count, per data-conventions Status Columns and State Transitions and system-design 6.1's pattern applied to check-in.
 - Batch reconciliation for offline scan queues: cross-device duplicates for the same ticket are resolved first-scan-wins by `scanned_at` timestamp, and losing scans are persisted and flagged with `DuplicateScanDetected` rather than dropped (system-design 11, Reconciliation).
 - Device identity on every check-in record (`device_id`, system-design 8.3 `CHECK_IN`).
@@ -33,7 +33,7 @@ Status: Not started. This stage delivers the full check-in contract from system-
 - Stage 3: staff authentication, `X-Tenant-Id` membership validation, capability RBAC, the `checkin.scan` capability, and the global Check-in Agent role template, all of which Stage 3 already ships (its initial registry and template seeder, system-design 5.3); this stage adds only the `checkin.manage` capability and its template-role wiring. Also the activity log for staff mutations.
 - Stage 4: outbox recording API, dispatcher, delivery tracking, so both check-in events are recorded in the producing transaction and are consumable by Stage 11.
 - Stage 7: `tickets` with status (`issued`, `canceled`, `refunded`), the per-ticket rotation counter, and QR payload generation and signing. Stage 9 needs Orders Actions that expose ticket facts to the CheckIn context without cross-context table access: a per-event ticket listing for the manifest and a QR verification Action for scans (boundary rule, system-design 3.1). Stage 7's plan signs through the `TicketSigningKeyProvider` interface with an HKDF-derived per-event key and pins the payload format (ticket ID, event ID, rotation counter, HMAC; no key version); this stage swaps the provider to `event_signing_keys` behind that seam without touching the codec or the payload format, and verification identifies the signing key by trial: active first, then retired newest-first, with revoked keys tried solely to classify the failure.
-- Stage 8a: only indirectly; tickets exist only on the transition to `paid` (system-design 7.1), so end-to-end tests that start from a purchase need 8a. Stage 9's own tests fabricate issued tickets through factories and Orders Actions and do not require the payment path, which is why the master plan gates Stage 9 on the Stage 8 slices merging rather than on any 8-specific artifact.
+- Stage 8a: only indirectly; tickets exist only on the transition to `paid` (system-design 7.1), so end-to-end tests that start from a purchase need 8a. Stage 9's own tests fabricate issued tickets through factories and Orders Actions and do not require the payment path, which is why the master plan lets Stage 9 start once Stage 7 merges and reserves the 8a-through-8c gate for purchase-path end-to-end coverage only.
 
 ### Consumed by
 
@@ -85,6 +85,7 @@ Constraints and indexes:
 - Unique on (`event_id`, `key_version`)
 - Partial unique index `event_signing_keys_active_event_idx` on (`event_id`) where `status = 'active'`: exactly one active key per event
 - Rotation is a conditional UPDATE retiring the current active key (`WHERE event_id = ? AND status = 'active'`, affected-row count checked) plus an insert of the new active key, in one transaction; the partial unique index backstops races
+- Seeding: get-or-create of an event's version 1 key never generates fresh material; it derives the secret with the same HKDF (application secret plus event ID) the Stage 7 provider used, so the provider swap is invisible to payloads already rendered. Keys from version 2 onward are randomly generated by rotation
 - RLS policy in the same migration
 
 ### check_in_assignments (CheckIn context)
@@ -194,7 +195,8 @@ Implementation: three migrations, each creating its table and its RLS policy tog
 Failing tests first:
 - Feature: `GET /v1/events/{event}/signing-keys` returns active and retired keys with secrets, excludes revoked; `POST` rotates, incrementing `key_version`; `revoke_previous: true` marks the outgoing key revoked; both against the OpenAPI fragment; rotation appears in the activity log.
 - Feature: authorization matrix rows: no capability 403, `checkin.scan` without assignment 403 `checkin_not_assigned` on GET, `checkin.scan` cannot POST, `checkin.manage` can.
-- Unit: rotation Action retires via conditional UPDATE checked by affected-row count; get-or-create of the version 1 key is race-safe; secrets round-trip through the encrypted cast.
+- Unit: rotation Action retires via conditional UPDATE checked by affected-row count; get-or-create of the version 1 key is race-safe and seeds the secret from the Stage 7 HKDF derivation; secrets round-trip through the encrypted cast.
+- Feature (the deployment-transition test): a QR payload signed by the Stage 7 derived-key provider before the swap verifies against the stored version 1 key after it; only a rotation with `revoke_previous: true` invalidates it.
 - Concurrency: parallel rotation requests for one event leave exactly one active key and strictly monotonic versions.
 
 ### Slice 3: manifest
@@ -237,7 +239,7 @@ Ordered; each independently mergeable. Scopes per the repo commit convention.
 2. `check_ins` migration with RLS, model, enum, factory, isolation tests. Scope `checkin`.
 3. `check_in_assignments` migration with RLS, model, factory, isolation tests. Scope `checkin`.
 4. `event_signing_keys` migration with RLS, model, enum, encrypted cast, factory, isolation tests. Scope `orders`.
-5. Rotation Action, get-or-create-active-key Action, signer swap from the Stage 7 HKDF key provider to versioned event keys behind the `TicketSigningKeyProvider` seam (codec and payload format untouched), rotation concurrency test. Scope `orders`.
+5. Rotation Action, get-or-create-active-key Action seeding version 1 from the Stage 7 HKDF derivation, signer swap from the Stage 7 HKDF key provider to versioned event keys behind the `TicketSigningKeyProvider` seam (codec and payload format untouched), the pre-swap/post-swap deployment-transition test, rotation concurrency test. Scope `orders`.
 6. Check-in policy layer: capability plus assignment evaluation, including the `CheckEventAssignment` Action the Orders signing-key endpoints consume; shared by all CheckIn endpoints. Scope `checkin`.
 7. Signing-key endpoints with contract fragments and authorization matrix, authorizing through `CheckEventAssignment`. Scope `orders`.
 8. Orders read Actions for CheckIn: per-event ticket listing Data and QR verification Action with typed failures, unit-tested. Scope `orders`.
@@ -265,6 +267,7 @@ The master plan gives Stage 9 a goal line, "the full check-in contract from syst
 
 ## Risks and open questions
 
+- Provider-swap continuity depends on the application-level HKDF secret being stable: version 1 seeding re-derives the Stage 7 key, so rotating that application secret between Stage 7 issuance and this stage's swap would strand every previously rendered payload. The secret must not rotate until the swap completes; if it must, every affected event needs an immediate key rotation plus ticket re-issuance through the resend pathway.
 - Key resolution without a payload version: Stage 7's plan pins the payload format without a key version and promises the provider swap happens without touching the codec, so verification cannot name the key a QR was signed under and must try the event's keys newest-first. The cost is diagnostic: a QR signed with a key the event never issued is indistinguishable from tampering and returns `qr_signature_invalid` (there is no `qr_key_unknown` code), and revoked keys are still tried, solely to classify the failure as `qr_key_revoked`. Trial cost is bounded by the number of keys an event has ever rotated through, expected single digits; if rotation frequency ever makes trial verification expensive, an additive `key_version` payload field is a coordinated Stage 7 codec change, not a Stage 9 decision.
 - Key ownership placement: `event_signing_keys` in Orders is a judgment call recorded above (co-location with the signer and with Stage 7's timeline). The alternative, CheckIn ownership with Orders calling a CheckIn Action to sign, was rejected because it points a Stage 7 dependency at a context that will not exist until Stage 9. The placement does give the Orders signing-key endpoints a Stage 9-internal dependency on CheckIn: their assignment check calls `CheckEventAssignment`. That is the sanctioned Action path, and it points at CheckIn only after the context exists, so the Stage 7 rationale stands. Flag at review; moving the table later is a context-boundary refactor, cheap now and expensive after Stage 11 consumes events.
 - Client clock trust: first-scan-wins by `scanned_at` trusts device clocks. A skewed or hostile clock can win reconciliation. Mitigations in scope: future timestamps beyond a tolerance are rejected with `scanned_at_in_future`, and swaps never change admission (both attendees are inside), only attribution. A stronger scheme (server-anchored offsets per device sync) is deliberately out of scope; revisit if fraud follow-up shows clock gaming.

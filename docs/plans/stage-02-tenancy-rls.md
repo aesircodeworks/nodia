@@ -10,7 +10,7 @@ Delivered by this stage:
 - The RLS bootstrap: database roles, the `SET LOCAL app.tenant_id` request transaction wrapper (system-design 4.1), a reusable per-table policy pattern for all later migrations, and the sentinel platform tenant (data-conventions, Tenancy).
 - The platform-scope cross-tenant database role (system-design 4.3), created now while the policy pattern is being defined.
 - Tenant resolution middleware for both populations: `Host` header against `tenant_domains` for storefront-facing routes, `X-Tenant-Id` for admin routes (system-design 4.1, api-conventions Authentication and Tenant Context).
-- Platform admin endpoints: create, read, and update for tenants (no tenant DELETE, a recorded deviation from the master plan's Stage 2 "CRUD" bullet; see the deferral below and task 14), full CRUD for their domains.
+- Platform admin endpoints: create, read, and update for tenants (no tenant DELETE; the master plan's Stage 2 bullet records the same scope, deferring deletion to the offboarding design), full CRUD for their domains.
 - The domain verification endpoint that Caddy on-demand TLS will consume (system-design 16.3).
 - The audit seam: every use of the platform-scope role emits a structured log entry carrying the correlation ID, so Stage 3 can upgrade it to activity-log records without touching call sites.
 
@@ -19,9 +19,9 @@ Explicitly deferred:
 - Authentication and authorization on all endpoints: Stage 3. In this stage the platform admin routes are wired behind a named auth middleware alias that is a pass-through placeholder; Stage 3 replaces the alias binding with Passport plus capability policies. See Risks.
 - Membership validation of `X-Tenant-Id`: Stage 3 (the master plan states membership validation activates there). This stage validates header presence, UUID shape, and tenant existence only.
 - Activity-log recording of cross-tenant platform role use: Stage 3 (the log table does not exist yet); this stage ships the structured-log seam.
-- Recording `TenantCreated` and `DomainVerified` to the outbox: Stage 4 (the outbox does not exist yet). This stage ships the Actions without producers. Unlike the identity arrangement, the master plan's Stage 4 section currently scopes only the identity producers, so nothing yet owns attaching the Tenancy ones; task 14 amends the master plan's Stage 4 bullet to include them (together with the system-design 9.3 registry rows already flagged below) so the recording calls are owned by a stage instead of assumed.
+- Recording `TenantCreated` and `DomainVerified` to the outbox: Stage 4 (the outbox does not exist yet). This stage ships the Actions without producers; the master plan's Stage 4 bullet attaches the Tenancy producers alongside the identity ones and adds the missing system-design 9.3 registry rows in the same change, mirroring the identity arrangement.
 - Tenant branding assets as files (logo uploads through medialibrary): Stage 5c. `branding_settings` here is JSON configuration only.
-- Tenant deletion, suspension, or any lifecycle beyond create and update: deferred until the design defines tenant offboarding (earliest Stage 12, compliance). This deviates from the master plan's Stage 2 bullet, which promises CRUD endpoints; task 14 records the deviation there so the missing DELETE is a design decision, not unnoticed scope drop.
+- Tenant deletion, suspension, or any lifecycle beyond create and update: deferred until the design defines tenant offboarding (earliest Stage 12, compliance). The master plan's Stage 2 bullet records the same deferral, so the missing DELETE is a design decision, not unnoticed scope drop.
 - Gateway configuration validation against real adapter capability flags: Stage 8a. Here `enabled_gateways` is stored and served, validated only as an array of non-empty strings.
 - Caching of host-to-tenant resolution and of the Caddy verification endpoint: deferred until load pressure (Stage 10 or 12); this stage hits the database per resolution.
 
@@ -229,7 +229,7 @@ Failing tests first:
 
 Implementation: `tenant_domains` migration via the helper (policies plus partial unique index), `TenantDomain` model, factory, `RegisterDomain` Action, `DomainVerified` event class (no producer).
 
-### Slice 4: platform tenant CRUD endpoints
+### Slice 4: platform tenant endpoints (create, read, update)
 
 Failing tests first:
 
@@ -278,12 +278,12 @@ Ordered; each task is a small PR-sized unit, independently mergeable unless note
 6. `CreateTenant`, `UpdateBranding`, `ConfigureGateways` Actions plus Data objects, unit tests; `TenantCreated` event class.
 7. `RegisterDomain`, `MakeDomainPrimary`, `RemoveDomain` Actions plus Data objects, unit tests; `DomainVerified` event class.
 8. `TenancyServiceProvider` with the three route groups and the placeholder platform auth alias.
-9. Tenant CRUD endpoints, feature and contract tests, OpenAPI paths, regenerated TypeScript (Slice 4). Depends on 6 and 8.
+9. Tenant create, read, and update endpoints, feature and contract tests, OpenAPI paths, regenerated TypeScript (Slice 4). Depends on 6 and 8.
 10. Domain endpoints, feature, contract, and concurrency tests, OpenAPI paths, regenerated TypeScript (Slice 5). Depends on 7 and 8.
 11. Resolution middleware for both groups, resolution matrix, Octane no-leak test (Slice 6). Depends on 8.
 12. Domain verification endpoint plus contract (Slice 7 first half). Depends on 5.
 13. Platform-role audit log seam and its tests (Slice 7 second half); document the seam for Stage 3 pickup.
-14. Stage close: master plan status table updated to done; amend the master plan's Stage 4 bullet so it attaches the Tenancy producers (`TenantCreated`, `DomainVerified`) alongside the identity ones; record the tenant-DELETE deviation against the master plan's Stage 2 CRUD bullet; roadmap Implementation Status untouched unless Phase 1 work consumed this (roadmap is product sequencing; note only if asked).
+14. Stage close: master plan status table updated to done; confirm the `DomainVerified` trigger decision (open questions below) is recorded, so Stage 4 attaches the producer to a settled Action; roadmap Implementation Status untouched unless Phase 1 work consumed this (roadmap is product sequencing; note only if asked).
 
 ## Exit criteria
 
@@ -316,7 +316,7 @@ Risks:
 Open questions:
 
 - Anonymous domain resolution versus system-design 4.3: storefront `Host` lookup and the Caddy verification endpoint need a cross-tenant read before any tenant context exists, but 4.3 states the cross-tenant role is only assumable by platform-scope staff and that every use is recorded in the activity log; anonymous traffic satisfies neither. Options: a dedicated narrow resolver role limited to SELECT on `tenant_domains`, an additional permissive SELECT policy on `tenant_domains` scoped to domain resolution, or a design-owner amendment to 4.3 exempting infrastructure reads (the Stage 4 plan raises the same tension for queue workers). Must be decided before Slice 6 merges; until then the plan does not treat sampling as a resolution.
-- `DomainVerified` semantics: the ERD (system-design 8.1) has no verification state on `tenant_domains`, and 16.3 gates TLS issuance on existence alone. Does `DomainVerified` mean "registered", "first confirmed by the ask endpoint", or does the design need a `verified_at` column and a DNS-challenge flow? Must be answered before Stage 4 attaches the producer; this stage deliberately ships no verification state.
+- `DomainVerified` semantics: the ERD (system-design 8.1) has no verification state on `tenant_domains`, and 16.3 gates TLS issuance on existence alone. Does `DomainVerified` mean "registered", "first confirmed by the ask endpoint", or does the design need a `verified_at` column and a DNS-challenge flow? This decision is owned by this stage and must be made before task 14 closes it, because the answer may require a `verified_at` column or a verification flow this stage would otherwise not ship; Stage 4 attaches the producer only to the Action the decision settles, never inheriting the open question. This stage ships no verification state unless the decision demands it.
 - Tenancy events are absent from the system-design 9.3 registry while present in 3.2. Proposed resolution: Stage 4's change adding the producers also adds a Tenancy row to 9.3, per event-conventions. Needs design-owner sign-off.
 - `payout_schedule` shape is uninterpreted until Stage 8c. Stored as opaque JSON now; Stage 8c defines and validates the schema. Risk of garbage accumulating in the column is accepted for two stages.
 - Subdomain provisioning: the design implies platform subdomains exist (`system-design 4.1: custom domains and platform subdomains`) but nothing specifies whether a `{slug}.nodia.example` row is auto-created on tenant creation. This plan treats all domains, including platform subdomains, as explicit `tenant_domains` rows registered via the API; if auto-provisioning is wanted, it is a `CreateTenant` follow-up that can land additively.

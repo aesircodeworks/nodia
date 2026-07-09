@@ -4,7 +4,7 @@ This plan sequences the implementation of the complete Nodia API described in [s
 
 Relationship to [roadmap.md](roadmap.md): the roadmap sequences the product MVP as vertically demoable slices including frontends. This plan sequences the full API surface. Where both are active, the roadmap decides what ships to users; this plan decides how the API grows underneath it. The convention docs ([api](api-conventions.md), [data](data-conventions.md), [event](event-conventions.md)) remain binding for every stage.
 
-MVP thinning: when the roadmap is driving a product release, thin this plan rather than reorder it. Stage 5 collapses to 5a (general admission only), Stage 6 ships counters and holds without reserved seating, Stage 7 ships without promo codes, and Stage 10 waits for real load pressure. Reserved seating, promo codes, and multi-language depth beyond the default locale are within-stage capabilities the roadmap pulls in when it needs them, so the two documents never prescribe conflicting build orders.
+MVP thinning: when the roadmap is driving a product release, thin this plan rather than reorder it. Stage 5 collapses to 5a (general admission only), Stage 6 ships counters and holds without reserved seating, Stage 7 ships without promo codes, and Stage 10 waits for real load pressure. Reserved seating, promo codes, and multi-language depth beyond the default locale are within-stage capabilities the roadmap pulls in when it needs them, so the two documents never prescribe conflicting build orders. One cross-stage consequence to track when thinning: Stage 8a's `GenerateTicketPdf` consumes Stage 5c's media infrastructure, so collapsing Stage 5 to 5a means Stage 8a ships without ticket PDFs until 5c lands.
 
 ## Status
 
@@ -68,7 +68,7 @@ The launch gateway ADR is still open. The plan is gateway-agnostic: Stage 8 buil
 
 ## Stages
 
-Stages are ordered by dependency. Within a stage, work proceeds endpoint by endpoint, each through the full TDD loop. Stages 5 and 8 are split into separately trackable slices so the status table never hides partial completion behind a single cell. Stages 9, 10, and 11 are independent of each other and can be reordered or parallelized once the Stage 8 slices merge.
+Stages are ordered by dependency. Within a stage, work proceeds endpoint by endpoint, each through the full TDD loop. Stages 5 and 8 are split into separately trackable slices so the status table never hides partial completion behind a single cell. Stages 9, 10, and 11 are independent of each other and can be reordered or parallelized; their gates differ. Stage 9 can start once Stage 7 merges (its own tests fabricate issued tickets), with purchase-path end-to-end coverage waiting on slices 8a through 8c (8d, blocked on the ADR, is never a gate). Stage 10 depends only on Stage 6 plus the foundational stages and waits for real load pressure. Stage 11 needs 8a and 8b for its sales and finance slices and Stage 9 for the attendance slice.
 
 ### Stage 1: Delivery Kernel and Test Harness
 
@@ -89,7 +89,7 @@ Exit: `/v1/health` is contract-checked end to end; all six suites run in `compos
 
 Goal: tenant context resolution and database-enforced isolation, the foundation every table after this builds on.
 
-- `tenants` and `tenant_domains` with branding, locale configuration, and enabled-gateway configuration; platform admin CRUD endpoints.
+- `tenants` and `tenant_domains` with branding, locale configuration, and enabled-gateway configuration; platform admin create, read, and update endpoints for tenants (tenant DELETE is deferred until the design defines offboarding, earliest Stage 12) and full CRUD for their domains.
 - RLS bootstrap: `SET LOCAL app.tenant_id` transaction wrapper, per-table policy pattern, sentinel platform tenant.
 - The platform-scope cross-tenant database role (system-design 4.3), created now while the policy pattern is being defined, not retrofitted.
 - Tenant resolution middleware for both populations: `Host` header against `tenant_domains` for storefront-facing routes, `X-Tenant-Id` validated against memberships for admin routes (membership validation activates in Stage 3).
@@ -104,7 +104,7 @@ Exit: cross-tenant access provably fails; platform role reads provably succeed a
 Goal: both identity populations can authenticate, and every subsequent endpoint has a real authorization layer to test against.
 
 - Passport OAuth 2.0: short-lived JWT access tokens with explicit lifetimes, rotating refresh tokens with reuse detection, revocation, identity-type and tenant claims per api-conventions; staff password reset for forgotten credentials (enumeration-safe request endpoint, single-use time-limited token, revocation of live tokens on reset).
-- `users`, `memberships`, custom RBAC (`roles` with global templates and per-tenant custom roles, flat capability sets), Gates and Policies evaluating capability plus tenant context.
+- `users`, `memberships`, custom RBAC (`roles` with global templates and per-tenant custom roles, flat capability sets), Gates and Policies evaluating capability plus tenant context. Global templates are `roles` rows with NULL `tenant_id` behind a template-aware RLS policy, the one sanctioned exception to the non-null `tenant_id` rule, recorded in data-conventions. The capability registry seeded here grows additively: each later stage that introduces a capability lands it with template-role wiring and authorization-matrix updates in the same change, and entries are never repurposed.
 - MFA enrollment and enforcement for platform-scope staff and financially privileged roles (the mechanism is testable now; the payout and refund capabilities it guards arrive in Stage 8).
 - `customers`: tenant-scoped, guest creation with nullable password, claim-by-email-verification flow, per-tenant email uniqueness.
 - Activity log (activitylog migrations adjusted for UUIDs and non-null `tenant_id`), recording staff logins, tenant-scoped mutations, and cross-tenant platform role use.
@@ -135,7 +135,7 @@ Goal: the full catalog surface, including everything the roadmap deferred, in th
 
 #### Stage 5a: Catalog Core and Publish
 
-- `venues`; `events` with translatable name and description, timezone as data, draft/published/canceled lifecycle, virtual events with the exactly-one-of-venue-or-URL invariant, per-event async-payment policy; `ticket_types` with money columns and sales windows, currency constrained to the tenant's settlement currency (system-design 12).
+- `venues`; `events` with translatable name and description, timezone as data, draft/published/canceled lifecycle, virtual events with the exactly-one-of-venue-or-URL invariant, per-event async-payment policy; `ticket_types` with money columns and sales windows, currency constrained to the tenant's settlement currency (system-design 12); the settlement-currency column and its Tenancy read Action ship in this stage as an additive Tenancy change, because Stage 2 creates tenants without one.
 - Publish and cancel Actions recording catalog events to the outbox.
 - Admin list endpoints via query-builder with explicit allowlists; storefront read endpoints resolved from host, locale-negotiated, drafts invisible.
 
@@ -145,7 +145,7 @@ Goal: the full catalog surface, including everything the roadmap deferred, in th
 
 #### Stage 5c: Search and Media
 
-- Media through medialibrary; PostgreSQL full-text search behind an interface that permits the Meilisearch upgrade path.
+- Media through medialibrary; PostgreSQL full-text search behind an interface that permits the Meilisearch upgrade path. The search index is a disposable derived index: its rebuild command scans current published events instead of replaying the outbox, a sanctioned exception to the Stage 4 replay-rebuild mechanism, because search documents derive entirely from current event state and historical payload equivalence is not required.
 
 Tests first: publish state machine transitions, draft invisibility on every storefront path, locale negotiation and fallback, search relevance smoke tests.
 
@@ -184,13 +184,13 @@ Goal: the complete money path against the fake gateway, in three separately trac
 #### Stage 8a: Payments and Webhooks
 
 - `GatewayAdapter` interface with capability flags; `FakeGateway` with scriptable scenarios and a webhook emitter for tests.
-- Payment initiation with `Idempotency-Key` semantics (replays return the original result); raw webhook persistence unique by gateway event ID, signature verification, always-2xx-after-persist ingestion; normalized confirmation and failure driving the order state machine; payment expiry and hold extension per async method windows; per-event slow-method policy including the automatic low-inventory cutoff.
+- Payment initiation with `Idempotency-Key` semantics (replays return the original result); raw webhook persistence unique by gateway event ID, signature verification, always-2xx-after-persist ingestion; normalized confirmation and failure driving the order state machine; payment expiry and hold extension per async method windows (expiry is recorded as a new `PaymentExpired` event type, added to the system-design 9.3 registry in the same change); per-event slow-method policy including the automatic low-inventory cutoff.
 - Reconciliation poller for `awaiting_payment` orders; circuit breaker per gateway removing an open gateway's methods from the offer.
 - Paid-path side effects: `SendOrderConfirmation` through Resend (ADR 010) and `GenerateTicketPdf`, both outbox consumers of `TicketIssued`, idempotent by event ID, tested with mail fakes and PDF assertions.
 
 #### Stage 8b: Ledger and Refunds
 
-- Refunds, full and partial, with the per-tenant commission policy flag; append-only `ledger_entries` projected from outbox events by the ordered consumer (gross, gateway fee, platform commission, tenant net).
+- Refunds, full and partial, with the per-tenant commission policy flag; append-only `ledger_entries` projected from outbox events by the ordered consumer (gross, gateway fee, platform commission, tenant net). The ledger consumer extends the Stage 4 ordered-consumption helper with a payload-derived ordering key, because `PaymentConfirmed` and `RefundCompleted` carry different envelope aggregates.
 
 #### Stage 8c: Payouts and Sub-merchant Onboarding
 
@@ -241,7 +241,7 @@ Goal: everything an operator or regulator needs, and the proof the whole surface
 - Operational commands: replay failed deliveries, reconcile payments, release stuck holds, all support-safe and audited.
 - Security sweep: isolation suite coverage asserted for every endpoint, authorization matrix completeness check, webhook signature negative tests, secret handling review.
 - API-level smoke suite: publish, purchase, async confirmation, check-in, refund, entirely over HTTP against the fake gateway.
-- Load tests focused on hold creation, payment initiation, and waiting room admission, with results recorded.
+- Load tests focused on hold creation, payment initiation, and waiting room admission, with results recorded. The waiting-room scenario applies once Stage 10 has shipped; an MVP-thinned release records the omission in the load doc and does not count as completing this stage against the full plan.
 
 Exit: the smoke suite is a CI gate; no endpoint lacks isolation and contract coverage; load targets are documented with headroom.
 
@@ -252,3 +252,4 @@ Exit: the smoke suite is a CI gate; no endpoint lacks isolation and contract cov
 - OpenAPI conformance tooling: selected at Stage 1 start against current documentation.
 - Meilisearch adoption: deferred behind the search interface until PostgreSQL full-text search demonstrably falls short.
 - Orchestrator: unchanged from ADR 017, out of scope for this plan.
+- Cross-cutting design questions raised by the stage plans (infrastructure use of the platform-scope role, `DomainVerified` trigger semantics, the settlement-currency column shape, the `events.seat_map_id` linkage, refund-arc completion in system-design 7.1): tracked in each stage plan's risks and open-questions section, which is authoritative until the owning stage amends the design docs.

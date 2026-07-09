@@ -64,7 +64,7 @@ Per system-design 8.3, one row per payment attempt against an order.
 | `idempotency_key` | string | client-supplied `Idempotency-Key`, scopes API replay only; the gateway-facing key is generated server-side (system-design 7.5) |
 | `request_hash` | string | hash of the canonicalized initiation payload, detects key reuse with a different request |
 | `gateway_reference` | string, nullable | gateway-side payment identifier, set from the adapter response |
-| `amount` | bigint | integer minor units, always the order total at initiation |
+| `amount` | bigint | integer minor units, always the order total at initiation; bare `amount` paired with `currency` per the data-conventions exception for rows that are themselves single monetary facts (system-design 8.3) |
 | `currency` | string(3) | paired with `amount` on the same row (ADR 018) |
 | `fee_amount` | bigint | integer minor units, not null default 0; the gateway fee from the adapter's normalized confirmation, persisted by the confirmation Action on `initiated -> confirmed` |
 | `commission_amount` | bigint | integer minor units, not null default 0; the platform commission persisted by the confirmation Action through a commission resolver that returns zero until Stage 8b lands the tenant commission configuration and wires the rate into the same Action |

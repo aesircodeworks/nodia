@@ -150,7 +150,7 @@ No new routes. `OnSalePolicyData` becomes an optional field on the Stage 5a even
 
 ### Rate limiting tiers
 
-Named Redis-backed limiters registered in the Inventory service provider, defaults in `config/onsale.php`, all tunable without deploy where config allows: `browse` (availability, seats, event reads; generous), `queue_entry` and `queue_poll` (moderate, per IP), `hold_creation` (strict, per IP and, when present, per customer; section 10 requires hold creation stricter than browse). Every 429 is a problem document with code `request.rate_limited` and `Retry-After` (api-conventions Errors), which requires teaching the Stage 1 exception handler to render throttle exceptions as problem documents; that gap closes in slice 2.
+Named Redis-backed limiters registered in the Inventory service provider, defaults in `config/onsale.php`, all tunable without deploy where config allows: `browse` (availability, seats, event reads; generous), `queue_entry` and `queue_poll` (moderate, per IP), `hold_creation` (strict, per IP and, when present, per customer; section 10 requires hold creation stricter than browse). Every 429 is a problem document with code `request.rate_limited` and `Retry-After` (api-conventions Errors); the Stage 1 handler already renders throttle exceptions this way (its slice 1 matrix proves it on a throttled probe route), so slice 2 asserts that rendering on the real tiers rather than re-implementing it.
 
 ## TDD sequencing
 
@@ -206,7 +206,7 @@ Ordered; each is a small PR through the full loop, independently mergeable unles
 1. Mark Stage 10 in progress in the api-implementation-plan status table. Scope: `docs`.
 2. `on_sale_policy` column, `OnSalePolicyData`, event contract updates, OpenAPI, TypeScript. Slice 1 tests first. Scope: `catalog`.
 3. `max_per_customer` column, ticket type contract updates, and the Catalog Action surface exposing it to Inventory. Slice 1 tests first. Scope: `catalog`. Independent of task 2.
-4. Rate limiter tiers, `config/onsale.php`, 429 problem-document rendering in the exception handler. Slice 2 tests first. Scope: `inventory` (handler change reviewed as `support` if split). Independent of tasks 2 and 3.
+4. Rate limiter tiers, `config/onsale.php`, feature coverage asserting the Stage 1 handler's 429 problem-document rendering on the new tiers. Slice 2 tests first. Scope: `inventory` (handler change reviewed as `support` if split). Independent of tasks 2 and 3.
 5. `purchase_counters` migration with RLS and CHECK, model, and the guarded upsert and decrement statements as internal Inventory operations. Slice 3 isolation and unit tests first. Depends on task 3.
 6. Purchase-limit enforcement wired into `CreateHold`, `ReleaseHold`, `CommitHold`, and the expiry sweeper, with the additive `counted_quantity` column on hold items; `customer_required` validation; the concurrency simulation goes green. Slice 3 feature and concurrency tests first. Depends on task 5.
 7. Queue join and position endpoints, entrant lifecycle in Redis, `ChallengeVerifier` interface with fake and no-op implementations, contracts, TypeScript. Slice 4 tests first. Depends on task 2.
