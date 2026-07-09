@@ -422,3 +422,13 @@ Stage 2 is done. Fourteen tasks landed the RLS bootstrap (roles, policy helper, 
 - task-11: anonymous domain resolution (storefront Host lookup, Caddy verification) runs under the dedicated narrow `nodia_resolver` role, not `nodia_platform`; system-design 4.3 stands unamended and no audit sampling is involved. Full rationale in the task-11 entry.
 - task-14: `DomainVerified` fires on registration; Stage 4 attaches the producer to `RegisterDomain` in the same transaction as the insert. No `verified_at` column, no challenge flow; tenant self-service registration, if it ever arrives, introduces a new event type for its verification flow. Full rationale in the task-14 entry.
 - task-13, the audit seam and its Stage 3 upgrade point: `App\Support\Tenancy\PlatformRoleAudit::recordRequest` is the seam; its single call site is `PlatformRequestTransaction`, which invokes it as the first statement inside `TenantTransaction::asPlatform`. Stage 3 upgrades the body of `recordRequest` to spatie/laravel-activitylog records without touching the call site. Three facts the upgrade inherits: (1) the seam runs inside the platform transaction with `app.tenant_id` set to the sentinel, so an activity-log insert passes that table's RLS `WITH CHECK` with the sentinel `tenant_id` (data-conventions: platform-scope rows use the sentinel, never NULL) and commits atomically with the request's writes; (2) a rolled-back request currently keeps its audit evidence because a log line is not transactional, so Stage 3 must decide how an activity-log row survives the rollback (record again from the error path, or accept the structured log line as the failure-path record and write DB rows for committed requests only); (3) the entry name `audit.platform_role.request` and its context keys (`role`, `correlation_id`, `method`, `path`) are pinned by feature and unit tests, and the actor (authenticated platform staff) is the datum Stage 3 adds once Passport exists. The feature test's negative matrix also pins that only the `tenancy.platform` group is audited; if Stage 3 moves any surface onto `nodia_platform`, those tests force the audit decision at the same time.
+
+### Gate
+
+Run at Thu Jul 9 17:12:58 -03 2026, all green on the first pass with no fixes required:
+
+- `composer lint` (Pint): passed.
+- `composer analyse` (Larastan): passed, 0 errors.
+- `composer test` (Pest): 364 passed, 0 failed, 1366 assertions across all six suites.
+- `composer types:generate`: ran clean; `git status --short packages/api-client/src/generated` empty, no contract drift.
+- `pnpm typecheck` (run because `packages/api-client/src/generated/index.ts` changed on this branch): all five TS workspaces passed.
