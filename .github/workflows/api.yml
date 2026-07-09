@@ -323,6 +323,19 @@ jobs:
     if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: nodia
+          POSTGRES_PASSWORD: nodia
+          POSTGRES_DB: nodia_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nodia"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
       redis:
         image: redis:8-alpine
         ports:
@@ -333,6 +346,12 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: nodia_test
+      DB_USERNAME: nodia
+      DB_PASSWORD: nodia
       REDIS_CLIENT: phpredis
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: 6379
