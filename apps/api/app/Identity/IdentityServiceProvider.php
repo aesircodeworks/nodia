@@ -2,7 +2,9 @@
 
 namespace App\Identity;
 
+use App\Identity\OAuth\IdentityAccessToken;
 use DateInterval;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Passport\Passport;
 
@@ -23,6 +25,7 @@ class IdentityServiceProvider extends ServiceProvider
     {
         Passport::ignoreRoutes();
         Passport::enablePasswordGrant();
+        Passport::useAccessTokenEntity(IdentityAccessToken::class);
 
         // A DateInterval, not a target DateTime, is passed deliberately:
         // Passport stores a DateTimeInterface argument as
@@ -36,5 +39,7 @@ class IdentityServiceProvider extends ServiceProvider
         Passport::refreshTokensExpireIn(
             new DateInterval('PT'.config()->integer('identity.refresh_token_ttl_minutes').'M'),
         );
+
+        Route::prefix('v1')->group(__DIR__.'/Http/routes/auth.php');
     }
 }

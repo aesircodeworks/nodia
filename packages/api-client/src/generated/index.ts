@@ -11,6 +11,13 @@ export type CreateTenantData = {
   enabled_gateways?: string[];
   payout_schedule?: Record<string, unknown> | null;
 };
+export type CurrentUserData = {
+  id: string;
+  name: string;
+  email: string;
+  mfa_enabled: boolean;
+  memberships: MembershipData[];
+};
 export type CursorPaginatedDataCollection<TKey, TValue> = CursorPaginator<TKey, TValue>;
 export type CursorPaginator<TKey, TValue> = {
   data: TKey extends string ? Record<TKey, TValue> : TValue[];
@@ -56,7 +63,8 @@ export type ErrorCode =
   | 'missing_tenant_header'
   | 'invalid_tenant_header'
   | 'tenant_access_denied'
-  | 'unknown_domain';
+  | 'unknown_domain'
+  | 'invalid_credentials';
 export type HealthChecksData = {
   database: CheckResult;
   redis: CheckResult;
@@ -100,6 +108,16 @@ export type LengthAwarePaginator<TKey, TValue> = {
   };
 };
 export type LengthAwarePaginatorInterface<TKey, TValue> = LengthAwarePaginator<TKey, TValue>;
+export type MembershipData = {
+  id: string;
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  tenant_id: string;
+  role_id: string;
+  role_name: string;
+  scope: string;
+};
 export type Money = {
   amount: number;
   currency: string;
@@ -116,6 +134,10 @@ export type ProblemData = {
 export type RegisterTenantDomainData = {
   domain: string;
   is_primary?: boolean;
+};
+export type StaffTokenRequestData = {
+  email: string;
+  password: string;
 };
 export type TenantCreatedPayload = {
   tenant_id: string;
@@ -140,6 +162,12 @@ export type TenantDomainData = {
   is_primary: boolean;
   created_at: string;
   updated_at: string;
+};
+export type TokenPairData = {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in: number;
 };
 export type UpdateTenantData = {
   name?: string;

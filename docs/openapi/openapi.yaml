@@ -313,6 +313,74 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/TenantDomainIsPrimaryProblem'
+  /v1/auth/staff/token:
+    post:
+      operationId: issueStaffToken
+      summary: Exchange staff credentials for a token pair
+      description: >-
+        Unauthenticated. Drives Passport's password grant directly rather
+        than Passport's own /oauth/token route (docs/decisions/011). An
+        unknown email and a correct email with the wrong password both fail
+        with the same invalid_credentials code, so the response never
+        reveals whether an account exists. The access token is a JWT
+        carrying identity_type staff and the subject id; it carries no
+        tenant claim, because the acting tenant is asserted per request via
+        X-Tenant-Id (docs/api-conventions.md).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaffTokenRequest'
+      responses:
+        '200':
+          description: A new access and refresh token pair.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          description: >-
+            The email is unknown or the password is wrong (code
+            invalid_credentials); both cases render identically.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/InvalidCredentialsProblem'
+        '422':
+          description: Request validation failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+  /v1/me:
+    get:
+      operationId: getCurrentUser
+      summary: Fetch the authenticated staff user
+      description: >-
+        Staff bearer only; asserts no tenant. memberships is always empty
+        until a later Stage 3 task activates membership resolution.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The authenticated staff user.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUser'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
   /v1/internal/domain-verification:
     get:
       operationId: verifyDomain
@@ -418,6 +486,14 @@ paths:
                       storage: ok
                     checked_at: '2026-07-04T12:00:00Z'
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        Passport-issued JWT access token (docs/decisions/011). Carries
+        identity_type and, for customers only, tenant_id.
   headers:
     XCorrelationId:
       description: Echo of the request correlation ID per docs/api-conventions.md.
@@ -425,6 +501,103 @@ components:
         type: string
         format: uuid
   schemas:
+    StaffTokenRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      additionalProperties: false
+    TokenPair:
+      type: object
+      description: >-
+        OAuth 2.0 bearer token pair issued by Passport's password grant
+        (docs/decisions/011).
+      required:
+        - access_token
+        - refresh_token
+        - token_type
+        - expires_in
+      properties:
+        access_token:
+          type: string
+          description: Short-lived JWT; see BearerAuth for its claims.
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          description: Access token lifetime in seconds.
+      additionalProperties: false
+    Membership:
+      type: object
+      description: >-
+        Wire shape only until a later Stage 3 task starts producing rows;
+        CurrentUser.memberships is an empty array of this shape until then.
+      required:
+        - id
+        - user_id
+        - user_name
+        - user_email
+        - tenant_id
+        - role_id
+        - role_name
+        - scope
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        user_name:
+          type: string
+        user_email:
+          type: string
+          format: email
+        tenant_id:
+          type: string
+          format: uuid
+        role_id:
+          type: string
+          format: uuid
+        role_name:
+          type: string
+        scope:
+          type: string
+          enum: [tenant, platform]
+      additionalProperties: false
+    CurrentUser:
+      type: object
+      required:
+        - id
+        - name
+        - email
+        - mfa_enabled
+        - memberships
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        mfa_enabled:
+          type: boolean
+        memberships:
+          type: array
+          items:
+            $ref: '#/components/schemas/Membership'
+      additionalProperties: false
     BrandingSettings:
       type: object
       description: >-
@@ -739,6 +912,37 @@ components:
             code:
               type: string
               enum: [tenant_not_found]
+      unevaluatedProperties: false
+    InvalidCredentialsProblem:
+      description: >-
+        Problem document for a staff token request with an unknown email or
+        a wrong password; both cases render identically so the response
+        never reveals whether an account exists.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [401]
+            code:
+              type: string
+              enum: [invalid_credentials]
+      unevaluatedProperties: false
+    UnauthenticatedProblem:
+      description: >-
+        Problem document for a request with a missing, invalid, or expired
+        bearer token.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [401]
+            code:
+              type: string
+              enum: [auth.unauthenticated]
       unevaluatedProperties: false
     InvalidQueryParameterProblem:
       description: >-

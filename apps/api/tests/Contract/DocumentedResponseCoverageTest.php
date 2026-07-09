@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\User;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
@@ -35,6 +36,29 @@ function contractDomain(array $attributes = []): TenantDomain
     return app(TenantTransaction::class)->asPlatform(
         fn () => TenantDomain::factory()->create($attributes),
     );
+}
+
+function contractStaffUser(): User
+{
+    // firstOrCreate so repeated calls across dataset iterations in this
+    // file (contract tests do not truncate `users` between cases) reuse
+    // the same row instead of colliding on the unique email.
+    return User::query()->firstOrCreate(
+        ['email' => 'contract-staff@example.com'],
+        User::factory()->raw(['email' => 'contract-staff@example.com']),
+    );
+}
+
+function contractStaffBearer(): string
+{
+    contractStaffUser();
+
+    $response = test()->postJson('/v1/auth/staff/token', [
+        'email' => 'contract-staff@example.com',
+        'password' => 'password',
+    ]);
+
+    return (string) $response->json('access_token');
 }
 
 /**
@@ -145,6 +169,26 @@ function documentedResponseExercisers(): array
         'get /v1/internal/domain-verification 422' => fn (): TestResponse => test()->getJson(
             '/v1/internal/domain-verification?domain='.urlencode('not a hostname'),
         ),
+        'post /v1/auth/staff/token 200' => function (): TestResponse {
+            contractStaffUser();
+
+            return test()->postJson('/v1/auth/staff/token', [
+                'email' => 'contract-staff@example.com',
+                'password' => 'password',
+            ]);
+        },
+        'post /v1/auth/staff/token 401' => fn (): TestResponse => test()->postJson('/v1/auth/staff/token', [
+            'email' => 'ghost-contract@example.com',
+            'password' => 'wrong-password',
+        ]),
+        'post /v1/auth/staff/token 422' => fn (): TestResponse => test()->postJson('/v1/auth/staff/token', [
+            'email' => 'not-an-email',
+            'password' => 'x',
+        ]),
+        'get /v1/me 200' => fn (): TestResponse => test()->getJson('/v1/me', [
+            'Authorization' => 'Bearer '.contractStaffBearer(),
+        ]),
+        'get /v1/me 401' => fn (): TestResponse => test()->getJson('/v1/me'),
     ];
 }
 

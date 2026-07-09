@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Assert;
 use Spectator\Spectator;
+use Tests\Support\OAuthKeys;
 use Tests\Support\OpenApiSpec;
 
 abstract class TestCase extends BaseTestCase
@@ -14,6 +15,8 @@ abstract class TestCase extends BaseTestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        OAuthKeys::ensure();
 
         config()->set('spectator.sources.local.base_path', dirname(OpenApiSpec::path()));
         Spectator::using(basename(OpenApiSpec::path()));

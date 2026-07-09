@@ -109,6 +109,7 @@ class ProblemRenderer
             ErrorCode::InvalidTenantHeader => 'The X-Tenant-Id header must be a UUID.',
             ErrorCode::TenantAccessDenied => 'You do not have access to this tenant.',
             ErrorCode::UnknownDomain => 'No tenant has this domain registered.',
+            ErrorCode::InvalidCredentials => 'The email or password is incorrect.',
         };
     }
 }

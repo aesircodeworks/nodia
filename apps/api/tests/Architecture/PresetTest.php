@@ -1,5 +1,6 @@
 <?php
 
+use App\Identity\Exceptions\InvalidCredentialsException;
 use App\Identity\IdentityServiceProvider;
 use App\Support\Money\CurrencyMismatchException;
 use App\Support\Problems\ErrorCode;
@@ -36,6 +37,7 @@ arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     CurrencyMismatchException::class,
     InvalidTenantIdException::class,
+    InvalidCredentialsException::class,
     DefaultLocaleNotSupportedException::class,
     DomainAlreadyRegisteredException::class,
     InvalidDomainNameException::class,
