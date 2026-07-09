@@ -31,6 +31,7 @@ test('GET /v1/health returns a 503 problem+json with code health.degraded naming
 
     $response->assertStatus(503)
         ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('type', '/problems/health-degraded')
         ->assertJsonPath('code', 'health.degraded')
         ->assertJsonPath('status', 503)
         ->assertJsonPath('checks.redis', 'failed')

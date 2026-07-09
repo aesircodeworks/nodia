@@ -4,13 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Enums\CheckResult;
 use App\Http\Data\HealthChecksData;
+use App\Http\Data\HealthDegradedProblemData;
 use App\Http\Data\HealthReportData;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Storage;
-use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
 class HealthController extends Controller
@@ -31,15 +31,8 @@ class HealthController extends Controller
             return $report;
         }
 
-        return response()->json([
-            'type' => 'about:blank',
-            'title' => 'Service Unavailable',
-            'status' => Response::HTTP_SERVICE_UNAVAILABLE,
-            'detail' => 'One or more dependencies are unavailable.',
-            'code' => 'health.degraded',
-            'checks' => $report->checks->toArray(),
-            'checked_at' => $report->checkedAt,
-        ], Response::HTTP_SERVICE_UNAVAILABLE)->header('Content-Type', 'application/problem+json');
+        return HealthDegradedProblemData::make($report->checks, $report->checkedAt)
+            ->toProblemResponse();
     }
 
     private function isHealthy(HealthChecksData $checks): bool

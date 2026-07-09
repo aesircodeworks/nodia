@@ -95,38 +95,94 @@ components:
           format: date-time
           description: ISO 8601 UTC timestamp of check execution.
       additionalProperties: false
-    HealthDegradedProblem:
+    Problem:
       type: object
+      description: >-
+        RFC 9457 problem document shared by every error response under /v1
+        per docs/api-conventions.md. Specific problems extend it with
+        extension members.
       required:
         - type
         - title
         - status
+        - detail
         - code
-        - checks
-        - checked_at
       properties:
         type:
           type: string
           format: uri-reference
-          description: Stable problem type URI reference.
+          description: >-
+            Stable problem type URI reference, /problems/{slug} with the slug
+            derived mechanically from code (dots and underscores become
+            dashes).
         title:
           type: string
+          description: Short human-readable summary of the problem type.
         status:
           type: integer
-          enum: [503]
+          description: HTTP status code of the response.
         detail:
           type: string
+          description: >-
+            Human-readable occurrence detail. Never stable contract; clients
+            branch on code instead.
         code:
           type: string
-          enum: [health.degraded]
           description: Stable machine-readable code; clients branch on this.
-        checks:
-          $ref: '#/components/schemas/HealthChecks'
-        checked_at:
+        correlation_id:
           type: string
-          format: date-time
-          description: ISO 8601 UTC timestamp of check execution.
-      additionalProperties: false
+          description: >-
+            Echo of the request correlation ID also carried in the
+            X-Correlation-Id response header.
+    ValidationProblem:
+      description: >-
+        Problem document for failed request validation, extended with the
+        errors map of field name to messages.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          required:
+            - errors
+          properties:
+            status:
+              type: integer
+              enum: [422]
+            code:
+              type: string
+              enum: [request.validation_failed]
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+              description: Map of field name to validation messages.
+      unevaluatedProperties: false
+    HealthDegradedProblem:
+      description: >-
+        Problem document for the degraded health report, extended with the
+        health checks. Frozen contract; the correlation ID travels only in
+        the X-Correlation-Id header on this response.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          required:
+            - checks
+            - checked_at
+          properties:
+            status:
+              type: integer
+              enum: [503]
+            code:
+              type: string
+              enum: [health.degraded]
+            checks:
+              $ref: '#/components/schemas/HealthChecks'
+            checked_at:
+              type: string
+              format: date-time
+              description: ISO 8601 UTC timestamp of check execution.
+      unevaluatedProperties: false
     HealthChecks:
       type: object
       required:

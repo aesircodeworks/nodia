@@ -17,10 +17,29 @@ export type CursorPaginator<TKey, TValue> = {
   };
 };
 export type CursorPaginatorInterface<TKey, TValue> = CursorPaginator<TKey, TValue>;
+export type ErrorCode =
+  | 'request.not_found'
+  | 'request.method_not_allowed'
+  | 'request.validation_failed'
+  | 'auth.unauthenticated'
+  | 'auth.forbidden'
+  | 'request.rate_limited'
+  | 'server.internal_error'
+  | 'health.degraded';
 export type HealthChecksData = {
   database: CheckResult;
   redis: CheckResult;
   storage: CheckResult;
+};
+export type HealthDegradedProblemData = {
+  checks: HealthChecksData;
+  checked_at: string;
+  type: string;
+  title: string;
+  status: number;
+  detail: string;
+  code: string;
+  correlation_id?: string;
 };
 export type HealthReportData = {
   status: HealthStatus;
@@ -51,3 +70,20 @@ export type LengthAwarePaginator<TKey, TValue> = {
 };
 export type LengthAwarePaginatorInterface<TKey, TValue> = LengthAwarePaginator<TKey, TValue>;
 export type PaginatedDataCollection<TKey, TValue> = LengthAwarePaginator<TKey, TValue>;
+export type ProblemData = {
+  type: string;
+  title: string;
+  status: number;
+  detail: string;
+  code: string;
+  correlation_id?: string;
+};
+export type ValidationProblemData = {
+  errors: Record<string, string[]>;
+  type: string;
+  title: string;
+  status: number;
+  detail: string;
+  code: string;
+  correlation_id?: string;
+};
