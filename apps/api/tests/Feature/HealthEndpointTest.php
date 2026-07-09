@@ -9,6 +9,7 @@ test('GET /v1/health returns 200 with a body matching the HealthReport contract 
     $response = $this->getJson('/v1/health');
 
     $response->assertOk()
+        ->assertConformsToOpenApi()
         ->assertHeader('Content-Type', 'application/json')
         ->assertExactJson([
             'status' => 'ok',
@@ -30,6 +31,7 @@ test('GET /v1/health returns a 503 problem+json with code health.degraded naming
     $response = $this->getJson('/v1/health');
 
     $response->assertStatus(503)
+        ->assertConformsToOpenApi()
         ->assertHeader('Content-Type', 'application/problem+json')
         ->assertJsonPath('type', '/problems/health-degraded')
         ->assertJsonPath('code', 'health.degraded')

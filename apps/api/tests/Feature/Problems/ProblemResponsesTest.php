@@ -11,11 +11,12 @@ const PROBLEM_CORRELATION_ID = 'problem-correlation-id';
 /**
  * @param  TestResponse<JsonResponse>  $response
  */
-function expectProblemDocument(TestResponse $response, int $status, string $code, string $type, array $extraKeys = []): void
+function expectProblemDocument(TestResponse $response, int $status, string $code, string $type, array $extraKeys = [], string $schema = 'Problem'): void
 {
     $response->assertStatus($status)
         ->assertHeader('Content-Type', 'application/problem+json')
         ->assertHeader('X-Correlation-Id', PROBLEM_CORRELATION_ID)
+        ->assertMatchesProblemSchema($schema)
         ->assertJsonPath('type', $type)
         ->assertJsonPath('status', $status)
         ->assertJsonPath('code', $code)
@@ -52,7 +53,7 @@ test('a failed validation renders a 422 request.validation_failed problem docume
     $response = $this->withHeader('X-Correlation-Id', PROBLEM_CORRELATION_ID)
         ->postJson('/v1/__probe/validation', []);
 
-    expectProblemDocument($response, 422, 'request.validation_failed', '/problems/request-validation-failed', ['errors']);
+    expectProblemDocument($response, 422, 'request.validation_failed', '/problems/request-validation-failed', ['errors'], 'ValidationProblem');
 
     expect($response->json('errors'))->toBeArray()->toHaveKey('name')
         ->and($response->json('errors.name'))->toBeList()->not->toBeEmpty()

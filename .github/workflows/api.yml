@@ -27,6 +27,7 @@ jobs:
           filters: |
             api:
               - 'apps/api/**'
+              - 'docs/openapi/**'
               - '.github/workflows/api.yml'
 
   pint:
@@ -319,11 +320,26 @@ jobs:
     needs: changes
     if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
     steps:
       - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
+          extensions: redis
           coverage: none
       - name: Get Composer cache directory
         id: composer-cache
@@ -342,6 +358,9 @@ jobs:
         run: |
           cp .env.example .env
           php artisan key:generate
+      - name: Contract suite
+        working-directory: apps/api
+        run: php artisan test --testsuite=Contract
       - name: Regenerate TypeScript contract types
         working-directory: apps/api
         run: composer run types:generate
