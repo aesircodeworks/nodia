@@ -18,7 +18,7 @@ Verified starting state: Stage 1 is done (commit 61d886b marks it done; problem 
 - [x] task-03: Default test connection to PostgreSQL for all suites (plan task 3)
 - [x] task-04: `tenants` migration, sentinel platform tenant, model, factory, isolation tests (plan task 4, slice 2)
 - [x] task-05: `tenant_domains` migration, two-tenant isolation fixture, isolation tests (plan task 5, slice 3)
-- [ ] task-06: `CreateTenant`, `UpdateBranding`, `ConfigureGateways` Actions, Data objects, `TenantCreated` event class (plan task 6)
+- [x] task-06: `CreateTenant`, `UpdateBranding`, `ConfigureGateways` Actions, Data objects, `TenantCreated` event class (plan task 6)
 - [ ] task-07: `RegisterDomain`, `MakeDomainPrimary`, `RemoveDomain` Actions, Data objects, `DomainVerified` event class (plan task 7)
 - [ ] task-08: `TenancyServiceProvider` with the three route groups and the placeholder platform auth alias (plan task 8)
 - [ ] task-09: Tenant create, read, update endpoints with feature, contract, and isolation tests, OpenAPI, regenerated TypeScript (plan task 9, slice 4)
@@ -147,6 +147,30 @@ Deviations:
 
 - None in scope. Slice 3 in the plan also names `RegisterDomain` and the `DomainVerified` event class; the task breakdown assigns those to task 7, and this run follows the task breakdown.
 - The double-promotion race test for the partial unique index is deliberately not here: the plan's concurrency bullets for make-primary belong to Slice 5 (task-10), where the transition itself lands. This task ships the database guard; task-10 proves it under contention.
+
+### task-06: tenant Actions, Data objects, TenantCreated event class
+
+- Timestamp: Thu Jul 9 15:26:21 -03 2026
+- Commits: `888452e` (feat(tenancy): add tenant Actions, Data objects, and TenantCreated event class)
+
+What landed:
+
+- `apps/api/app/Tenancy/Data/`: `TenantData` (full wire shape with snake_case keys via the shared SnakeCaseMapper pattern and ISO 8601 UTC timestamp strings, built through a `fromModel` named constructor), `CreateTenantData` (name, default_locale, supported_locales required; branding_settings, enabled_gateways, payout_schedule Optional), `UpdateTenantData` (every field Optional for PATCH semantics), and `BrandingSettingsData` with the two typed optional placeholder fields `primary_color` and `logo_url` (logo becomes a medialibrary upload in Stage 5c). All four plus the event payload are exported to `packages/api-client/src/generated/index.ts` by `composer types:generate`; the regenerated output is in the same commit.
+- `apps/api/app/Tenancy/Actions/`: `CreateTenant` (locale membership invariant, then `Tenant::create` with defaults `{}`, `[]`, and null for the optional fields, returning `TenantData`; per the plan's Slice 2 bullet it normalizes nothing else), `UpdateBranding` (name, branding_settings, default_locale, supported_locales; re-derives the effective default and supported locales from the partial update against the current row and rejects any combination whose default falls outside the supported set), `ConfigureGateways` (accepts only a list of non-empty strings, no adapter capability validation per the Stage 8a deferral; the deferral is recorded in a comment on the Action).
+- `apps/api/app/Tenancy/Exceptions/`: `DefaultLocaleNotSupportedException` and `InvalidGatewayConfigurationException`, the guard exceptions task-09 will map to the `default_locale_not_supported` and `request.validation_failed` problem codes. Both joined the architecture preset's commented ignore list (the Laravel preset expects Throwables in `App\Exceptions`; ours live with their context).
+- `apps/api/app/Tenancy/Events/TenantCreated.php`: envelope per the plan's Domain events section: `tenantId` is the sentinel platform tenant, `aggregateType` `tenant`, `aggregateId` the created tenant's id, payload `TenantCreatedPayload` (laravel-data, snake_case: tenant_id, name, default_locale). No producer records it; the outbox arrives in Stage 4.
+- `apps/api/app/Tenancy/Models/Tenant.php` gained `@property` docblock types for the jsonb and timestamp columns; Larastan inferred the jsonb columns as string from the migration and flagged `TenantData::fromModel` without them.
+
+Test evidence:
+
+- `tests/Unit/Tenancy/CreateTenantTest.php` (4 tests), `UpdateBrandingTest.php` (4), `ConfigureGatewaysTest.php` (7 including the rejection dataset), `TenantCreatedTest.php` (2) written first; all 17 failed as expected (12 errors, 5 failures: classes not found), then went green after implementation. The Action tests run against real PostgreSQL through `TenantTransaction::asPlatform`, the production provisioning posture, with `MigratedDatabase::ensure()` providing the migrated tables.
+- One intermediate failure during the loop was a test bug, not implementation: PostgreSQL jsonb does not preserve key order, so the stored branding assertion became `toEqualCanonicalizing` with a comment.
+- Full `composer test`: 167 passed, 569 assertions, all six suites. Pint clean; Larastan clean (0 errors) after the model docblock and an UpdateBranding restructure onto local-variable narrowing (Larastan flagged a repeated property instanceof as always-false). `composer types:generate` added BrandingSettingsData, CreateTenantData, TenantCreatedPayload, TenantData, UpdateTenantData to the generated index.ts; committed together with the code. `pnpm --filter api-client typecheck` clean.
+
+Deviations:
+
+- None in scope. Notes for later tasks: `CreateTenant` does not itself validate `enabled_gateways` contents ("normalizes nothing else" per Slice 2); task-09's request validation covers create-time garbage, and `ConfigureGateways` owns the invariant for updates. `UpdateBranding` ignores `payout_schedule`; the plan assigns no Action to it, so task-09 must decide its PATCH routing (it stays opaque until Stage 8c either way). `TenantCreatedPayload` is exported to the generated TypeScript because the transformer exports every Data class under `app/`; harmless now, worth a directory-scoping decision if event payloads multiply.
+- No feature test, OpenAPI path, or endpoint ships here by design: the task breakdown assigns Slice 4's outer loop to task-09; this task is the unit portions of Slices 2 and 4.
 
 ### Review rounds
 
