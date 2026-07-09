@@ -4,9 +4,11 @@ use App\Support\Money\CurrencyMismatchException;
 use App\Support\Problems\ErrorCode;
 use App\Support\Tenancy\InvalidTenantIdException;
 use App\Tenancy\Exceptions\DefaultLocaleNotSupportedException;
+use App\Tenancy\Exceptions\DomainAlreadyRegisteredException;
 use App\Tenancy\Exceptions\InvalidDomainNameException;
 use App\Tenancy\Exceptions\InvalidGatewayConfigurationException;
 use App\Tenancy\Exceptions\TenantDomainIsPrimaryException;
+use App\Tenancy\Exceptions\TenantDomainNotFoundException;
 use App\Tenancy\Exceptions\TenantNotFoundException;
 use App\Tenancy\Http\Middleware\RenderedErrorRollback;
 use App\Tenancy\TenancyServiceProvider;
@@ -29,9 +31,11 @@ arch()->preset()->laravel()->ignoring([
     CurrencyMismatchException::class,
     InvalidTenantIdException::class,
     DefaultLocaleNotSupportedException::class,
+    DomainAlreadyRegisteredException::class,
     InvalidDomainNameException::class,
     InvalidGatewayConfigurationException::class,
     TenantDomainIsPrimaryException::class,
+    TenantDomainNotFoundException::class,
     TenantNotFoundException::class,
     RenderedErrorRollback::class,
     TenancyServiceProvider::class,

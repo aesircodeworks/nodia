@@ -160,6 +160,159 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/TenantUnprocessableProblem'
+  /v1/tenants/{tenant}/domains:
+    parameters:
+      - name: tenant
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: registerTenantDomain
+      summary: Register a domain for a tenant
+      description: >-
+        Platform admin surface. The domain is normalized to lowercase before
+        it is stored, so the response always carries the lowercase form. A
+        domain resolves to exactly one tenant platform-wide.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantDomainRegisterRequest'
+      responses:
+        '201':
+          description: Domain registered.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantDomain'
+        '404':
+          description: No tenant has this id.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TenantNotFoundProblem'
+        '409':
+          description: >-
+            The domain is already registered to a tenant (code
+            domain_already_registered), or is_primary was requested and the
+            tenant already has a primary domain (code
+            tenant_domain_is_primary; promote through the tenant-domains
+            PATCH instead).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TenantDomainConflictProblem'
+        '422':
+          description: Request validation failed, including malformed hostnames.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+    get:
+      operationId: listTenantDomains
+      summary: List a tenant's domains
+      description: >-
+        Platform admin surface. Page pagination with the standard Laravel
+        paginator envelope, sorted by domain; no query-builder parameters.
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: One page of the tenant's domains.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantDomainPage'
+        '404':
+          description: No tenant has this id.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TenantNotFoundProblem'
+  /v1/tenant-domains/{tenant_domain}:
+    parameters:
+      - name: tenant_domain
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      operationId: updateTenantDomain
+      summary: Make a domain the tenant's primary domain
+      description: >-
+        Platform admin surface. Item operations live at this top-level
+        resource because nesting under /v1/tenants/{tenant}/domains would
+        exceed the one-level nesting rule. is_primary only accepts true; a
+        domain is demoted by promoting another domain, so a demotion request
+        is rejected as unprocessable. The promotion is idempotent: replaying
+        it returns the current state without writing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantDomainUpdateRequest'
+      responses:
+        '200':
+          description: The domain, primary after promotion.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantDomain'
+        '404':
+          description: No tenant domain has this id.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TenantDomainNotFoundProblem'
+        '422':
+          description: Request validation failed, including is_primary false.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+    delete:
+      operationId: removeTenantDomain
+      summary: Remove a domain
+      description: >-
+        Platform admin surface. The tenant's primary domain cannot be
+        removed; promote another domain first.
+      responses:
+        '204':
+          description: Domain removed.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+        '404':
+          description: No tenant domain has this id.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TenantDomainNotFoundProblem'
+        '409':
+          description: The domain is the tenant's primary domain; demote it first.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TenantDomainIsPrimaryProblem'
   /v1/health:
     get:
       operationId: getHealth
@@ -406,6 +559,120 @@ components:
         total:
           type: integer
       additionalProperties: false
+    TenantDomain:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - domain
+        - is_primary
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        domain:
+          type: string
+          description: Always the lowercase form; input is normalized before storage.
+        is_primary:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    TenantDomainRegisterRequest:
+      type: object
+      required:
+        - domain
+      properties:
+        domain:
+          type: string
+          description: Hostname; mixed case is accepted and normalized to lowercase.
+        is_primary:
+          type: boolean
+      additionalProperties: false
+    TenantDomainUpdateRequest:
+      type: object
+      properties:
+        is_primary:
+          type: boolean
+          enum: [true]
+          description: >-
+            Only true is accepted; a domain is demoted by promoting another
+            domain of the same tenant.
+      additionalProperties: false
+    TenantDomainPage:
+      type: object
+      description: >-
+        Laravel standard paginator envelope (data, links, meta) per
+        docs/api-conventions.md.
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TenantDomain'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageLink'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      additionalProperties: false
+    TenantDomainNotFoundProblem:
+      description: Problem document for a tenant domain id that references no domain.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [404]
+            code:
+              type: string
+              enum: [tenant_domain_not_found]
+      unevaluatedProperties: false
+    TenantDomainConflictProblem:
+      description: >-
+        Problem document for a domain registration that conflicts with
+        existing rows: the domain is already registered platform-wide, or
+        the tenant already has a primary domain.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [domain_already_registered, tenant_domain_is_primary]
+      unevaluatedProperties: false
+    TenantDomainIsPrimaryProblem:
+      description: >-
+        Problem document for an operation refused because the domain is the
+        tenant's primary domain; promote another domain first.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [tenant_domain_is_primary]
+      unevaluatedProperties: false
     TenantNotFoundProblem:
       description: Problem document for a tenant id that references no tenant.
       allOf:

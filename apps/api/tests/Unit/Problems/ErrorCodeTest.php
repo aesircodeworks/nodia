@@ -15,6 +15,9 @@ test('the registry holds exactly the known codes', function () {
         'invalid_query_parameter',
         'tenant_not_found',
         'default_locale_not_supported',
+        'tenant_domain_not_found',
+        'domain_already_registered',
+        'tenant_domain_is_primary',
     ]);
 });
 
@@ -34,6 +37,9 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'invalid_query_parameter' => [ErrorCode::InvalidQueryParameter, 400, 'Invalid query parameter', '/problems/invalid-query-parameter'],
     'tenant_not_found' => [ErrorCode::TenantNotFound, 404, 'Tenant not found', '/problems/tenant-not-found'],
     'default_locale_not_supported' => [ErrorCode::DefaultLocaleNotSupported, 422, 'Default locale not supported', '/problems/default-locale-not-supported'],
+    'tenant_domain_not_found' => [ErrorCode::TenantDomainNotFound, 404, 'Tenant domain not found', '/problems/tenant-domain-not-found'],
+    'domain_already_registered' => [ErrorCode::DomainAlreadyRegistered, 409, 'Domain already registered', '/problems/domain-already-registered'],
+    'tenant_domain_is_primary' => [ErrorCode::TenantDomainIsPrimary, 409, 'Tenant domain is primary', '/problems/tenant-domain-is-primary'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

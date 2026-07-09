@@ -4,7 +4,9 @@ use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Actions\RegisterDomain;
 use App\Tenancy\Data\RegisterTenantDomainData;
 use App\Tenancy\Data\TenantDomainData;
+use App\Tenancy\Exceptions\DomainAlreadyRegisteredException;
 use App\Tenancy\Exceptions\InvalidDomainNameException;
+use App\Tenancy\Exceptions\TenantDomainIsPrimaryException;
 use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
 use Tests\Support\MigratedDatabase;
@@ -96,4 +98,38 @@ it('serializes TenantDomainData with snake_case keys and ISO 8601 UTC timestamps
         ->and($wire['is_primary'])->toBeFalse()
         ->and($wire['created_at'])->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/')
         ->and($wire['updated_at'])->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/');
+});
+
+it('maps a duplicate domain to DomainAlreadyRegisteredException, even across case', function () {
+    app(TenantTransaction::class)->asPlatform(
+        fn () => app(RegisterDomain::class)($this->tenant, RegisterTenantDomainData::from(['domain' => 'taken.acme.com'])),
+    );
+
+    $other = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create());
+
+    expect(fn () => app(TenantTransaction::class)->asPlatform(
+        fn () => app(RegisterDomain::class)($other, RegisterTenantDomainData::from(['domain' => 'Taken.Acme.COM'])),
+    ))->toThrow(DomainAlreadyRegisteredException::class);
+
+    $count = app(TenantTransaction::class)->asPlatform(
+        fn () => TenantDomain::query()->where('domain', 'taken.acme.com')->count(),
+    );
+
+    expect($count)->toBe(1);
+});
+
+it('maps a second primary registration to TenantDomainIsPrimaryException via the partial unique index', function () {
+    app(TenantTransaction::class)->asPlatform(
+        fn () => app(RegisterDomain::class)($this->tenant, RegisterTenantDomainData::from(['domain' => 'first.acme.com', 'is_primary' => true])),
+    );
+
+    expect(fn () => app(TenantTransaction::class)->asPlatform(
+        fn () => app(RegisterDomain::class)($this->tenant, RegisterTenantDomainData::from(['domain' => 'second.acme.com', 'is_primary' => true])),
+    ))->toThrow(TenantDomainIsPrimaryException::class);
+
+    $primaries = app(TenantTransaction::class)->asPlatform(
+        fn () => TenantDomain::query()->where('tenant_id', $this->tenant->id)->where('is_primary', true)->count(),
+    );
+
+    expect($primaries)->toBe(1);
 });

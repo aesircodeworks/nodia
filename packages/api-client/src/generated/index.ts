@@ -45,7 +45,10 @@ export type ErrorCode =
   | 'health.degraded'
   | 'invalid_query_parameter'
   | 'tenant_not_found'
-  | 'default_locale_not_supported';
+  | 'default_locale_not_supported'
+  | 'tenant_domain_not_found'
+  | 'domain_already_registered'
+  | 'tenant_domain_is_primary';
 export type HealthChecksData = {
   database: CheckResult;
   redis: CheckResult;

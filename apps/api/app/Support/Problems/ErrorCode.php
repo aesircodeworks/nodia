@@ -18,6 +18,9 @@ enum ErrorCode: string
     case InvalidQueryParameter = 'invalid_query_parameter';
     case TenantNotFound = 'tenant_not_found';
     case DefaultLocaleNotSupported = 'default_locale_not_supported';
+    case TenantDomainNotFound = 'tenant_domain_not_found';
+    case DomainAlreadyRegistered = 'domain_already_registered';
+    case TenantDomainIsPrimary = 'tenant_domain_is_primary';
 
     public function status(): int
     {
@@ -33,6 +36,9 @@ enum ErrorCode: string
             self::InvalidQueryParameter => 400,
             self::TenantNotFound => 404,
             self::DefaultLocaleNotSupported => 422,
+            self::TenantDomainNotFound => 404,
+            self::DomainAlreadyRegistered => 409,
+            self::TenantDomainIsPrimary => 409,
         };
     }
 
@@ -50,6 +56,9 @@ enum ErrorCode: string
             self::InvalidQueryParameter => 'Invalid query parameter',
             self::TenantNotFound => 'Tenant not found',
             self::DefaultLocaleNotSupported => 'Default locale not supported',
+            self::TenantDomainNotFound => 'Tenant domain not found',
+            self::DomainAlreadyRegistered => 'Domain already registered',
+            self::TenantDomainIsPrimary => 'Tenant domain is primary',
         };
     }
 

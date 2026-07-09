@@ -27,19 +27,37 @@ final class ParallelRunner
      */
     public static function run(int $workers, callable $task): array
     {
+        return self::runEach(...array_fill(0, $workers, $task));
+    }
+
+    /**
+     * Same barrier and connection discipline, one distinct task per worker,
+     * for races whose contenders differ (two tenants registering one
+     * domain, two domains racing for primary).
+     *
+     * @template TResult
+     *
+     * @param  callable(PDO): TResult  ...$tasks
+     * @return list<TResult>
+     */
+    public static function runEach(callable ...$tasks): array
+    {
         $config = self::connectionConfig();
 
         DB::purge();
 
         $startAt = microtime(true) + self::START_BARRIER_DELAY_SECONDS;
 
-        $results = Fork::new()->run(...array_fill(0, $workers, function () use ($config, $task, $startAt): mixed {
-            $pdo = self::connect($config);
+        $results = Fork::new()->run(...array_map(
+            fn (callable $task): callable => function () use ($config, $task, $startAt): mixed {
+                $pdo = self::connect($config);
 
-            self::awaitStart($startAt);
+                self::awaitStart($startAt);
 
-            return $task($pdo);
-        }));
+                return $task($pdo);
+            },
+            $tasks,
+        ));
 
         return array_values($results);
     }

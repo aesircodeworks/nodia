@@ -101,6 +101,9 @@ class ProblemRenderer
             ErrorCode::InvalidQueryParameter => 'The request carries a filter or sort parameter outside the endpoint allowlist.',
             ErrorCode::TenantNotFound => 'No tenant has this id.',
             ErrorCode::DefaultLocaleNotSupported => 'The default locale is not one of the supported locales.',
+            ErrorCode::TenantDomainNotFound => 'No tenant domain has this id.',
+            ErrorCode::DomainAlreadyRegistered => 'The domain is already registered to a tenant.',
+            ErrorCode::TenantDomainIsPrimary => "The operation conflicts with the tenant's primary domain.",
         };
     }
 }
