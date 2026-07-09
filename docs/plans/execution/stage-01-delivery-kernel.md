@@ -198,3 +198,13 @@ Deviations and decisions:
 - The stage plan's fixture assumed `FORCE` alone makes a same-role connection honest; that holds for plain owners but not for the compose and CI superuser. `RlsHonestConnection` (role downgrade when the configured user bypasses RLS) was added beyond the plan text to satisfy its own meta-probe requirement; without it the guarded-table tests fail with leaks on any stock local or CI run. No compose, init-script, or workflow changes were needed, preserving exit criterion 5's "no configuration beyond make up".
 - `actingAsTenant` uses `select set_config(?, ?, true)` instead of literal `SET LOCAL` because `SET` statements cannot carry bind parameters; `set_config(..., true)` is documented as transaction-local, identical semantics.
 - `composer.json` gained `autoload-dev.files` for the helper function; composer.lock is unaffected (autoload is outside the content hash).
+
+### Gate
+
+Run at Thu Jul 9 13:24:28 -03 2026, all green on the first pass with no fixes required:
+
+- `composer lint` (Pint): passed.
+- `composer analyse` (Larastan): passed, 0 errors.
+- `composer test` (Pest): 97 passed, 0 failed, 383 assertions across all six suites.
+- `composer types:generate`: ran clean; `git status --short packages/api-client/src/generated` empty, no contract drift.
+- `pnpm typecheck` (run because `packages/api-client/src/generated/index.ts` changed on this branch): all five TS workspaces passed.
