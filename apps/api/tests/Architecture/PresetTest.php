@@ -7,9 +7,13 @@ use App\Tenancy\Exceptions\DefaultLocaleNotSupportedException;
 use App\Tenancy\Exceptions\DomainAlreadyRegisteredException;
 use App\Tenancy\Exceptions\InvalidDomainNameException;
 use App\Tenancy\Exceptions\InvalidGatewayConfigurationException;
+use App\Tenancy\Exceptions\InvalidTenantHeaderException;
+use App\Tenancy\Exceptions\MissingTenantHeaderException;
+use App\Tenancy\Exceptions\TenantAccessDeniedException;
 use App\Tenancy\Exceptions\TenantDomainIsPrimaryException;
 use App\Tenancy\Exceptions\TenantDomainNotFoundException;
 use App\Tenancy\Exceptions\TenantNotFoundException;
+use App\Tenancy\Exceptions\UnknownHostException;
 use App\Tenancy\Http\Middleware\RenderedErrorRollback;
 use App\Tenancy\TenancyServiceProvider;
 
@@ -37,6 +41,10 @@ arch()->preset()->laravel()->ignoring([
     TenantDomainIsPrimaryException::class,
     TenantDomainNotFoundException::class,
     TenantNotFoundException::class,
+    UnknownHostException::class,
+    MissingTenantHeaderException::class,
+    InvalidTenantHeaderException::class,
+    TenantAccessDeniedException::class,
     RenderedErrorRollback::class,
     TenancyServiceProvider::class,
     'App\Tenancy\Models',

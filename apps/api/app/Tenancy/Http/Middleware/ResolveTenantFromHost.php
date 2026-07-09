@@ -2,23 +2,43 @@
 
 namespace App\Tenancy\Http\Middleware;
 
+use App\Support\Tenancy\TenantTransaction;
+use App\Tenancy\Actions\ResolveDomain;
+use App\Tenancy\Exceptions\UnknownHostException;
 use Closure;
 use Illuminate\Http\Request;
-use LogicException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Slot for the storefront population's tenant resolution: look the Host
- * header up in tenant_domains and run the request under the nodia_app
- * posture for the owning tenant. The body fails loudly until the
- * resolution lands, so no storefront route can ever execute without a
- * resolved tenant context; the tenancy.storefront group carries no routes
- * until then.
+ * The storefront population's tenant resolution (system-design 4.1): the
+ * Host header is looked up in tenant_domains under the narrow
+ * nodia_resolver posture, then the whole request runs inside a
+ * transaction under SET LOCAL ROLE nodia_app with app.tenant_id set to
+ * the owning tenant.
  */
 class ResolveTenantFromHost
 {
+    use TransactsRequests;
+
+    public function __construct(
+        private readonly TenantTransaction $transaction,
+        private readonly ResolveDomain $resolveDomain,
+    ) {}
+
     public function handle(Request $request, Closure $next): Response
     {
-        throw new LogicException('Storefront tenant resolution is not implemented; the tenancy.storefront group cannot serve routes yet.');
+        $host = $request->headers->get('Host') ?? '';
+
+        $tenantId = $this->resolveDomain->tenantIdFor($host);
+
+        if ($tenantId === null) {
+            throw UnknownHostException::forHost(ResolveDomain::normalizeHost($host));
+        }
+
+        return $this->transactRequest(
+            fn (Closure $handler): Response => $this->transaction->asTenant($tenantId, $handler),
+            $request,
+            $next,
+        );
     }
 }

@@ -104,6 +104,10 @@ class ProblemRenderer
             ErrorCode::TenantDomainNotFound => 'No tenant domain has this id.',
             ErrorCode::DomainAlreadyRegistered => 'The domain is already registered to a tenant.',
             ErrorCode::TenantDomainIsPrimary => "The operation conflicts with the tenant's primary domain.",
+            ErrorCode::UnknownHost => 'No tenant serves this host.',
+            ErrorCode::MissingTenantHeader => 'The request must carry the acting tenant in the X-Tenant-Id header.',
+            ErrorCode::InvalidTenantHeader => 'The X-Tenant-Id header must be a UUID.',
+            ErrorCode::TenantAccessDenied => 'You do not have access to this tenant.',
         };
     }
 }

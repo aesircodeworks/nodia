@@ -48,7 +48,11 @@ export type ErrorCode =
   | 'default_locale_not_supported'
   | 'tenant_domain_not_found'
   | 'domain_already_registered'
-  | 'tenant_domain_is_primary';
+  | 'tenant_domain_is_primary'
+  | 'unknown_host'
+  | 'missing_tenant_header'
+  | 'invalid_tenant_header'
+  | 'tenant_access_denied';
 export type HealthChecksData = {
   database: CheckResult;
   redis: CheckResult;

@@ -18,6 +18,10 @@ test('the registry holds exactly the known codes', function () {
         'tenant_domain_not_found',
         'domain_already_registered',
         'tenant_domain_is_primary',
+        'unknown_host',
+        'missing_tenant_header',
+        'invalid_tenant_header',
+        'tenant_access_denied',
     ]);
 });
 
@@ -40,6 +44,10 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'tenant_domain_not_found' => [ErrorCode::TenantDomainNotFound, 404, 'Tenant domain not found', '/problems/tenant-domain-not-found'],
     'domain_already_registered' => [ErrorCode::DomainAlreadyRegistered, 409, 'Domain already registered', '/problems/domain-already-registered'],
     'tenant_domain_is_primary' => [ErrorCode::TenantDomainIsPrimary, 409, 'Tenant domain is primary', '/problems/tenant-domain-is-primary'],
+    'unknown_host' => [ErrorCode::UnknownHost, 404, 'Unknown host', '/problems/unknown-host'],
+    'missing_tenant_header' => [ErrorCode::MissingTenantHeader, 400, 'Missing tenant header', '/problems/missing-tenant-header'],
+    'invalid_tenant_header' => [ErrorCode::InvalidTenantHeader, 400, 'Invalid tenant header', '/problems/invalid-tenant-header'],
+    'tenant_access_denied' => [ErrorCode::TenantAccessDenied, 403, 'Tenant access denied', '/problems/tenant-access-denied'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

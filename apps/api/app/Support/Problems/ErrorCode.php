@@ -21,6 +21,10 @@ enum ErrorCode: string
     case TenantDomainNotFound = 'tenant_domain_not_found';
     case DomainAlreadyRegistered = 'domain_already_registered';
     case TenantDomainIsPrimary = 'tenant_domain_is_primary';
+    case UnknownHost = 'unknown_host';
+    case MissingTenantHeader = 'missing_tenant_header';
+    case InvalidTenantHeader = 'invalid_tenant_header';
+    case TenantAccessDenied = 'tenant_access_denied';
 
     public function status(): int
     {
@@ -39,6 +43,10 @@ enum ErrorCode: string
             self::TenantDomainNotFound => 404,
             self::DomainAlreadyRegistered => 409,
             self::TenantDomainIsPrimary => 409,
+            self::UnknownHost => 404,
+            self::MissingTenantHeader => 400,
+            self::InvalidTenantHeader => 400,
+            self::TenantAccessDenied => 403,
         };
     }
 
@@ -59,6 +67,10 @@ enum ErrorCode: string
             self::TenantDomainNotFound => 'Tenant domain not found',
             self::DomainAlreadyRegistered => 'Domain already registered',
             self::TenantDomainIsPrimary => 'Tenant domain is primary',
+            self::UnknownHost => 'Unknown host',
+            self::MissingTenantHeader => 'Missing tenant header',
+            self::InvalidTenantHeader => 'Invalid tenant header',
+            self::TenantAccessDenied => 'Tenant access denied',
         };
     }
 
