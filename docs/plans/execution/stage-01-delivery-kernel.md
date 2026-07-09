@@ -106,3 +106,30 @@ Deviations and decisions:
 - The security preset forbids `assert()`, so `MoneyDataTransformer` guards its input with an explicit `InvalidArgumentException` instead.
 - Publishing `config/data.php` pulled in the vendor stub, which Pint then reformatted (import ordering, indentation); the only functional edits are the two Money registrations under `casts` and `transformers`.
 - Money unit tests sit under `tests/Feature/Money/` for now, same interim placement as task-01's, moving when task-03 declares the Unit suite.
+
+### task-03: Suite matrix: Unit and Contract suites, Isolation and Concurrency on local PostgreSQL (slice 3)
+
+Completed Thu Jul 9 12:27:18 -03 2026. Commit `7509642`, `test: declare unit and contract suites and run isolation and concurrency on postgres locally`.
+
+What landed:
+
+- Tests first, verified red before any wiring: `tests/Isolation/DatabaseDriverGuardTest.php` and `tests/Concurrency/DatabaseDriverGuardTest.php` failed on the SQLite default with the instructive message (observed: "the active driver is [sqlite] ... Start the local stack with `make up` ..."), and `php artisan test --testsuite=Unit` reported no such suite. The guards assert the active driver is `pgsql` via `assertSame` with the instructive message, then open a real connection and assert `current_database()` matches the configured test database, so a guard pass proves connectivity, not just config.
+- `phpunit.xml` now declares six suites: Feature, Unit, Contract, Architecture, Isolation, Concurrency.
+- Relocations into the new Unit suite: `tests/Feature/Money/{MoneyTest,MoneyCastTest,MoneyDataTest}.php` to `tests/Unit/Money/` and task-01's interim `tests/Feature/Problems/{ErrorCodeTest,ProblemDataTest}.php` to `tests/Unit/Problems/` (git renames, contents untouched). `ProblemResponsesTest` stays in Feature.
+- `tests/Contract/SuiteHarnessTest.php` seeds the Contract suite in the Phase 0 harness-stub style: it asserts `docs/openapi/openapi.yaml` exists and declares OpenAPI 3.1. Task-05 replaces it with real conformance checks.
+- `tests/Pest.php`: Unit and Contract bind to `Tests\TestCase`; Isolation and Concurrency get a `beforeEach` that, when the default connection is not already `pgsql` (locally it is SQLite from `phpunit.xml`), repoints the `pgsql` connection at the compose test database with env-driven overrides `NODIA_TEST_DB_{HOST,PORT,DATABASE,USERNAME,PASSWORD}` defaulting to `127.0.0.1:5432`, `nodia`/`nodia`, `nodia_test`, sets it as default, and purges the connection. In CI all Pest-running jobs export `DB_CONNECTION=pgsql` with `nodia_test`, which wins over the non-forced `phpunit.xml` env, so the `beforeEach` is a no-op there and no workflow change was needed.
+- `infra/compose/postgres/create-test-database.sh` mounted into `/docker-entrypoint-initdb.d/` creates `nodia_test` on first cluster init so local tests never touch `nodia_api`; documented in a new Testing section in `apps/api/README.md`, including the catch-up path for stacks whose volume predates the script (`make fresh` or a one-off `createdb -U nodia nodia_test`).
+
+Test evidence:
+
+- Verified red: both driver guards failed on SQLite with the instructive message; the Unit suite was undeclared ("No tests found.").
+- `composer test`: 84 passed, 0 failed, 341 assertions across all six suites (Feature 27, Unit 41, Contract 1, Architecture 11, Isolation 2, Concurrency 2).
+- `composer lint` (Pint): passed. `composer analyse` (Larastan): 0 errors. `composer types:generate`: ran clean with no diff (no Data classes changed).
+- Init script proven against a fresh cluster in a throwaway `postgres:17-alpine` container (not the running stack): `nodia_test` present after first init. `docker compose config --quiet` passes on the edited compose file.
+- Env overrides proven live: running the Isolation suite with `NODIA_TEST_DB_DATABASE=definitely_missing_db` failed on connection to that database name; the normal run connects to `nodia_test`.
+
+Deviations and decisions:
+
+- The running local stack's postgres volume predates the init script, so `nodia_test` was created there with the documented one-off `createdb` rather than `make fresh` (avoids dropping the dev stack's volumes mid-run). Exit criterion 5's "no configuration beyond make up" holds for fresh stacks via the init script.
+- The stage plan does not specify the guard's connectivity assertion; it was added beyond the driver-name check because `getDriverName()` reads config without connecting, which would let the guard pass green against an unreachable database.
+- Overrides use dedicated `NODIA_TEST_DB_*` names instead of `DB_*` because locally `phpunit.xml` pins `DB_DATABASE=:memory:` and a developer `.env` points `DB_*` at the dev `nodia_api` database, exactly what these suites must never touch.
