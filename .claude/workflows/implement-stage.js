@@ -4,10 +4,10 @@ export const meta = {
   whenToUse: 'Invoke with args {stage: "1"} (or "2", "5a", "8b", ...) to implement that stage of docs/api-implementation-plan.md end to end',
   phases: [
     { title: 'Prepare', detail: 'read the stage plan, open the journal, mark the stage In progress, derive the remaining task list' },
-    { title: 'Implement', detail: 'one agent per task, full TDD loop, commit per green slice' },
-    { title: 'Gate', detail: 'full quality gates: Pest suites, Pint, Larastan, contract type drift' },
+    { title: 'Implement', detail: 'one agent per task, full TDD loop, commit per green slice', model: 'sonnet' },
+    { title: 'Gate', detail: 'full quality gates locally, then push and verify CI green', model: 'opus' },
     { title: 'Review', detail: 'codex code review of the stage diff, up to 3 rounds' },
-    { title: 'Fix', detail: 'apply blocking and important review findings' },
+    { title: 'Fix', detail: 'apply blocking and important review findings', model: 'opus' },
     { title: 'Finalize', detail: 'journal close-out and status table update' },
   ],
 }
@@ -166,7 +166,7 @@ if (prep.alreadyComplete || prep.tasks.length === 0) {
       'When green: run `composer -d apps/api run lint`, `composer -d apps/api run analyse`, `composer -d apps/api run test`, and `composer -d apps/api run types:generate` (commit any regenerated output). Commit each green slice with Conventional Commits using scope ' + t.commitScope + '. Never push.\n' +
       'Before finishing, append a journal entry for this task to ' + journalPath + ': timestamp (`date`), what landed, test evidence (which suites ran and their results), commit SHAs, and any deviation from the plan with its reason. Include the journal update in your final commit or a separate docs commit.\n' +
       'If you hit a genuine blocker (a missing design decision, a broken dependency you cannot fix within this task), stop, record it in the journal, commit the journal, and return status blocked with the reason. Do not fake green: report failures as failures.',
-      { label: 'task:' + t.id, phase: 'Implement', schema: TASK_RESULT_SCHEMA }
+      { label: 'task:' + t.id, phase: 'Implement', schema: TASK_RESULT_SCHEMA, model: 'sonnet' }
     )
     if (!result) {
       blockedTask = { task: t, reason: 'agent returned no result' }
@@ -191,9 +191,10 @@ if (completed.length > 0) {
     'Run the full quality gates for the Nodia API after stage ' + stageKey + ' implementation work (repo root is the working directory):\n' +
     '`composer -d apps/api run lint`, `composer -d apps/api run analyse`, `composer -d apps/api run test`, then `composer -d apps/api run types:generate` followed by `git status --short packages/api-client/src/generated` to confirm no contract drift. Run `pnpm typecheck` if any TypeScript changed.\n' +
     'If anything fails, fix it properly (respect the TDD method and repo conventions, never suppress or skip tests), commit fixes with the correct Conventional Commit scope, and re-run until green.\n' +
-    'Append a "Gate" entry to ' + journalPath + ' with a timestamp (`date`) and the results, and commit it as docs.\n' +
-    'Return passing false only if you could not reach green, with what still fails.',
-    { label: 'gate:stage-' + stageKey, phase: 'Gate', schema: GATE_SCHEMA }
+    'When local gates are green, push the branch to origin (`git push origin HEAD`) and verify CI: list the triggered runs with `gh run list --branch <branch>` and watch them with `gh run watch <id> --exit-status`. If any workflow fails, read the failed job logs (`gh run view <id> --log-failed`), fix the root cause properly (never weaken a gate to pass it), commit, push again, and re-watch until every workflow is green. CI can fail for reasons local runs cannot catch (missing service containers, lint rules on regenerated output), so treat a red run as a real stage defect, not noise.\n' +
+    'Append a "Gate" entry to ' + journalPath + ' with a timestamp (`date`), the local results, and the CI run IDs and conclusions, and commit it as docs (that commit can ride the final push).\n' +
+    'Return passing false only if you could not reach green locally and on CI, with what still fails.',
+    { label: 'gate:stage-' + stageKey, phase: 'Gate', schema: GATE_SCHEMA, model: 'opus' }
   )
 
   const resolvedSoFar = []
@@ -222,7 +223,7 @@ if (completed.length > 0) {
       if (minors.length > 0) {
         await agent(
           'Append a "Review round ' + round + '" entry to ' + journalPath + ' (timestamp via `date`): Codex approved the stage ' + stageKey + ' diff with only minor notes, listed here verbatim for the record: ' + JSON.stringify(minors) + '. Do not change any code. Commit the journal update as `docs: record stage ' + stageKey + ' review round ' + round + '`.',
-          { label: 'journal:round-' + round, phase: 'Fix', schema: TASK_RESULT_SCHEMA }
+          { label: 'journal:round-' + round, phase: 'Fix', schema: TASK_RESULT_SCHEMA, model: 'sonnet', effort: 'low' }
         )
       }
       break
@@ -232,10 +233,10 @@ if (completed.length > 0) {
       'Apply the Codex code review findings for stage ' + stageKey + ', round ' + round + ' (repo root is the working directory). Findings:\n' + JSON.stringify(review.findings, null, 2) + '\n\n' +
       'For each blocking or important finding: fix it properly, writing or adjusting tests first when the fix is behavioral. Never suppress, silence, or work around a finding. If you conclude a finding is factually wrong, leave the code alone and record your reasoning instead.\n' +
       'Minor findings need no code change unless trivial; record them in the journal.\n' +
-      'When done, re-run `composer -d apps/api run lint`, `composer -d apps/api run analyse`, and `composer -d apps/api run test`; commit fixes with the correct Conventional Commit scope.\n' +
+      'When done, re-run `composer -d apps/api run lint`, `composer -d apps/api run analyse`, and `composer -d apps/api run test`; commit fixes with the correct Conventional Commit scope. Push (`git push origin HEAD`) and confirm the triggered CI runs go green (`gh run list --branch <branch>`, `gh run watch <id> --exit-status`), fixing properly and re-pushing if not.\n' +
       'Append a "Review round ' + round + '" entry to ' + journalPath + ' (timestamp via `date`): every finding, what was done or why it was declined. Commit the journal.\n' +
       'Return status done with commits, and list any declined findings with reasons.',
-      { label: 'fix:round-' + round, phase: 'Fix', schema: TASK_RESULT_SCHEMA }
+      { label: 'fix:round-' + round, phase: 'Fix', schema: TASK_RESULT_SCHEMA, model: 'opus' }
     )
     if (!fix) {
       log('Fix agent for round ' + round + ' returned no result; stopping the review loop.')
@@ -261,9 +262,9 @@ const outcome = {
 
 const final = await agent(
   'Close out the stage ' + stageKey + ' run of the Nodia API implementation plan (repo root is the working directory). Journal: ' + journalPath + '. Machine summary of the run: ' + JSON.stringify(outcome) + '\n' +
-  '1. Append a final summary to the journal (timestamp via `date`): tasks completed, gate result, review rounds and their outcome, unresolved or declined findings, blockers if any. Then walk the exit criteria in ' + planPath + ' one by one and record for each whether it is met, with concrete evidence (test names, endpoints, commits).\n' +
-  '2. Update the status table in docs/api-implementation-plan.md: mark the stage "Done" only if every exit criterion is verifiably met, the gates are green, and the review ended with no unaddressed blocking or important findings. Otherwise set an honest partial status (for example "In progress (blocked on X)") and say why in the journal.\n' +
-  '3. Commit as `docs: close stage ' + stageKey + ' execution journal`. Never push.\n' +
+  '1. Append a final summary to the journal (timestamp via `date`): tasks completed, gate result including CI run conclusions, review rounds and their outcome, unresolved or declined findings, blockers if any. Then walk the exit criteria in ' + planPath + ' one by one and record for each whether it is met, with concrete evidence (test names, endpoints, commits, CI run links).\n' +
+  '2. Update the status table in docs/api-implementation-plan.md: mark the stage "Done" only if every exit criterion is verifiably met, the gates are green locally and on CI for the current HEAD, and the review ended with no unaddressed blocking or important findings. Otherwise set an honest partial status (for example "In progress (blocked on X)") and say why in the journal.\n' +
+  '3. Commit as `docs: close stage ' + stageKey + ' execution journal` and push (`git push origin HEAD`). If any code commits landed after the last green CI run, confirm the newly triggered runs are green before returning; a docs-only push needs no wait.\n' +
   'Return the final stage status and a one-paragraph summary. Be strictly truthful: report the run as it actually went.',
   { label: 'finalize:stage-' + stageKey, phase: 'Finalize', schema: FINAL_SCHEMA }
 )
