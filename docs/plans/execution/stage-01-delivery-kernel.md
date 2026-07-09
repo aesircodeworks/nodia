@@ -259,3 +259,12 @@ Assessed against HEAD `efc8a1f` with the full suite re-run at close. 8 of 9 crit
 9. Gates over the merged work: met. Pint passed, Larastan 0 errors, Architecture suite 13 tests green, and `packages/api-client/src/generated` matches regeneration exactly (no hand edits).
 
 Stage 1 therefore stays In progress, blocked solely on exit criterion 6.
+
+## Run: 2026-07-09, criterion 6 close-out
+
+Interactive session following the second run, on user instruction to restore the swept skill files, push the branch, and run the CI probes.
+
+- Restored the 41 `.claude/skills` files unintentionally swept into `026fe51`, from its parent commit, as `cc78864`. The user confirmed the deletion was not meant to be committed.
+- Pushed `feat/api-implementation` to origin and opened draft PR [#5](https://github.com/aesircodeworks/nodia/pull/5) (CI only triggers on pull requests or pushes to main). All five workflows completed green, the API workflow as run [29036745192](https://github.com/aesircodeworks/nodia/actions/runs/29036745192) with the Pest, Architecture, Isolation, Concurrency, and Contract Drift jobs all passing. This exercises the CI legs that criteria 1 and 4 had outstanding; both are now met in full.
+- Criterion 6 exercise (task-07): created throwaway branch `probe/isolation-ci-gate` off the green HEAD with one deliberately failing test in `apps/api/tests/Isolation/CiGateProbeTest.php` (commit `731194f`), opened draft PR [#6](https://github.com/aesircodeworks/nodia/pull/6). The API workflow run [29036855949](https://github.com/aesircodeworks/nodia/actions/runs/29036855949) concluded `failure` with the `API Isolation` job red (the full `API Pest` job red with it) while Pint, Larastan, Architecture, Concurrency, and Contract Drift stayed green. The failing isolation test demonstrably blocks the build. PR #6 closed unmerged; remote and local probe branches deleted.
+- Criterion 6 is met. All 9 exit criteria now hold, so task-10 executes as written: the status table in `docs/api-implementation-plan.md` marks Stage 1 Done.
