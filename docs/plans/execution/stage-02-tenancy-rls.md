@@ -24,7 +24,7 @@ Verified starting state: Stage 1 is done (commit 61d886b marks it done; problem 
 - [x] task-09: Tenant create, read, update endpoints with feature, contract, and isolation tests, OpenAPI, regenerated TypeScript (plan task 9, slice 4)
 - [x] task-10: Domain endpoints with feature, contract, and concurrency tests, OpenAPI, regenerated TypeScript (plan task 10, slice 5)
 - [x] task-11: Tenant resolution middleware for both populations, resolution matrix, Octane no-leak test (plan task 11, slice 6; domain-resolution open question settled, see the task entry and Decisions)
-- [ ] task-12: Domain verification endpoint plus contract (plan task 12, slice 7 first half)
+- [x] task-12: Domain verification endpoint plus contract (plan task 12, slice 7 first half)
 - [ ] task-13: Platform-role audit log seam and its tests (plan task 13, slice 7 second half)
 - [ ] task-14: Stage close: status table to done, `DomainVerified` trigger decision recorded (plan task 14)
 
@@ -314,6 +314,32 @@ Deviations and decisions:
 - The admin happy path, a blank (whitespace) header case, and a mixed-case-host-with-port case were added to the plan's six-row matrix; additions, not changes.
 - `asDomainResolver` rejects execution inside any open transaction rather than only inside a tenant transaction, deliberately stricter than `asTenant`/`asPlatform`: the resolver posture never enters `TenantContext`, so the context-based nesting guard cannot see it, and `SET LOCAL ROLE` inside a savepoint would survive the savepoint's release.
 - The rollback-behind-rendered-errors test for the `nodia_app` posture is not demanded by the plan's Slice 6 bullets but pins the shared trait's guarantee for both tenant-scoped groups, since task-08's equivalent test only covered the platform group.
+
+### task-12: domain verification endpoint (Caddy on-demand TLS ask)
+
+- Timestamp: Thu Jul 9 16:55:35 -03 2026
+- Commits: `a2d864d` (feat(tenancy): add the domain verification endpoint for Caddy on-demand TLS)
+
+What landed:
+
+- `apps/api/app/Tenancy/Http/routes/internal.php`, loaded by `TenancyServiceProvider` under `/v1` with no auth and no tenancy posture group: `GET /v1/internal/domain-verification?domain=` is unauthenticated by design (Caddy calls it during the TLS handshake, before any credential can exist) and network-internal; the route file's comment records that infrastructure must never route `/v1/internal` through the public edge. The read posture inherits the task-11 resolver decision unchanged: the lookup reuses `ResolveDomain`, so it runs under `nodia_resolver`, never bare `nodia_platform`, and system-design 4.3 stands unamended.
+- `apps/api/app/Tenancy/Http/Controllers/DomainVerificationController.php`: single-action controller, 204 no-content when `ResolveDomain::tenantIdFor` finds the normalized domain in `tenant_domains` (existence is the gate per system-design 16.3), otherwise the new `UnknownDomainException`. Case-insensitive matching falls out of the shared `normalizeHost` lowercasing.
+- `apps/api/app/Tenancy/Data/DomainVerificationData.php`: the request contract, `domain` required with the hostname closure mirroring `RegisterDomain::isValidHostname` (single source with the registration invariant), so a missing or malformed parameter renders 422 `request.validation_failed` with the errors map; a value that could never have been stored is a validation failure, not an unknown domain.
+- Problem plumbing: `ErrorCode` gains `unknown_domain` (404) with its `ProblemRenderer` detail; `UnknownDomainException` renders through the task-09 `HasErrorCode` seam. The exception joined the architecture preset's commented ignore list like every prior context exception.
+- Contract: the path merged into `docs/openapi/openapi.yaml` (loose string parameter schema, per the established pattern, so error-path exercisers stay request-valid; hostname validity is enforced by the API) with the new `UnknownDomainProblem` component; two new exercisers in `DocumentedResponseCoverageTest` for the 404 and 422. The 204 documents no content, so it has no coverage key, same as the domain DELETE; the feature test conformance-asserts it.
+
+Test evidence:
+
+- `tests/Feature/Tenancy/DomainVerificationTest.php` (9 tests: 204 for a registered domain, case-insensitive 204, 404 `unknown_domain` problem, 422 for a missing parameter, a 4-case malformed dataset covering embedded space, trailing root dot, port suffix, and scheme prefix, plus a no-auth/no-context/no-transaction-residue check) written first; all 9 failed (404, route missing). The ErrorCode registry unit test was updated next and failed (dataset referencing the missing enum case); the two contract exercisers plus the route-spec drift check failed before implementation. All green after: feature 9 passed (53 assertions).
+- Full `composer test`: 345 passed, 1303 assertions, all six suites. Pint clean; Larastan clean (0 errors).
+- `composer types:generate` regenerated `packages/api-client/src/generated` (new `DomainVerificationData`, `ErrorCode` gains `unknown_domain`); committed with the code; `pnpm --filter api-client typecheck` clean.
+
+Deviations and decisions:
+
+- The inside loop is thin by construction and mostly reuses proven parts: normalization and the resolver posture were unit- and isolation-tested in task-11 (`ResolveDomainTest`, `DomainResolverIsolationTest`), and the hostname invariant in task-07's 13-case dataset. The new unit-level failing test was the ErrorCode registry; the endpoint's own behavior is proven at the feature and contract level, matching how tasks 09 through 11 treated their error plumbing.
+- The plan's Data-object list does not name a request object for this endpoint; `DomainVerificationData` was added because the master plan's contract step requires laravel-data request objects as the source of truth. There is no response Data object because the success response is 204 with no body.
+- A domain parameter carrying a port or scheme is rejected as 422 rather than normalized and matched: Caddy's ask passes the bare SNI hostname, and accepting decorated forms would make the verification surface looser than the registration surface.
+- The structured audit-seam feature test from Slice 7's second half is task-13; nothing here executes under `nodia_platform`, so this endpoint adds no audit obligation.
 
 ### Review rounds
 
