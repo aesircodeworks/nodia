@@ -11,7 +11,7 @@
 
 `composer test` runs six Pest suites: Feature, Unit, Contract, Architecture, Isolation, and Concurrency. Run one with `php artisan test --testsuite=Isolation`.
 
-Feature, Unit, and Contract run on the in-memory SQLite default from `phpunit.xml`. Isolation and Concurrency only prove anything against real PostgreSQL (row-level security, genuine lock contention), so they refuse to run on SQLite and instead connect to a dedicated test database, never the dev `nodia_api` database.
+Feature, Unit, and Contract run on the in-memory SQLite default from `phpunit.xml`. Isolation and Concurrency only prove anything against real PostgreSQL (row-level security, genuine lock contention), so they refuse to run on SQLite and instead connect to a dedicated test database, never the dev `nodia_api` database. Unit tests of PostgreSQL-bound mechanics (the tenant transaction wrapper's `SET LOCAL`s) opt into the same test database through `Tests\Support\PostgresTestDatabase`.
 
 Locally, `make up` is the only setup: the compose stack's init script (`infra/compose/postgres/create-test-database.sh`) creates the `nodia_test` database on first cluster initialization, and the suites default to it (host `127.0.0.1`, port `5432`, user `nodia`, password `nodia`, database `nodia_test`). PostgreSQL only runs init scripts against an empty data volume, so a stack created before the script existed needs either `make fresh` (drops all volumes) or a one-off:
 
