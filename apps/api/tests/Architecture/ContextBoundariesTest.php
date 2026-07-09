@@ -20,3 +20,12 @@ foreach ($contexts as $context) {
         ->toOnlyBeUsedIn("App\\{$context}")
         ->ignoring("Database\\Factories\\{$context}");
 }
+
+// The Http layer (controllers, middleware, route wiring) is each context's
+// delivery surface; other contexts integrate through Actions and events,
+// never by importing another context's Http classes.
+foreach ($contexts as $context) {
+    arch("only the {$context} context uses its own Http layer")
+        ->expect("App\\{$context}\\Http")
+        ->toOnlyBeUsedIn("App\\{$context}");
+}

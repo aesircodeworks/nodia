@@ -7,6 +7,8 @@ use App\Tenancy\Exceptions\DefaultLocaleNotSupportedException;
 use App\Tenancy\Exceptions\InvalidDomainNameException;
 use App\Tenancy\Exceptions\InvalidGatewayConfigurationException;
 use App\Tenancy\Exceptions\TenantDomainIsPrimaryException;
+use App\Tenancy\Http\Middleware\RenderedErrorRollback;
+use App\Tenancy\TenancyServiceProvider;
 
 arch()->preset()->php();
 arch()->preset()->security();
@@ -18,7 +20,8 @@ arch()->preset()->security();
 // directory, not in App\Exceptions where the preset expects Throwables.
 // Eloquent models live in each bounded context's Models directory
 // (system-design 8, ContextBoundariesTest), not in App\Models where the
-// preset expects them.
+// preset expects them, and each context ships its own service provider at
+// the context root (system-design 3.2), not in App\Providers.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     CurrencyMismatchException::class,
@@ -27,5 +30,7 @@ arch()->preset()->laravel()->ignoring([
     InvalidDomainNameException::class,
     InvalidGatewayConfigurationException::class,
     TenantDomainIsPrimaryException::class,
+    RenderedErrorRollback::class,
+    TenancyServiceProvider::class,
     'App\Tenancy\Models',
 ]);
