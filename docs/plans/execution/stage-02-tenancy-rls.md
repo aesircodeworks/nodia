@@ -14,7 +14,7 @@ Verified starting state: Stage 1 is done (commit 61d886b marks it done; problem 
 ### Task checklist
 
 - [x] task-01: RLS roles migration and reusable RLS migration helper (plan task 1, slice 1 implementation)
-- [ ] task-02: Tenant context holder and SET LOCAL transaction wrapper in Support (plan task 2, slice 1)
+- [x] task-02: Tenant context holder and SET LOCAL transaction wrapper in Support (plan task 2, slice 1)
 - [ ] task-03: Default test connection to PostgreSQL for all suites (plan task 3)
 - [ ] task-04: `tenants` migration, sentinel platform tenant, model, factory, isolation tests (plan task 4, slice 2)
 - [ ] task-05: `tenant_domains` migration, two-tenant isolation fixture, isolation tests (plan task 5, slice 3)
@@ -52,6 +52,29 @@ Deviations:
 
 - None in substance. One note: no test suite executes the migration's `up()` yet (no suite runs migrations against PostgreSQL until task-03 flips the default connection); its SQL is exercised by the isolation suite through the shared `Rls` methods, and the migration file itself was verified manually as described above. Tasks 03 and 04 put it on the automated path.
 - The master plan status table was already flipped to "In progress" during run setup, so this task's plan-task-1 status edit was a no-op.
+
+### task-02: Tenant context holder and SET LOCAL transaction wrapper
+
+- Timestamp: Thu Jul 9 14:49:08 -03 2026
+- Commits: `cf86d1b` (feat(support): add tenant context holder and SET LOCAL transaction wrapper)
+
+What landed:
+
+- `apps/api/app/Support/Tenancy/TenantTransaction.php`: the system-design 4.1 request transaction wrapper. `asTenant($uuid, $callback)` and `asPlatform($callback)` open a `DB::transaction`, execute `SET LOCAL ROLE` (`nodia_app` or `nodia_platform`) and set `app.tenant_id` via bindable `set_config(..., true)` (the sentinel platform tenant id for the platform posture), run the callback, and let both settings die with the transaction. Non-UUID tenant ids raise `InvalidTenantIdException` before any SQL executes. Nested tenant transactions raise `LogicException` before any SQL, because `SET LOCAL` survives savepoint release and an inner posture would bleed into the remainder of the outer transaction.
+- `apps/api/app/Support/Tenancy/TenantContext.php`: request-scoped holder (`hasTenant()`, `tenantId()` throwing when inactive, `isPlatform()`), registered `scoped()` in `AppServiceProvider` so Octane resets it between requests; the wrapper clears it in a `finally` before the transaction ends, so neither commit nor rollback leaves container state behind.
+- `apps/api/config/tenancy.php`: the fixed sentinel platform tenant id (`00000000-0000-7000-8000-000000000000`, UUIDv7-shaped, zero timestamp) published as `config('tenancy.platform_tenant_id')`, deliberately not env-configurable so runtime context can never desynchronize from the sentinel row the task-04 migration will insert.
+- Test infrastructure: the pgsql-pointing closure in `tests/Pest.php` was extracted to `Tests\Support\PostgresTestDatabase::use()` so the new unit tests (which prove `SET LOCAL` mechanics against real PostgreSQL) share one source with the Isolation and Concurrency suites; README Testing section notes the pattern. `InvalidTenantIdException` joined the architecture preset's ignore list next to `CurrencyMismatchException` (guard exceptions live with the code they protect, not `App\Exceptions`).
+
+Test evidence:
+
+- `tests/Unit/Tenancy/TenantContextTest.php` (7 tests) and `tests/Unit/Tenancy/TenantTransactionTest.php` (10 tests including datasets) written first; all 17 failed (12 errors, 5 failures: classes and config key missing), then went green after implementation.
+- Coverage matches the plan's Slice 1 unit bullets: transaction opened (level 1 inside, 0 after), both `SET LOCAL`s observed via `current_user` and `current_setting('app.tenant_id', true)`, tenant id exposed through the request-scoped container (including scoped reset via `forgetScopedInstances`), no connection or container state after commit or rollback, non-UUID rejected before any SQL (empty query log, transaction level 0, datasets covering empty string and an injection-shaped value).
+- Full `composer test`: 132 passed, 468 assertions, all six suites. Pint clean; Larastan clean (0 errors). `composer types:generate` ran with no output changes (no Data classes in this task).
+
+Deviations:
+
+- One architecture test failed mid-task (Laravel preset expects Throwables in `App\Exceptions`); resolved by extending the existing, commented ignore list in `tests/Architecture/PresetTest.php`, the same treatment `CurrencyMismatchException` already had. Not a plan deviation, recorded for review visibility.
+- The wrapper rejects nested tenant transactions outright. The plan does not specify nesting semantics; rejection is the conservative choice because `SET LOCAL` survives savepoint release, and it can be relaxed later if a real nesting need appears (none is expected: middleware wraps the whole request in task-11).
 
 ### Review rounds
 
