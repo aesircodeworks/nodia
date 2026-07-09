@@ -22,7 +22,7 @@ Verified starting state: Stage 1 is done (commit 61d886b marks it done; problem 
 - [x] task-07: `RegisterDomain`, `MakeDomainPrimary`, `RemoveDomain` Actions, Data objects, `DomainVerified` event class (plan task 7)
 - [x] task-08: `TenancyServiceProvider` with the three route groups and the placeholder platform auth alias (plan task 8)
 - [x] task-09: Tenant create, read, update endpoints with feature, contract, and isolation tests, OpenAPI, regenerated TypeScript (plan task 9, slice 4)
-- [ ] task-10: Domain endpoints with feature, contract, and concurrency tests, OpenAPI, regenerated TypeScript (plan task 10, slice 5)
+- [x] task-10: Domain endpoints with feature, contract, and concurrency tests, OpenAPI, regenerated TypeScript (plan task 10, slice 5)
 - [ ] task-11: Tenant resolution middleware for both populations, resolution matrix, Octane no-leak test (plan task 11, slice 6; blocked on the domain-resolution open question)
 - [ ] task-12: Domain verification endpoint plus contract (plan task 12, slice 7 first half)
 - [ ] task-13: Platform-role audit log seam and its tests (plan task 13, slice 7 second half)
@@ -249,6 +249,36 @@ Deviations and decisions:
 - The 422 response is one OpenAPI response object covering both `request.validation_failed` and `default_locale_not_supported` (RFC 9457 problems distinguished by `code`, statuses shared), expressed as `allOf` Problem plus a `oneOf`, keeping the strictness gate satisfied.
 - Both 422 codes on POST and PATCH, 400 on list, and 404 on item routes are rendered through the new `HasErrorCode` seam, which later Tenancy tasks (409s in task-10, resolution errors in task-11) can reuse without touching `ProblemRenderer` again; the vendor `InvalidQuery` mapping is the one exception, by necessity.
 - The running dev API container was not rebuilt to probe the new routes over curl (its image predates this stage); end-to-end behavior is exercised through the HTTP kernel in the Feature and Isolation suites against real PostgreSQL.
+
+### task-10: domain endpoints with feature, contract, and concurrency tests
+
+- Timestamp: Thu Jul 9 16:29:13 -03 2026
+- Commits: `44eb12d` (feat(tenancy): add tenant domain endpoints with concurrency-proven conflict handling)
+
+What landed:
+
+- `apps/api/app/Tenancy/Http/Controllers/TenantDomainController.php` plus routes in `platform.php`: `POST /v1/tenants/{tenant}/domains` (201 `TenantDomainData` via `RegisterDomain`), `GET /v1/tenants/{tenant}/domains` (paginator envelope sorted by domain, no query-builder parameters since the plan defines none), and the top-level item routes per the one-level nesting rule: `PATCH /v1/tenant-domains/{tenant_domain}` (promote via `MakeDomainPrimary`) and `DELETE /v1/tenant-domains/{tenant_domain}` (204 via `RemoveDomain`). All item routes carry `whereUuid`, so malformed ids are route misses (404 `request.not_found`) while well-formed unknown ids render the resource-specific 404.
+- Problem plumbing: `ErrorCode` gains `tenant_domain_not_found` (404), `domain_already_registered` (409), and `tenant_domain_is_primary` (409); new `TenantDomainNotFoundException` and `DomainAlreadyRegisteredException`, and `TenantDomainIsPrimaryException` now implements `HasErrorCode`, all rendered through the task-09 `HasErrorCode` seam without touching `ProblemRenderer`'s flow (only its detail map grew).
+- Conflict handling is the database, never read-then-write: `RegisterDomain` catches `UniqueConstraintViolationException` and translates by constraint name (`tenant_domains_domain_unique` to `domain_already_registered`, `tenant_domains_primary_per_tenant_idx` to `tenant_domain_is_primary`, anything else rethrown). `MakeDomainPrimary` maps the double-promotion race loser (partial-index violation after its demote scan missed a concurrently committed primary) to `tenant_domain_is_primary`.
+- Request validation: `RegisterTenantDomainData::rules()` mirrors the hostname invariant through the extracted `RegisterDomain::isValidHostname()` (single source; the Action still throws `InvalidDomainNameException` for non-HTTP callers), so malformed hostnames render 422 `request.validation_failed` with the errors map. `UpdateTenantDomainData::rules()` accepts only `is_primary: true` (`accepted`).
+- Contract: the four paths merged into `docs/openapi/openapi.yaml` with `TenantDomain`, `TenantDomainRegisterRequest`, `TenantDomainUpdateRequest` (`is_primary` enum [true]), `TenantDomainPage`, `TenantDomainNotFoundProblem`, `TenantDomainConflictProblem` (409 with both codes), and `TenantDomainIsPrimaryProblem`; eleven new exercisers in `DocumentedResponseCoverageTest` (whose afterEach now clears `tenant_domains` before tenants for the FK). The 204 documents no content, so it has no coverage key; the feature test conformance-asserts it.
+- `apps/api/tests/Feature/Tenancy/TenantDomainEndpointsTest.php` (22 tests): happy paths, both 409s, all 404s, lowercase normalization visible on the wire from mixed-case input (`Tickets.ACME.Com` in, `tickets.acme.com` out, and duplicate detection across case), malformed-hostname 422 dataset, promote-demote semantics, replay no-op, empty-PATCH no-op, demotion rejection.
+- `apps/api/tests/Concurrency/TenantDomainContentionTest.php` (2 tests): the races run through the real HTTP kernel inside forked workers (new `ParallelRunner::runEach(callable ...$tasks)` keeps the barrier and per-child connection discipline while letting contenders differ; the child inherits the booted app and its kernel opens a fresh connection after the parent purge). Parallel registration of one domain for two tenants deterministically yields exactly one 201 and one 409 `domain_already_registered` with exactly one row; parallel make-primary for two domains of one tenant asserts statuses in {200, 409}, at least one 200, and exactly one `is_primary` row belonging to a contender.
+- `apps/api/tests/Isolation/PlatformDomainEndpointsIsolationTest.php` (3 tests): the two-tenant fixture over HTTP with injected `X-Tenant-Id` and `Host` headers cannot coerce the domain endpoints out of the platform posture (list, register, and delete against tenant B while injecting tenant A's headers). The cross-tenant admin-listing assertion is deferred to task-11 as the plan directs; the file's docblock records the pickup point.
+
+Test evidence:
+
+- Feature tests written first: 21 of 22 failed (404s and wrong codes; the malformed-uuid case passed by construction), then all 22 green (142 assertions). ErrorCode registry test updated first and failing (dataset references to missing enum cases), RegisterDomain conflict-mapping unit tests written first and failing; all green after implementation.
+- Concurrency: 2 tests, 8 assertions, run five consecutive times, stable. Isolation suite: 38 passed (88 assertions). Contract suite: 28 passed (153 assertions, up from 17 tests).
+- Full `composer test`: 292 passed, 1118 assertions, all six suites. One intermediate failure was the architecture preset needing the two new exceptions in the commented ignore list, same treatment as every prior context exception. Pint clean; Larastan clean (0 errors).
+- `composer types:generate` regenerated `ErrorCode` (three new codes) in `packages/api-client/src/generated`; committed with the code; `pnpm --filter api-client typecheck` clean.
+
+Deviations and decisions:
+
+- Registering a second primary domain (`is_primary: true` when the tenant already has one) surfaces as 409 `tenant_domain_is_primary`, the decision task-07 left open. The plan's POST error table lists only `domain_already_registered`; reusing the planned code (detail: promote through PATCH instead) keeps the registry at exactly the planned codes rather than minting a new one. The POST 409 is documented as one response object with both codes, mirroring the task-09 two-code 422 treatment.
+- `PATCH /v1/tenant-domains/{tenant_domain}` accepts only `is_primary: true`: the plan defines no demotion Action, and a bare demotion would leave the tenant with no primary domain, so demotion happens by promoting another domain and `is_primary: false` is rejected as 422 `request.validation_failed`. An empty PATCH body is a no-op returning the current state.
+- The make-primary race loser maps to 409 `tenant_domain_is_primary` (`forConcurrentPromotion`) instead of leaking a 500. That 409 is not documented in OpenAPI because it cannot be produced deterministically by a single-threaded exerciser and the coverage gate requires one per documented response; the concurrency test asserts the code whenever the interleaving produces the conflict.
+- TDD ordering note: the concurrency tests were written after the endpoint slice went green rather than before implementation, because the invariant guards themselves (unique and partial unique indexes, conditional UPDATEs) landed test-first in tasks 05 and 07; this task's races prove the shipped guards through the full HTTP path. The registration race is deterministic; the make-primary assertion tolerates the serialized interleaving, with the row-count invariant asserted unconditionally.
 
 ### Review rounds
 
