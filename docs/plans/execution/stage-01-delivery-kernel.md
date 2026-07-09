@@ -53,3 +53,33 @@ Assessed against the current committed state plus the uncommitted working tree. 
 7. Concurrency harness detects lost updates: not met. No harness or probes exist.
 8. TTL test under frozen clock and architecture time rule: not met. No clock abstraction, no TTL test, no time rule in the Architecture suite.
 9. Larastan, Pint, Architecture suite green over the stage's merged work: not applicable as stated, since no stage work was committed; the working tree as left by the blocked task fails 10 Feature tests, so the gates are not green over it either.
+
+## Run: 2026-07-09, second run
+
+- Stage: 1, Delivery Kernel and Test Harness
+- Date: Thu Jul 9 12:05:08 -03 2026
+- Branch: `feat/api-implementation`
+- Base commit: `47817a7` (docs: close stage 1 execution journal)
+
+### task-01: RFC 9457 problem handler and error code registry (slice 1)
+
+Completed. Commit `88dfcb17637d2da88062cfcacdc30826ae1ac0f7`, `feat(support): rfc 9457 problem handler and error code registry`.
+
+What landed:
+
+- The previous run's uncommitted red-phase work was inspected against the stage plan and adopted rather than discarded: the feature matrix (`tests/Feature/Problems/ProblemResponsesTest.php`, all 8 cases: 404, 405, 422 with errors map, 401, 403, 429 with Retry-After, 500 leak check, plus the no-Accept-header case in `ApiErrorRenderingTest`), the unit-style tests (`ErrorCodeTest`, `ProblemDataTest`), the `App\Support\Problems` classes (`ErrorCode`, `ProblemData`, `ValidationProblemData`, `ProblemRenderer`), the extended health tests asserting `type /problems/health-degraded`, and the `Problem`/`ValidationProblem`/`HealthDegradedProblem` component schemas in `docs/openapi/openapi.yaml`. Verified red first: the Feature suite failed 10 of 40 before wiring.
+- New in this run: the renderer wired in `bootstrap/app.php` via `$exceptions->render(...)` alongside the retained `shouldRenderJsonWhen`; `App\Http\Data\HealthDegradedProblemData` extending `ProblemData` with `checks` and `checked_at`; `HealthController` refactored off its hand-built array onto that Data object (the 503 body keeps its frozen shape, `correlation_id` stays header-only via `Optional`); generated TypeScript (`ErrorCode`, `ProblemData`, `ValidationProblemData`, `HealthDegradedProblemData`) committed under `packages/api-client/src/generated`.
+- Probe routes (`/v1/__probe/*`) are registered inside the tests only; nothing was added to `routes/api.php` or the OpenAPI paths.
+
+Test evidence:
+
+- `composer test`: 53 passed, 0 failed (Feature 40, Architecture 11, Isolation 1 stub, Concurrency 1 stub), 289 assertions.
+- `composer lint` (Pint): passed. `composer analyse` (Larastan): 0 errors.
+- `composer types:generate`: regenerated cleanly; `pnpm --filter api-client exec tsc --noEmit` exit 0; `docs/openapi/openapi.yaml` parses as valid YAML with the 503 response referencing `HealthDegradedProblem` (which now `allOf`s the shared `Problem`).
+
+Deviations and decisions:
+
+- `tests/Architecture/PresetTest.php` now ignores `App\Support\Problems\ErrorCode` on the Laravel preset only: the preset requires enums under `App\Enums`, while the stage plan mandates the registry live in `App\Support\Problems`. The ignore is scoped to that single class; the php and security presets still cover it.
+- `ProblemRenderer` mirrors the correlation header name in a private `CORRELATION_HEADER` constant instead of referencing `App\Http\Middleware\CorrelationId::HEADER`, because the Laravel arch preset forbids using middleware classes outside the Http layer.
+- The health 503 `detail` text changed from "One or more dependencies are unavailable." to "One or more backing services failed their health check.", matching the OpenAPI example; `detail` is explicitly not stable contract per api-conventions, and no test pinned the old text.
+- Unit-style tests for `ErrorCode` and the Data wire shapes sit under `tests/Feature/Problems/` for now; the stage plan's slice 3 sanctions this interim placement and moves them when the Unit suite is declared (task-03).
