@@ -4,21 +4,27 @@ This plan sequences the implementation of the complete Nodia API described in [s
 
 Relationship to [roadmap.md](roadmap.md): the roadmap sequences the product MVP as vertically demoable slices including frontends. This plan sequences the full API surface. Where both are active, the roadmap decides what ships to users; this plan decides how the API grows underneath it. The convention docs ([api](api-conventions.md), [data](data-conventions.md), [event](event-conventions.md)) remain binding for every stage.
 
+MVP thinning: when the roadmap is driving a product release, thin this plan rather than reorder it. Stage 5 collapses to 5a (general admission only), Stage 6 ships counters and holds without reserved seating, Stage 7 ships without promo codes, and Stage 10 waits for real load pressure. Reserved seating, promo codes, and multi-language depth beyond the default locale are within-stage capabilities the roadmap pulls in when it needs them, so the two documents never prescribe conflicting build orders.
+
 ## Status
 
 Update this table when a stage starts and when it merges.
 
 | Stage | Status |
 | --- | --- |
-| Stage 1: Delivery Kernel and Test Harness | Not started |
+| Stage 1: Delivery Kernel and Test Harness | In progress (Phase 0 landed part of it) |
 | Stage 2: Tenancy and RLS Regime | Not started |
 | Stage 3: Identity, AuthN, AuthZ | Not started |
 | Stage 4: Transactional Outbox | Not started |
-| Stage 5: Event Catalog | Not started |
+| Stage 5a: Catalog Core and Publish | Not started |
+| Stage 5b: Seating Templates | Not started |
+| Stage 5c: Search and Media | Not started |
 | Stage 6: Inventory and Reserved Seating | Not started |
 | Stage 7: Orders, Tickets, Promo Codes | Not started |
-| Stage 8: Payments, Ledger, Payouts | Not started |
-| Stage 8b: Real Gateway Adapter (gated on ADR) | Blocked on ADR |
+| Stage 8a: Payments and Webhooks | Not started |
+| Stage 8b: Ledger and Refunds | Not started |
+| Stage 8c: Payouts and Sub-merchant Onboarding | Not started |
+| Stage 8d: Real Gateway Adapter (gated on ADR) | Blocked on ADR |
 | Stage 9: Check-in and Offline Reconciliation | Not started |
 | Stage 10: High-Demand On-Sales | Not started |
 | Stage 11: Reporting and Exports | Not started |
@@ -54,25 +60,27 @@ Definition of done for any slice: feature and unit tests written first and passi
 
 ## Contract pipeline (code-first)
 
-laravel-data objects remain the single source of truth. The OpenAPI document grows per feature (api-conventions: no endpoint ships without its contract merged) and CI enforces two gates: the existing TypeScript drift check, and a new conformance check that validates recorded test responses against the spec. The concrete conformance tooling is selected at the start of Stage 1 against current library documentation, not assumed in advance; the mechanism (every feature test doubles as a contract assertion) is fixed regardless of tool.
+laravel-data objects remain the single source of truth. The OpenAPI document grows per feature (api-conventions: no endpoint ships without its contract merged) and CI enforces two gates: the existing TypeScript drift check, and a new conformance check that validates recorded test responses against the spec. The concrete conformance tooling is selected at the start of Stage 1 against current library documentation, not assumed in advance; the mechanism (every feature test doubles as a contract assertion) is fixed regardless of tool. The gate must catch shape drift between the Data classes and the hand-maintained YAML, not only mismatches in recorded responses; if the selected tool cannot, generate the OpenAPI document from the Data classes instead of hand-editing it.
 
 ## Payment gateway posture
 
-The launch gateway ADR is still open. The plan is gateway-agnostic: Stage 8 builds the `GatewayAdapter` interface, webhook ingestion, payment state machine, ledger, and payout mirroring entirely against an in-repo `FakeGateway` adapter with deterministic scenario controls (approve synchronously, confirm asynchronously after a delay, decline, expire, emit duplicate webhooks). This is strictly better for TDD: every failure mode is scriptable. The real adapter is Stage 8b, a bounded swap-in behind the same interface once the ADR lands. The ADR should still be recorded as early as possible, because sub-merchant onboarding and KYC shape vary by gateway and external sandbox approval has lead time.
+The launch gateway ADR is still open. The plan is gateway-agnostic: Stage 8 builds the `GatewayAdapter` interface, webhook ingestion, payment state machine, ledger, and payout mirroring entirely against an in-repo `FakeGateway` adapter with deterministic scenario controls (approve synchronously, confirm asynchronously after a delay, decline, expire, emit duplicate webhooks). This is strictly better for TDD: every failure mode is scriptable. The real adapter is Stage 8d, a bounded swap-in behind the same interface once the ADR lands. The ADR should still be recorded as early as possible, because sub-merchant onboarding and KYC shape vary by gateway and external sandbox approval has lead time.
 
 ## Stages
 
-Stages are ordered by dependency. Within a stage, work proceeds endpoint by endpoint, each through the full TDD loop. Stages 9, 10, and 11 are independent of each other and can be reordered or parallelized once Stage 8 merges.
+Stages are ordered by dependency. Within a stage, work proceeds endpoint by endpoint, each through the full TDD loop. Stages 5 and 8 are split into separately trackable slices so the status table never hides partial completion behind a single cell. Stages 9, 10, and 11 are independent of each other and can be reordered or parallelized once the Stage 8 slices merge.
 
 ### Stage 1: Delivery Kernel and Test Harness
 
 Goal: the machinery every later test depends on exists and is proven on the health endpoint.
 
-- RFC 9457 problem+json exception handler with a stable error `code` registry and validation `errors` map.
-- Correlation ID middleware: accept, generate, echo, propagate to logs.
+Phase 0 already landed part of this stage: the correlation ID middleware with feature tests, `/v1/health` with its OpenAPI fragment, the Architecture suite, stub harnesses for the Isolation and Concurrency suites, and CI jobs that run both suites against real PostgreSQL. Problem documents exist only on the health degradation path; every other error still renders plain JSON. Remaining work:
+
+- RFC 9457 problem+json exception handler with a stable error `code` registry and validation `errors` map, replacing the plain JSON rendering.
 - `Support/Money`: minor-unit value object, Eloquent casts, laravel-data transformers for the `{amount, currency}` wire shape.
+- Unit suite declared in `phpunit.xml`, and a local test matrix matching CI: `phpunit.xml` currently defaults to SQLite in memory, so Isolation and Concurrency must run against real PostgreSQL locally the way the CI jobs already do.
 - Contract suite wiring: OpenAPI conformance assertions integrated into the feature test base, drift gate in CI.
-- Isolation harness (two-tenant fixture, RLS-enabled test connection) and concurrency harness (parallel process runner against real PostgreSQL), both proven with deliberately failing probes.
+- Real Isolation and Concurrency harnesses replacing the stubs: two-tenant fixture with an RLS-enabled test connection, parallel process runner against real PostgreSQL, both proven with deliberately failing probes.
 - Time control for everything TTL-based (holds, tokens, payment windows).
 
 Exit: `/v1/health` is contract-checked end to end; all six suites run in `composer test` and CI; a fake failing isolation test demonstrably blocks the build.
@@ -101,6 +109,8 @@ Goal: both identity populations can authenticate, and every subsequent endpoint 
 - `customers`: tenant-scoped, guest creation with nullable password, claim-by-email-verification flow, per-tenant email uniqueness.
 - Activity log (activitylog migrations adjusted for UUIDs and non-null `tenant_id`), recording staff logins, tenant-scoped mutations, and cross-tenant platform role use.
 
+Identity domain events (`UserInvited`, `UserRoleChanged`, `CustomerRegistered` per system-design 9.3) are recorded only once the Stage 4 outbox lands: this stage ships the Actions without producers, and Stage 4 attaches the recording calls as part of its scope.
+
 Tests first: an authorization matrix (capability by role by tenant) as a data-driven feature test; token lifecycle tests including refresh reuse detection; MFA enforcement denial paths.
 
 Exit: staff and customers authenticate independently; capability checks and audit trail cover every mutating endpoint that exists so far.
@@ -113,22 +123,33 @@ Goal: the event backbone, both recording and delivery, so every context after th
 - `outbox_deliveries`, after-commit dispatcher, Horizon queues, per-subscriber tracking, reconciliation sweeper with the stability-window semantics from system-design 9.1.
 - Ordered-consumption helper for consumers that need per-aggregate sequence order (the ledger projection will be its first real user).
 - Replay primitive: rescan in sequence order to rebuild a projection.
+- Attach the identity event producers deferred from Stage 3: `UserInvited`, `UserRoleChanged`, and `CustomerRegistered` recorded by their Actions.
 
 Tests first: recording rolls back with the producing transaction; duplicate delivery to an idempotent test subscriber causes exactly one effect; the sweeper re-enqueues a delivery stranded between commit and enqueue; ordered consumption defers an event whose predecessor is unprocessed.
 
-Exit: at-least-once delivery with idempotent consumption proven end to end against Redis and real PostgreSQL.
+Exit: at-least-once delivery with idempotent consumption proven end to end against Redis and real PostgreSQL; the identity Actions record their events.
 
 ### Stage 5: Event Catalog
 
-Goal: the full catalog surface, including everything the roadmap deferred.
+Goal: the full catalog surface, including everything the roadmap deferred, in three separately trackable slices.
 
-- `venues`, `seat_maps`, `seats` (reusable venue templates); `events` with translatable name and description, timezone as data, draft/published/canceled lifecycle, virtual events with the exactly-one-of-venue-or-URL invariant, per-event async-payment policy; `ticket_types` with money columns and sales windows.
-- Publish and cancel Actions recording catalog events to the outbox; media through medialibrary; PostgreSQL full-text search behind an interface that permits the Meilisearch upgrade path.
+#### Stage 5a: Catalog Core and Publish
+
+- `venues`; `events` with translatable name and description, timezone as data, draft/published/canceled lifecycle, virtual events with the exactly-one-of-venue-or-URL invariant, per-event async-payment policy; `ticket_types` with money columns and sales windows, currency constrained to the tenant's settlement currency (system-design 12).
+- Publish and cancel Actions recording catalog events to the outbox.
 - Admin list endpoints via query-builder with explicit allowlists; storefront read endpoints resolved from host, locale-negotiated, drafts invisible.
+
+#### Stage 5b: Seating Templates
+
+- `seat_maps` and `seats` as reusable venue templates; materialization onto events stays in Stage 6.
+
+#### Stage 5c: Search and Media
+
+- Media through medialibrary; PostgreSQL full-text search behind an interface that permits the Meilisearch upgrade path.
 
 Tests first: publish state machine transitions, draft invisibility on every storefront path, locale negotiation and fallback, search relevance smoke tests.
 
-Exit: a tenant can build and publish GA, seated, and virtual events entirely over the API, and a host-resolved storefront consumer sees exactly the published surface.
+Exit: a tenant can build and publish GA and virtual events entirely over the API, and a host-resolved storefront consumer sees exactly the published surface. Seated events can be built from templates here, but publishing them is only complete once Stage 6 adds `event_seats` materialization to the publish Action.
 
 ### Stage 6: Inventory and Reserved Seating
 
@@ -146,10 +167,11 @@ Exit: no simulation configuration can oversell a ticket type or double-book a se
 
 Goal: the order state machine and everything issued from it.
 
-- Order creation from a valid hold, committing held inventory to sold in the same transaction; the full state machine from system-design 7.1 with every transition a conditional UPDATE.
+- Order creation from a valid hold (the order starts `pending`, inventory stays held); the full state machine from system-design 7.1 with every transition a conditional UPDATE. Held inventory commits to sold in the same transaction as the transition to `paid`; on `expired`, `failed`, or `canceled` the hold is released.
 - Tickets issued only on the transition to paid; signed, rotatable QR payloads (HMAC over ticket, event, rotation counter) generated on render, never stored as static secrets.
 - Promo codes: validity windows, discount math in minor units, atomic `usage_count` increments under `usage_limit`.
 - Buyer-facing order status endpoints (the API surface the roadmap's checkout screens would consume).
+- Staff-facing order list and detail, customer lookup, and a resend-tickets action, capability-gated and audited (the tenant operations surface from roadmap Phase 6; resend activates once the Stage 8a email consumer exists).
 
 Tests first: state machine table tests covering every legal and illegal transition; promo limit concurrency simulation; QR signature verification including rotation-counter invalidation.
 
@@ -157,18 +179,28 @@ Exit: a hold becomes an order, a paid order issues tickets exactly once, and no 
 
 ### Stage 8: Payments, Ledger, Payouts
 
-Goal: the complete money path against the fake gateway.
+Goal: the complete money path against the fake gateway, in three separately trackable slices.
+
+#### Stage 8a: Payments and Webhooks
 
 - `GatewayAdapter` interface with capability flags; `FakeGateway` with scriptable scenarios and a webhook emitter for tests.
 - Payment initiation with `Idempotency-Key` semantics (replays return the original result); raw webhook persistence unique by gateway event ID, signature verification, always-2xx-after-persist ingestion; normalized confirmation and failure driving the order state machine; payment expiry and hold extension per async method windows; per-event slow-method policy including the automatic low-inventory cutoff.
 - Reconciliation poller for `awaiting_payment` orders; circuit breaker per gateway removing an open gateway's methods from the offer.
-- Refunds, full and partial, with the per-tenant commission policy flag; append-only `ledger_entries` projected from outbox events by the ordered consumer (gross, gateway fee, platform commission, tenant net); sub-merchant onboarding abstraction and `payouts` mirroring, both exercised through the fake gateway.
+- Paid-path side effects: `SendOrderConfirmation` through Resend (ADR 010) and `GenerateTicketPdf`, both outbox consumers of `TicketIssued`, idempotent by event ID, tested with mail fakes and PDF assertions.
 
-Tests first: duplicate webhook delivery produces one state change, one ticket batch, one ledger set; idempotency replay; a ledger balance invariant asserted after every simulated purchase and refund sequence, including replay-rebuilt ledgers matching the original.
+#### Stage 8b: Ledger and Refunds
+
+- Refunds, full and partial, with the per-tenant commission policy flag; append-only `ledger_entries` projected from outbox events by the ordered consumer (gross, gateway fee, platform commission, tenant net).
+
+#### Stage 8c: Payouts and Sub-merchant Onboarding
+
+- Sub-merchant onboarding abstraction and `payouts` mirroring, both exercised through the fake gateway.
+
+Tests first: duplicate webhook delivery produces one state change, one ticket batch, one email, one PDF, one ledger set; idempotency replay; a ledger balance invariant asserted after every simulated purchase and refund sequence, including replay-rebuilt ledgers matching the original.
 
 Exit: the full purchase, confirmation, refund, and payout loop runs over HTTP against the fake gateway with balanced books under every scripted failure mode.
 
-### Stage 8b: Real Gateway Adapter
+### Stage 8d: Real Gateway Adapter
 
 Gated on the launch gateway ADR. Implement the chosen gateway behind the existing interface: adapter, webhook signature scheme, sub-merchant KYC flow, sandbox contract tests against recorded fixtures. No other stage depends on this, but launch does; record the ADR early so sandbox access is secured before this stage is reached.
 
@@ -215,7 +247,8 @@ Exit: the smoke suite is a CI gate; no endpoint lacks isolation and contract cov
 
 ## Open decisions
 
-- Launch gateway ADR: does not block any stage except 8b, but should be recorded as early as possible for sandbox and KYC lead time.
+- Launch gateway ADR: does not block any stage except 8d, but should be recorded as early as possible for sandbox and KYC lead time.
+- Categories: named in the system design's Event Catalog context description but absent from its data model; deferred until the design defines them.
 - OpenAPI conformance tooling: selected at Stage 1 start against current documentation.
 - Meilisearch adoption: deferred behind the search interface until PostgreSQL full-text search demonstrably falls short.
 - Orchestrator: unchanged from ADR 017, out of scope for this plan.
