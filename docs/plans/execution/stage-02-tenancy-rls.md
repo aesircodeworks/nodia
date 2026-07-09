@@ -25,7 +25,7 @@ Verified starting state: Stage 1 is done (commit 61d886b marks it done; problem 
 - [x] task-10: Domain endpoints with feature, contract, and concurrency tests, OpenAPI, regenerated TypeScript (plan task 10, slice 5)
 - [x] task-11: Tenant resolution middleware for both populations, resolution matrix, Octane no-leak test (plan task 11, slice 6; domain-resolution open question settled, see the task entry and Decisions)
 - [x] task-12: Domain verification endpoint plus contract (plan task 12, slice 7 first half)
-- [ ] task-13: Platform-role audit log seam and its tests (plan task 13, slice 7 second half)
+- [x] task-13: Platform-role audit log seam and its tests (plan task 13, slice 7 second half)
 - [ ] task-14: Stage close: status table to done, `DomainVerified` trigger decision recorded (plan task 14)
 
 ### task-01: RLS roles migration and reusable RLS migration helper
@@ -341,6 +341,30 @@ Deviations and decisions:
 - A domain parameter carrying a port or scheme is rejected as 422 rather than normalized and matched: Caddy's ask passes the bare SNI hostname, and accepting decorated forms would make the verification surface looser than the registration surface.
 - The structured audit-seam feature test from Slice 7's second half is task-13; nothing here executes under `nodia_platform`, so this endpoint adds no audit obligation.
 
+### task-13: platform-role audit log seam
+
+- Timestamp: Thu Jul 9 17:05:36 -03 2026
+- Commits: `d7f8d33` (feat(tenancy): emit a structured audit entry for every platform-role request)
+
+What landed:
+
+- `apps/api/app/Support/Tenancy/PlatformRoleAudit.php`: the audit seam of system-design 4.3, next to the `TenantTransaction` posture machinery it audits. `recordRequest($request)` emits one `Log::info('audit.platform_role.request', ...)` entry whose context carries `role` (`nodia_platform`), `correlation_id` (from the `X-Correlation-Id` header the global middleware guarantees; the header constant is mirrored, not imported, same as `ProblemRenderer`, because the architecture preset forbids Support referencing middleware), `method`, and `path`. `MESSAGE` is a public const so tests and the Stage 3 upgrade share the stable entry name.
+- `apps/api/app/Tenancy/Http/Middleware/PlatformRequestTransaction.php`: the single call site. The seam fires as the first statement inside `TenantTransaction::asPlatform`, so the entry is recorded exactly when the role is assumed: every request through the `tenancy.platform` group is audited (future platform routes inherit it via the group), an auth-denied request (placeholder 401 outside testing/local) emits nothing because the role was never assumed, and a failing handler still emits because a log line survives the rolled-back transaction.
+- `apps/api/tests/Support/LogCapture.php`: the log fake. timacdonald/log-fake is uninstallable here (v2.4.2, the only Laravel 13 release, pins symfony/var-dumper ^7 while Laravel 13 locks v8.1.1; verified against Packagist including dev-master), so the fake swaps the default channel's handlers for a Monolog `TestHandler` already in the tree, and tests assert against captured `LogRecord`s.
+- `apps/api/tests/Feature/Tenancy/PlatformRoleAuditTest.php` (16 tests, written first, all failing): a 10-case dataset covering every platform CRUD route including error paths (422 validation, 404s) asserting exactly one entry with the supplied correlation id, method, and path; the generated-correlation-id case (no header sent, entry matches the response's echoed header); the rollback case (throwing platform handler, 500, entry still emitted); the negative matrix proving no entry for the 401 auth denial, the domain verification endpoint (`nodia_resolver`), storefront host resolution, and admin header resolution (`nodia_app`), pinning the task-11 decision into the audit contract.
+- `apps/api/tests/Unit/Tenancy/PlatformRoleAuditTest.php` (3 tests, written first, all failing): single info entry under the stable message name, full context shape with query string stripped from the path, and null correlation id when the header is absent (documents that the seam relies on the global middleware).
+
+Test evidence:
+
+- Feature tests first failed as expected (16 errors, `Class "App\Support\Tenancy\PlatformRoleAudit" not found`), then the unit tests likewise (3 errors); all 19 green after implementation (63 assertions). One intermediate failure was the test, not the implementation: the shared log context set by the CorrelationId middleware merges its `correlation_id` key ahead of the entry's own, so the feature assertion compares pairs (`toEqual`), not key order.
+- Full `composer test`: 364 passed, 1366 assertions, all six suites. Pint clean; Larastan clean (0 errors). `composer types:generate` produced no changes (no Data classes in this task), so nothing regenerated to commit.
+
+Deviations and decisions:
+
+- The plan's "asserted via the log fake" is implemented with a Monolog `TestHandler` swap (`Tests\Support\LogCapture`) instead of the timacdonald/log-fake package, which cannot be installed against Laravel 13's Symfony 8 lock (its constraint pins var-dumper ^7). No production code is affected; the fake captures the same default channel the seam writes to.
+- The contract step ships no OpenAPI change, same as tasks 08 and 11 and for the same reason: this task adds no endpoint and no Data object; the audit entry is a log contract, not a wire contract.
+- Audit scope confirmed against the task-11 decision: only the platform CRUD group executes under `nodia_platform`, so it is the only audited surface; the verification endpoint and storefront resolution run under `nodia_resolver`/`nodia_app` and the feature tests assert they emit nothing.
+
 ### Review rounds
 
 (none yet)
@@ -348,3 +372,4 @@ Deviations and decisions:
 ### Decisions and deviations
 
 - task-11: anonymous domain resolution (storefront Host lookup, Caddy verification) runs under the dedicated narrow `nodia_resolver` role, not `nodia_platform`; system-design 4.3 stands unamended and no audit sampling is involved. Full rationale in the task-11 entry.
+- task-13, the audit seam and its Stage 3 upgrade point: `App\Support\Tenancy\PlatformRoleAudit::recordRequest` is the seam; its single call site is `PlatformRequestTransaction`, which invokes it as the first statement inside `TenantTransaction::asPlatform`. Stage 3 upgrades the body of `recordRequest` to spatie/laravel-activitylog records without touching the call site. Three facts the upgrade inherits: (1) the seam runs inside the platform transaction with `app.tenant_id` set to the sentinel, so an activity-log insert passes that table's RLS `WITH CHECK` with the sentinel `tenant_id` (data-conventions: platform-scope rows use the sentinel, never NULL) and commits atomically with the request's writes; (2) a rolled-back request currently keeps its audit evidence because a log line is not transactional, so Stage 3 must decide how an activity-log row survives the rollback (record again from the error path, or accept the structured log line as the failure-path record and write DB rows for committed requests only); (3) the entry name `audit.platform_role.request` and its context keys (`role`, `correlation_id`, `method`, `path`) are pinned by feature and unit tests, and the actor (authenticated platform staff) is the datum Stage 3 adds once Passport exists. The feature test's negative matrix also pins that only the `tenancy.platform` group is audited; if Stage 3 moves any surface onto `nodia_platform`, those tests force the audit decision at the same time.
