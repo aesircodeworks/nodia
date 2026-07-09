@@ -83,3 +83,26 @@ Deviations and decisions:
 - `ProblemRenderer` mirrors the correlation header name in a private `CORRELATION_HEADER` constant instead of referencing `App\Http\Middleware\CorrelationId::HEADER`, because the Laravel arch preset forbids using middleware classes outside the Http layer.
 - The health 503 `detail` text changed from "One or more dependencies are unavailable." to "One or more backing services failed their health check.", matching the OpenAPI example; `detail` is explicitly not stable contract per api-conventions, and no test pinned the old text.
 - Unit-style tests for `ErrorCode` and the Data wire shapes sit under `tests/Feature/Problems/` for now; the stage plan's slice 3 sanctions this interim placement and moves them when the Unit suite is declared (task-03).
+
+### task-02: Money value object, Eloquent cast, wire transformers (slice 2)
+
+Completed Thu Jul 9 12:17:19 -03 2026. Commit `4577492`, `feat(support): money value object, eloquent cast, wire transformers`.
+
+What landed:
+
+- Tests first, verified red (28 tests, 0 passing, every case failing on the missing classes) before any implementation: `tests/Feature/Money/MoneyTest.php` (construction, invalid-code rejection incl. lowercase and wrong lengths, equality, comparison, cross-currency add/subtract/compare throwing `CurrencyMismatchException`, integer-only multiplication, negative amounts, float rejection under `declare(strict_types=1)`), `MoneyCastTest.php` (in-test probe tables with `price_amount` bigint and `currency` char(3): round trip, null amount reads null, null write clears the amount column, currency-mismatched write refused, same-currency overwrite allowed, non-Money write refused, bare `amount` column via cast parameter per the data-conventions exemption), and `MoneyDataTest.php` (a Data object with a Money property serializes to `{"amount": 12500, "currency": "BRL"}`, hydrates back, and round-trips).
+- `App\Support\Money`: `Money` (immutable, private constructor behind `Money::of(int, string)`, `[A-Z]{3}` currency validation, add/subtract/multiplyBy/equals/greaterThan/lessThan/isNegative), `CurrencyMismatchException`, `MoneyCast` (Eloquent `CastsAttributes` on a virtual attribute, amount column defaulting to `{attribute}_amount` with an explicit-column parameter for the bare-`amount` tables), `MoneyDataCast` and `MoneyDataTransformer` (laravel-data), registered in the newly published `config/data.php`.
+- TypeScript: `Money` carries `#[TypeScript]` plus `#[LiteralTypeScriptType(['amount' => 'number', 'currency' => 'string'])]`, so the generated type is exactly `{amount: number; currency: string}` (the reflection path emitted `readonly` modifiers from the PHP readonly properties, which the stage plan's pinned shape does not include). Regenerated output committed under `packages/api-client/src/generated`; `pnpm --filter api-client exec tsc --noEmit` exit 0.
+- Shared `Money` component schema added to `docs/openapi/openapi.yaml` (integer minor units, `^[A-Z]{3}$` currency, `additionalProperties: false`); file confirmed parseable YAML.
+
+Test evidence:
+
+- `composer test`: 81 passed, 0 failed, 334 assertions (Feature 68 incl. the 28 new Money tests, Architecture 11, Isolation 1 stub, Concurrency 1 stub).
+- `composer lint` (Pint): passed. `composer analyse` (Larastan): 0 errors. `composer types:generate`: clean, second run produced no further diff.
+
+Deviations and decisions:
+
+- `tests/Architecture/PresetTest.php` now also ignores `CurrencyMismatchException` on the Laravel preset, which requires Throwables under `App\Exceptions` while ADR 018 places the Money guard exception with its value object in `App\Support\Money`. Same precedent and scoping as the existing `ErrorCode` ignore; the php and security presets still cover it.
+- The security preset forbids `assert()`, so `MoneyDataTransformer` guards its input with an explicit `InvalidArgumentException` instead.
+- Publishing `config/data.php` pulled in the vendor stub, which Pint then reformatted (import ordering, indentation); the only functional edits are the two Money registrations under `casts` and `transformers`.
+- Money unit tests sit under `tests/Feature/Money/` for now, same interim placement as task-01's, moving when task-03 declares the Unit suite.
