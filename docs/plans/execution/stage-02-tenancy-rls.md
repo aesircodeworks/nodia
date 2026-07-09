@@ -26,7 +26,7 @@ Verified starting state: Stage 1 is done (commit 61d886b marks it done; problem 
 - [x] task-11: Tenant resolution middleware for both populations, resolution matrix, Octane no-leak test (plan task 11, slice 6; domain-resolution open question settled, see the task entry and Decisions)
 - [x] task-12: Domain verification endpoint plus contract (plan task 12, slice 7 first half)
 - [x] task-13: Platform-role audit log seam and its tests (plan task 13, slice 7 second half)
-- [ ] task-14: Stage close: status table to done, `DomainVerified` trigger decision recorded (plan task 14)
+- [x] task-14: Stage close: status table to done, `DomainVerified` trigger decision recorded (plan task 14)
 
 ### task-01: RLS roles migration and reusable RLS migration helper
 
@@ -365,6 +365,54 @@ Deviations and decisions:
 - The contract step ships no OpenAPI change, same as tasks 08 and 11 and for the same reason: this task adds no endpoint and no Data object; the audit entry is a log contract, not a wire contract.
 - Audit scope confirmed against the task-11 decision: only the platform CRUD group executes under `nodia_platform`, so it is the only audited surface; the verification endpoint and storefront resolution run under `nodia_resolver`/`nodia_app` and the feature tests assert they emit nothing.
 
+### task-14: stage close
+
+- Timestamp: Thu Jul 9 17:09:37 -03 2026
+- Commits: see the run summary below (single docs commit closing the stage)
+
+Decision, `DomainVerified` trigger semantics (the open question this stage owns; the plan requires it settled before this task closes): `DomainVerified` means registered. Stage 4 attaches the producer to `RegisterDomain`, recording the event in the same transaction as the row insert. No `verified_at` column and no DNS-challenge flow ship, because nothing in the design demands them. Rationale:
+
+- system-design 16.3 gates TLS issuance on existence in `tenant_domains` alone, and the ERD (8.1) carries no verification state; in the current design, registration through the authenticated, audited platform-admin surface is the platform's act of verification, so the registered row is the verified fact the event announces.
+- "First ask-endpoint confirmation" is rejected: the verification endpoint runs under the read-only `nodia_resolver` posture (task-11 decision), which can write nothing, so recording an event there would need write privileges on the TLS-handshake hot path plus dedup state (a `verified_at` column in all but name) to make "first" meaningful, and it would make a domain event's timing depend on external infrastructure behavior rather than a domain action.
+- A `verified_at` column with a DNS-challenge flow is rejected for now: domain registration is platform-staff-only this stage, so there is no untrusted claim to challenge. If a later stage adds tenant self-service domain registration, verification becomes a real flow and gets its own new event type per event-conventions (evolution is additive; a new event, never a redefinition of this one).
+
+The decision is recorded in the `DomainVerified` class docblock (the artifact Stage 4 reads when attaching the producer) and in Decisions below. `RegisterDomain` is the settled Action; no code change was needed beyond the docblock, because the Action already creates exactly the row whose existence the event reports.
+
+What landed:
+
+- `apps/api/app/Tenancy/Events/DomainVerified.php`: docblock updated from "open question" to the settled registration trigger and Stage 4 attachment point.
+- `docs/api-implementation-plan.md`: Stage 2 flipped from "In progress" to "Done" in the status table.
+- This journal entry and the run summary below. `docs/roadmap.md` untouched: no roadmap Phase 1 work was consumed by this stage (the domain verification endpoint is Phase 7's consumer, delivered early by design).
+
+Exit criteria verification (all 12 checks from the stage plan, each mapped to its passing evidence in this run's final state):
+
+1. Cross-tenant SELECT invisibility and zero-row UPDATE/DELETE on `tenants` and `tenant_domains`: `tests/Isolation/TenantsIsolationTest.php`, `tests/Isolation/TenantDomainsIsolationTest.php` (tasks 04, 05).
+2. Foreign `tenant_id` INSERT/UPDATE fails `WITH CHECK`: `tests/Isolation/TenantDomainsIsolationTest.php` and `tests/Isolation/RlsBootstrapTest.php` (tasks 01, 05).
+3. Raw SQL bypassing Eloquent scoping still isolated: the raw `DB::select` case in `tests/Isolation/TenantDomainsIsolationTest.php` (task 05).
+4. Deny by default with no tenant context: `tests/Isolation/RlsBootstrapTest.php` (including the empty-string leftover case, task 01); malformed tenant id rejected before SQL: `tests/Unit/Tenancy/TenantTransactionTest.php` (task 02).
+5. `nodia_platform` reads all tenants' rows; `nodia_app` cannot insert, update, or delete `tenants` rows including its own: `tests/Isolation/TenantsIsolationTest.php` (task 04).
+6. Both tenancy migrations carry their RLS policies in the creating file: statically true of `2026_07_09_000001_create_tenants_table.php` and `2026_07_09_000002_create_tenant_domains_table.php`; the Isolation suite executes the real migrations via `MigratedDatabase` (task 04), so removing a policy fails the suite.
+7. Resolution matrix with problem documents per stable code: `tests/Feature/Tenancy/TenantResolutionTest.php` (task 11; the plan's six rows plus three added cases).
+8. Sequential same-worker requests never leak context: the Octane simulation in `tests/Feature/Tenancy/TenantResolutionTest.php` (task 11).
+9. Every platform-role execution path emits the structured audit entry with correlation ID: `tests/Feature/Tenancy/PlatformRoleAuditTest.php` 10-route dataset plus the negative matrix, and `tests/Unit/Tenancy/PlatformRoleAuditTest.php` (task 13).
+10. Duplicate-domain and double-make-primary races resolve to one winner via constraints and conditional UPDATEs: `tests/Concurrency/TenantDomainContentionTest.php` (task 10).
+11. Every endpoint in `docs/openapi/openapi.yaml` with passing conformance: Contract suite, 28 passed including `DocumentedResponseCoverageTest` exercisers (tasks 09, 10, 12); generated TypeScript committed with zero drift (verified again at close, below).
+12. Architecture suite green including the Models and Http confinement rules; Larastan and Pint clean; all six suites in `composer test` on PostgreSQL: verified at close, below.
+
+Test evidence (stage close, after the docblock and status edits):
+
+- `composer test`: 364 passed, 1366 assertions, all six suites (Feature, Unit, Contract, Architecture, Isolation, Concurrency) against PostgreSQL.
+- Pint clean; Larastan clean (0 errors).
+- `composer types:generate`: ran to completion with `packages/api-client` unchanged in git afterwards, so zero drift.
+
+Deviations:
+
+- None. The decision demanded no `verified_at` column or verification flow, so none shipped, exactly as the plan's open-question bullet anticipated ("this stage ships no verification state unless the decision demands it").
+
+### Run summary
+
+Stage 2 is done. Fourteen tasks landed the RLS bootstrap (roles, policy helper, resolver role), the `SET LOCAL` tenant transaction wrapper, PostgreSQL as the only test database, the `tenants` and `tenant_domains` tables with their policies in the creating migrations, the sentinel platform tenant, the full platform tenant and domain CRUD surface with OpenAPI contracts and generated TypeScript, tenant resolution for both populations, the Caddy domain-verification endpoint, the platform-role audit seam, and the two stage-owned decisions (anonymous domain resolution via `nodia_resolver`; `DomainVerified` fires on registration). Final state: 364 tests passing with 1366 assertions across all six suites, Pint and Larastan clean, zero contract drift. Handoffs: Stage 3 rebinds `auth.platform`, validates `X-Tenant-Id` membership, and upgrades the audit seam to activity-log records (see the task-13 decision entry); Stage 4 attaches the `TenantCreated` and `DomainVerified` producers to `CreateTenant` and `RegisterDomain` and adds the Tenancy rows to the system-design 9.3 registry.
+
 ### Review rounds
 
 (none yet)
@@ -372,4 +420,5 @@ Deviations and decisions:
 ### Decisions and deviations
 
 - task-11: anonymous domain resolution (storefront Host lookup, Caddy verification) runs under the dedicated narrow `nodia_resolver` role, not `nodia_platform`; system-design 4.3 stands unamended and no audit sampling is involved. Full rationale in the task-11 entry.
+- task-14: `DomainVerified` fires on registration; Stage 4 attaches the producer to `RegisterDomain` in the same transaction as the insert. No `verified_at` column, no challenge flow; tenant self-service registration, if it ever arrives, introduces a new event type for its verification flow. Full rationale in the task-14 entry.
 - task-13, the audit seam and its Stage 3 upgrade point: `App\Support\Tenancy\PlatformRoleAudit::recordRequest` is the seam; its single call site is `PlatformRequestTransaction`, which invokes it as the first statement inside `TenantTransaction::asPlatform`. Stage 3 upgrades the body of `recordRequest` to spatie/laravel-activitylog records without touching the call site. Three facts the upgrade inherits: (1) the seam runs inside the platform transaction with `app.tenant_id` set to the sentinel, so an activity-log insert passes that table's RLS `WITH CHECK` with the sentinel `tenant_id` (data-conventions: platform-scope rows use the sentinel, never NULL) and commits atomically with the request's writes; (2) a rolled-back request currently keeps its audit evidence because a log line is not transactional, so Stage 3 must decide how an activity-log row survives the rollback (record again from the error path, or accept the structured log line as the failure-path record and write DB rows for committed requests only); (3) the entry name `audit.platform_role.request` and its context keys (`role`, `correlation_id`, `method`, `path`) are pinned by feature and unit tests, and the actor (authenticated platform staff) is the datum Stage 3 adds once Passport exists. The feature test's negative matrix also pins that only the `tenancy.platform` group is audited; if Stage 3 moves any surface onto `nodia_platform`, those tests force the audit decision at the same time.

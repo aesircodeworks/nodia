@@ -7,9 +7,13 @@ use App\Tenancy\Models\TenantDomain;
 /**
  * Envelope per event-conventions: the envelope tenant_id is the owning
  * tenant, the aggregate is the tenant domain. No producer records this
- * event yet; the outbox arrives in Stage 4, and the precise trigger
- * (registration versus first verification) is an open question the
- * stage-02 plan settles before the producer attaches.
+ * event yet; the outbox arrives in Stage 4 and attaches the producer to
+ * RegisterDomain, in the same transaction as the row insert. The settled
+ * trigger is registration: system-design 16.3 gates TLS issuance on
+ * existence alone, and registration through the audited platform-admin
+ * surface is the platform's act of verification. There is no verified_at
+ * column and no challenge flow; if a later stage adds tenant self-service
+ * domain registration, its verification flow gets a new event type.
  */
 final readonly class DomainVerified
 {
