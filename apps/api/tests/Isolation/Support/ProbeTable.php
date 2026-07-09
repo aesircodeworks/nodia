@@ -4,18 +4,28 @@ declare(strict_types=1);
 
 namespace Tests\Isolation\Support;
 
+use App\Support\Database\Rls;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Throwaway probe tables for the isolation harness, created per test and
  * never via migrations. createWithPolicy() is the reference implementation
  * of the RLS pattern every tenant-scoped migration must follow
- * (data-conventions Tenancy; ADR 003). FORCE matters because the test
- * connection owns the table and PostgreSQL exempts owners from RLS
+ * (data-conventions Tenancy; ADR 003); createWithHelperPolicies() applies
+ * the same pattern through the production Rls helper migrations invoke,
+ * so the helper's SQL is what the suite proves. FORCE matters because the
+ * test connection owns the table and PostgreSQL exempts owners from RLS
  * otherwise.
  */
 final class ProbeTable
 {
+    public static function createWithHelperPolicies(string $table, bool $platformWrite = false): void
+    {
+        self::createWithoutPolicy($table);
+
+        Rls::applyTenantPolicies($table, platformWrite: $platformWrite);
+    }
+
     public static function createWithPolicy(string $table): void
     {
         self::createWithoutPolicy($table);

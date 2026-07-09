@@ -21,3 +21,24 @@ function actingAsTenant(string $tenantId, Closure $fn): mixed
         return $fn();
     });
 }
+
+/**
+ * Same transaction-scoped pattern, additionally assuming one of the RLS
+ * group roles first, mirroring the production request posture (SET LOCAL
+ * ROLE plus SET LOCAL app.tenant_id, both dying with the transaction).
+ * SET ROLE cannot take query parameters, so $role is interpolated; callers
+ * pass the Rls class constants, never request input. A null $tenantId
+ * leaves the setting untouched to probe deny-by-default.
+ */
+function actingAsRole(string $role, ?string $tenantId, Closure $fn): mixed
+{
+    return DB::transaction(function () use ($role, $tenantId, $fn): mixed {
+        DB::statement("set local role {$role}");
+
+        if ($tenantId !== null) {
+            DB::selectOne('select set_config(?, ?, true)', ['app.tenant_id', $tenantId]);
+        }
+
+        return $fn();
+    });
+}
