@@ -415,7 +415,23 @@ Stage 2 is done. Fourteen tasks landed the RLS bootstrap (roles, policy helper, 
 
 ### Review rounds
 
-(none yet)
+#### Review round 1
+
+Recorded at Thu Jul 9 17:20:13 -03 2026.
+
+Findings received: one, blocking. The Codex reviewer never reviewed the stage diff: both invocation attempts (with and without `--effort high`) failed with a 400 before any review work, because the configured default model `gpt-5.6-terra` requires a newer Codex CLI than the installed one. The finding was explicitly about the environment, not the Nodia repository.
+
+What was done:
+
+- Confirmed the root cause: `~/.codex/config.toml` pins `model = "gpt-5.6-terra"` and the Homebrew-installed Codex CLI was 0.143.0, which the API rejects for that model ("requires a newer version of Codex"). The failed job log in the codex plugin state directory shows the identical 400 on turn start.
+- Upgraded the CLI: `brew update` (local metadata still listed 0.143.0 as latest) then `brew upgrade codex`, landing 0.144.0.
+- Terminated the stale codex app-server broker for this project (spawned before the upgrade, so it still held the 0.143.0 binary in memory); the broker's SIGTERM handler shut it and its app-server child down cleanly and removed the pid file, so the next companion invocation spawns a fresh broker on the new binary.
+- Verified end to end: a direct `codex exec` turn and a minimal codex-companion task in this repository both completed on the default model with no 400.
+- The finding's alternative remedy (forcing a different model via `--model`) was rejected as a workaround; the upgrade fixes the actual mismatch and keeps the user's configured model.
+
+No repository code was implicated, so no source or test changes were made. The gates were re-run anyway per the round protocol: Pint passed, Larastan passed with 0 errors, Pest passed 364 tests with 1366 assertions across all six suites.
+
+Consequence: the stage 2 diff has still received no substantive Codex review; the environment is now capable of running one, so the next review round performs it.
 
 ### Decisions and deviations
 
