@@ -16,7 +16,7 @@ Verified starting state: Stage 1 is done (commit 61d886b marks it done; problem 
 - [x] task-01: RLS roles migration and reusable RLS migration helper (plan task 1, slice 1 implementation)
 - [x] task-02: Tenant context holder and SET LOCAL transaction wrapper in Support (plan task 2, slice 1)
 - [x] task-03: Default test connection to PostgreSQL for all suites (plan task 3)
-- [ ] task-04: `tenants` migration, sentinel platform tenant, model, factory, isolation tests (plan task 4, slice 2)
+- [x] task-04: `tenants` migration, sentinel platform tenant, model, factory, isolation tests (plan task 4, slice 2)
 - [ ] task-05: `tenant_domains` migration, two-tenant isolation fixture, isolation tests (plan task 5, slice 3)
 - [ ] task-06: `CreateTenant`, `UpdateBranding`, `ConfigureGateways` Actions, Data objects, `TenantCreated` event class (plan task 6)
 - [ ] task-07: `RegisterDomain`, `MakeDomainPrimary`, `RemoveDomain` Actions, Data objects, `DomainVerified` event class (plan task 7)
@@ -97,6 +97,32 @@ Test evidence:
 Deviations:
 
 - None. Note for task-04: flipping the connection does not by itself put the roles migration on the automated path, because no suite runs migrations yet (nothing uses RefreshDatabase); task-04's migrations plus its isolation tests complete that, as task-01's journal note anticipated.
+
+### task-04: tenants migration, sentinel platform tenant, model, factory, isolation tests
+
+- Timestamp: Thu Jul 9 15:06:17 -03 2026
+- Commits: `6de572b` (feat(tenancy): add tenants table with sentinel platform tenant and custom RLS policies)
+
+What landed:
+
+- `apps/api/database/migrations/2026_07_09_000001_create_tenants_table.php`: the aggregate root per the plan's Data model table (uuid PK, `name`, jsonb `branding_settings` defaulting `{}`, `default_locale`, jsonb `supported_locales`, jsonb `enabled_gateways` defaulting `[]`, nullable jsonb `payout_schedule`, timestamptz `created_at` and `updated_at`, both not null via explicit `timestampTz` columns because Laravel's `timestampsTz()` produces nullable columns). The root has no `tenant_id`, so the migration does not use the `Rls` helper: it issues its own grants and creates the custom `tenants_tenant_isolation` policy declared `FOR SELECT` comparing `id` to `NULLIF(current_setting('app.tenant_id', true), '')::uuid`, plus `tenants_platform_read` and `tenants_platform_write`. The sentinel platform tenant (`config('tenancy.platform_tenant_id')`, name "Nodia Platform", locale `en`) is inserted inside a transaction under `SET LOCAL ROLE nodia_platform` then `RESET ROLE`, because under `FORCE` RLS the owner's bare INSERT matches no policy. `down()` drops the table.
+- `apps/api/app/Tenancy/Models/Tenant.php`: first context-owned model, `HasUuids` (UUIDv7 in Laravel 13) plus array casts for the four jsonb columns, attribute-based `#[Fillable]`. `apps/api/database/factories/Tenancy/Models/TenantFactory.php` follows the default factory-name resolution path for context models; it declares `protected $model` explicitly because Laravel's reverse guess (factory to model) only knows `App\Models`.
+- `apps/api/tests/Support/MigratedDatabase.php` plus `tests/Pest.php`: the Isolation suite now runs `migrate:fresh` once per process, before `RlsHonestConnection` downgrades the connection, so the real migration files (policies, grants, sentinel insert) execute as the provisioning user and are what the suite proves. This closes the gap noted in the task-01 and task-03 journal entries: the roles and tenants migrations are now on the automated path.
+- `apps/api/tests/Isolation/TenantsIsolationTest.php` (written first; all 6 errored before implementation): tenant A's context sees exactly A's row with the sentinel and tenant B invisible; `nodia_app` INSERT rejected by RLS even when the new row's `id` matches the current tenant setting (proving `FOR SELECT` grants no INSERT even where USING would match); UPDATE and DELETE affect zero rows against A's own row; `nodia_platform` reads all rows including the migrated sentinel and can INSERT (seeding runs through the factory under the platform role, exercising model, factory, and the platform write policy together).
+- `apps/api/tests/Unit/Tenancy/TenantTest.php` (written first, errored): UUIDv7 primary keys via `newUniqueId`, array casts on the jsonb columns, factory default state keeps `default_locale` inside `supported_locales`.
+- Architecture expectations updated for the modular monolith: `PresetTest` ignores `App\Tenancy\Models` (the Laravel preset expects models in `App\Models`; contexts own their models per system-design 8), and `ContextBoundariesTest` ignores `Database\Factories\{Context}` per context, because factories exist to construct their own context's models and live outside `App` by framework convention. The boundary between contexts is unchanged.
+
+Test evidence:
+
+- New tests first failed as expected: 6 isolation errors and 3 unit errors (`Class "App\Tenancy\Models\Tenant" not found`), then went green after implementation. Two intermediate failures during the loop were mine, not the implementation's: the factory-to-model default guess required the explicit `$model` property, and the isolation test initially used Eloquent's `whereKey` helpers on the base query builder.
+- Isolation suite: 25 passed, 52 assertions. Unit: 65 passed. Architecture: 13 passed.
+- Full `composer test`: 141 passed, 489 assertions, all six suites. Pint clean; Larastan clean (0 errors); `composer types:generate` produced no changes (no Data classes in this task; they arrive with task-06).
+- Migration exercised directly against `nodia_test` beyond the suite run: `migrate:rollback --step=1` then `migrate` both clean; sentinel row present with the fixed UUID; `pg_policy` confirms `tenants_tenant_isolation` has `polcmd = 'r'` (FOR SELECT).
+
+Deviations:
+
+- None in scope. Slice 2 in the plan also names `CreateTenant` and the `TenantCreated` event class; the task breakdown assigns those to task 6, and this run's task list follows the task breakdown, so they are deliberately not here.
+- `created_at`/`updated_at` use two explicit `timestampTz` columns instead of `timestampsTz()` to honor the plan's not-null requirement; behavior is otherwise identical.
 
 ### Review rounds
 
