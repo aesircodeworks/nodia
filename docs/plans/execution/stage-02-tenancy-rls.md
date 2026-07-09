@@ -486,3 +486,30 @@ Run at Thu Jul 9 17:12:58 -03 2026, all green on the first pass with no fixes re
 - `composer test` (Pest): 364 passed, 0 failed, 1366 assertions across all six suites.
 - `composer types:generate`: ran clean; `git status --short packages/api-client/src/generated` empty, no contract drift.
 - `pnpm typecheck` (run because `packages/api-client/src/generated/index.ts` changed on this branch): all five TS workspaces passed.
+
+### Close-out
+
+Recorded at Thu Jul 9 17:37:20 -03 2026. Final status: Done.
+
+- Tasks: 14 of 14 completed, none blocked. Task commits `ca493be`, `cf86d1b`, `da500e5`, `6de572b`, `da5fc4c`, `888452e`, `505faa3`, `a5926d3`, `28c4e86`, `44eb12d`, `d0b24c3` plus `3a5dfcf`, `a2d864d`, `d7f8d33`, `4890103`.
+- Gate: all green on the first pass (entry above, Thu Jul 9 17:12:58 -03 2026): Pint passed, Larastan 0 errors, Pest 364 passed with 1366 assertions across all six suites on PostgreSQL, zero contract drift, all five TS workspaces typecheck clean. The gates were re-run and stayed green in review rounds 1 and 2.
+- Review rounds: three. Every finding across all three rounds targeted the Codex review environment, never the Nodia repository. Round 1 (blocking): Codex CLI 0.143.0 rejected the configured model with a 400; fixed by upgrading to 0.144.0 and restarting the stale broker. Round 2 (blocking): CLI 0.144.0's hosted code mode requires `codex-code-mode-host`, which the Homebrew cask does not ship; the fix is a persistent change outside this repository that the permission system denied, so remediation was documented and left to the user. Round 3 (minor, classified approved): same missing host binary. Consequence, recorded plainly: the stage 2 diff received no substantive external Codex review in any round; the code shipped under the stage's own TDD, gate, and exit-criteria discipline only. If a post-hoc review is wanted once the host binary is installed, it can run against this closed stage.
+- Unresolved or declined findings: none against the repository. The one open item is the environmental round 2/3 finding (install `codex-code-mode-host` per the two validated options in the round 2 entry), owned by the user, not by this stage.
+- Blockers: none.
+
+Exit criteria walk (the 12 checks from the stage plan, each verified against the working tree and the gate run at close-out time):
+
+1. Met. Cross-tenant SELECT invisibility and zero-row UPDATE/DELETE on `tenants` and `tenant_domains`: `tests/Isolation/TenantsIsolationTest.php` and `tests/Isolation/TenantDomainsIsolationTest.php`, green in the gate's Isolation suite.
+2. Met. Foreign `tenant_id` INSERT/UPDATE fails `WITH CHECK`: `tests/Isolation/RlsBootstrapTest.php` and `tests/Isolation/TenantDomainsIsolationTest.php`.
+3. Met. Raw SQL bypassing Eloquent scoping still isolated: the raw `DB::select` case in `tests/Isolation/TenantDomainsIsolationTest.php`.
+4. Met. Deny by default with no tenant context (including the empty-string leftover case): `tests/Isolation/RlsBootstrapTest.php`; malformed tenant id rejected before any SQL: `tests/Unit/Tenancy/TenantTransactionTest.php`.
+5. Met. `nodia_platform` reads all tenants' rows and `nodia_app` cannot insert, update, or delete `tenants` rows, its own included: `tests/Isolation/TenantsIsolationTest.php`.
+6. Met. Both tenancy migrations carry their RLS in the creating file, verified statically at close-out: `2026_07_09_000001_create_tenants_table.php` contains its custom policies inline and `2026_07_09_000002_create_tenant_domains_table.php` calls `Rls::applyTenantPolicies('tenant_domains', platformWrite: true)`; the Isolation suite executes the real migrations via `MigratedDatabase`, so a removed policy fails the suite.
+7. Met. Resolution matrix (platform subdomain, custom domain, unknown host 404 `unknown_host`, missing header 400 `missing_tenant_header`, malformed header 400 `invalid_tenant_header`, unknown tenant 403 `tenant_access_denied`, each a conformance-asserted problem document): `tests/Feature/Tenancy/TenantResolutionTest.php`.
+8. Met. Sequential same-worker requests never leak context: the Octane simulation in `tests/Feature/Tenancy/TenantResolutionTest.php`.
+9. Met. Every platform-role execution path emits the structured audit entry (`audit.platform_role.request`) with the correlation ID: the 10-route dataset plus negative matrix in `tests/Feature/Tenancy/PlatformRoleAuditTest.php` and `tests/Unit/Tenancy/PlatformRoleAuditTest.php`.
+10. Met. Duplicate-domain registration and double-make-primary races resolve to exactly one winner via the unique index, partial unique index, and conditional UPDATEs: `tests/Concurrency/TenantDomainContentionTest.php`, stable across five consecutive runs in task-10.
+11. Met. Every stage endpoint present in `docs/openapi/openapi.yaml`, verified at close-out: `/v1/tenants`, `/v1/tenants/{tenant}`, `/v1/tenants/{tenant}/domains`, `/v1/tenant-domains/{tenant_domain}`, `/v1/internal/domain-verification`; Contract suite 28 passed in the gate; `git status --short packages/api-client/src/generated` empty at close-out, zero drift.
+12. Met. Architecture suite green including the Models and Http confinement rules; Pint and Larastan clean; all six suites run in `composer test` against PostgreSQL (gate entry above).
+
+The master plan status table (`docs/api-implementation-plan.md`) marks Stage 2 "Done", set by task-14 commit `4890103` and confirmed accurate at close-out: every exit criterion is met, the gates are green, and the review ended with no unaddressed blocking or important findings against the repository. The absence of a substantive external review is recorded above as the honest caveat to that classification.
