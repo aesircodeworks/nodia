@@ -19,7 +19,7 @@ Verified starting state: Stage 1 is done (commit 61d886b marks it done; problem 
 - [x] task-04: `tenants` migration, sentinel platform tenant, model, factory, isolation tests (plan task 4, slice 2)
 - [x] task-05: `tenant_domains` migration, two-tenant isolation fixture, isolation tests (plan task 5, slice 3)
 - [x] task-06: `CreateTenant`, `UpdateBranding`, `ConfigureGateways` Actions, Data objects, `TenantCreated` event class (plan task 6)
-- [ ] task-07: `RegisterDomain`, `MakeDomainPrimary`, `RemoveDomain` Actions, Data objects, `DomainVerified` event class (plan task 7)
+- [x] task-07: `RegisterDomain`, `MakeDomainPrimary`, `RemoveDomain` Actions, Data objects, `DomainVerified` event class (plan task 7)
 - [ ] task-08: `TenancyServiceProvider` with the three route groups and the placeholder platform auth alias (plan task 8)
 - [ ] task-09: Tenant create, read, update endpoints with feature, contract, and isolation tests, OpenAPI, regenerated TypeScript (plan task 9, slice 4)
 - [ ] task-10: Domain endpoints with feature, contract, and concurrency tests, OpenAPI, regenerated TypeScript (plan task 10, slice 5)
@@ -171,6 +171,30 @@ Deviations:
 
 - None in scope. Notes for later tasks: `CreateTenant` does not itself validate `enabled_gateways` contents ("normalizes nothing else" per Slice 2); task-09's request validation covers create-time garbage, and `ConfigureGateways` owns the invariant for updates. `UpdateBranding` ignores `payout_schedule`; the plan assigns no Action to it, so task-09 must decide its PATCH routing (it stays opaque until Stage 8c either way). `TenantCreatedPayload` is exported to the generated TypeScript because the transformer exports every Data class under `app/`; harmless now, worth a directory-scoping decision if event payloads multiply.
 - No feature test, OpenAPI path, or endpoint ships here by design: the task breakdown assigns Slice 4's outer loop to task-09; this task is the unit portions of Slices 2 and 4.
+
+### task-07: domain Actions, Data objects, DomainVerified event class
+
+- Timestamp: Thu Jul 9 15:35:29 -03 2026
+- Commits: `505faa3` (feat(tenancy): add domain Actions, Data objects, and DomainVerified event class)
+
+What landed:
+
+- `apps/api/app/Tenancy/Actions/RegisterDomain.php`: lowercases the domain (`mb_strtolower`), validates it as a hostname via `filter_var(FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME)` plus an explicit trailing-dot rejection (filter_var accepts the FQDN root notation, but `example.com.` and `example.com` would be two rows resolving the same Host header), then creates the row with `is_primary` defaulting false. Malformed hostnames raise the new `InvalidDomainNameException`. Duplicate domains stay with the unique index; the 409 `domain_already_registered` mapping is task-10's.
+- `apps/api/app/Tenancy/Actions/MakeDomainPrimary.php`: demote-then-promote inside one `DB::transaction` (a savepoint inside the request transaction, so the pair is atomic there too). The promote step is the plan's conditional UPDATE (`whereKey($id)->where('is_primary', false)->update(['is_primary' => true])`) checked implicitly by writing nothing when zero rows match, so a replayed request is a no-op that does not even bump `updated_at`. The closing `refresh()` runs inside the transaction, so a target row that vanished mid-flight throws `ModelNotFoundException` and rolls the demotion back with the savepoint.
+- `apps/api/app/Tenancy/Actions/RemoveDomain.php`: conditional DELETE (`whereKey($id)->where('is_primary', false)->delete()`) checked by affected-row count; zero rows raises the new `TenantDomainIsPrimaryException`, the guard task-10 maps to 409 `tenant_domain_is_primary`. The conditional form means a domain promoted to primary between read and delete is refused, not removed.
+- `apps/api/app/Tenancy/Data/`: `TenantDomainData` (id, tenant_id, domain, is_primary, ISO 8601 UTC timestamps, `fromModel`), `RegisterTenantDomainData` (domain required, is_primary Optional), `UpdateTenantDomainData` (is_primary only, Optional for PATCH semantics). All exported to `packages/api-client/src/generated` by `composer types:generate` in the same commit.
+- `apps/api/app/Tenancy/Events/DomainVerified.php` and `DomainVerifiedPayload.php`: envelope tenant_id the owning tenant, aggregate_type `tenant_domain`, aggregate_id the domain id; payload tenant_domain_id, tenant_id, domain, snake_case. No producer, per the Stage 4 deferral; the class docblock records that the trigger semantics remain the stage's open question.
+- `TenantDomain` model gained the `@property` docblock (same Larastan treatment `Tenant` got in task-06); both new exceptions joined the architecture preset's commented ignore list.
+
+Test evidence:
+
+- `tests/Unit/Tenancy/RegisterDomainTest.php` (16 tests including the 13-case malformed-hostname dataset), `MakeDomainPrimaryTest.php` (4), `RemoveDomainTest.php` (2), `DomainVerifiedTest.php` (2) written first; all 24 failed as expected (22 errors, 2 failures: classes not found), then went green after implementation (24 passed, 59 assertions). The Action tests run against real PostgreSQL through `TenantTransaction::asPlatform` with `MigratedDatabase::ensure()`, matching the task-06 pattern.
+- The malformed-hostname dataset was calibrated against ground truth first (a `php -r` probe of `filter_var` behavior): PHP accepts a trailing root dot, which is why the Action rejects it explicitly; single-label hostnames and IP-shaped strings pass filter_var and are deliberately not rejected (the plan asks for malformed-hostname rejection only).
+- Full `composer test`: 191 passed, 628 assertions, all six suites. Pint clean; Larastan clean (0 errors). `composer types:generate` added DomainVerifiedPayload, RegisterTenantDomainData, TenantDomainData, UpdateTenantDomainData to the generated index.ts; committed with the code. `pnpm --filter api-client typecheck` clean.
+
+Deviations:
+
+- None in scope. Notes: the replay no-op is asserted through `updated_at` frozen to a past value surviving the replayed call, direct evidence the conditional UPDATE matched zero rows. The plan's make-primary concurrency bullets (double-promotion race) remain task-10's, where the endpoint lands. `RegisterDomain` honors `is_primary: true` at registration; if the tenant already has a primary, the partial unique index rejects it, and whether task-10 surfaces that as a distinct problem code is that task's decision (the plan's POST error table lists only `domain_already_registered`).
 
 ### Review rounds
 
