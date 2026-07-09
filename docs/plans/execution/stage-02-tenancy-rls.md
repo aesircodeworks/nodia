@@ -15,7 +15,7 @@ Verified starting state: Stage 1 is done (commit 61d886b marks it done; problem 
 
 - [x] task-01: RLS roles migration and reusable RLS migration helper (plan task 1, slice 1 implementation)
 - [x] task-02: Tenant context holder and SET LOCAL transaction wrapper in Support (plan task 2, slice 1)
-- [ ] task-03: Default test connection to PostgreSQL for all suites (plan task 3)
+- [x] task-03: Default test connection to PostgreSQL for all suites (plan task 3)
 - [ ] task-04: `tenants` migration, sentinel platform tenant, model, factory, isolation tests (plan task 4, slice 2)
 - [ ] task-05: `tenant_domains` migration, two-tenant isolation fixture, isolation tests (plan task 5, slice 3)
 - [ ] task-06: `CreateTenant`, `UpdateBranding`, `ConfigureGateways` Actions, Data objects, `TenantCreated` event class (plan task 6)
@@ -75,6 +75,28 @@ Deviations:
 
 - One architecture test failed mid-task (Laravel preset expects Throwables in `App\Exceptions`); resolved by extending the existing, commented ignore list in `tests/Architecture/PresetTest.php`, the same treatment `CurrencyMismatchException` already had. Not a plan deviation, recorded for review visibility.
 - The wrapper rejects nested tenant transactions outright. The plan does not specify nesting semantics; rejection is the conservative choice because `SET LOCAL` survives savepoint release, and it can be relaxed later if a real nesting need appears (none is expected: middleware wraps the whole request in task-11).
+
+### task-03: Default test connection to PostgreSQL for all suites
+
+- Timestamp: Thu Jul 9 14:55:37 -03 2026
+- Commits: `da500e5b52f089d84107bbc73e75afc1af28e96d` (ci: move the default test connection to PostgreSQL for all suites)
+
+What landed:
+
+- `apps/api/phpunit.xml`: `DB_CONNECTION` flipped from `sqlite` (`:memory:`) to `pgsql`, with `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` defaulting to the compose stack's dedicated `nodia_test` database (127.0.0.1:5432, nodia/nodia), the same values the CI jobs export. phpunit `env` entries do not force, so CI's exported `DB_*` still take precedence, as does any developer-exported override; no driver-conditional migration escape hatch exists, per the plan's explicit rejection.
+- `apps/api/README.md` Testing section rewritten for the new matrix: all six suites on real PostgreSQL, `make up` as the only local setup, overrides via exported `DB_*` rather than `NODIA_TEST_DB_*` in the normal path.
+- `tests/Pest.php` and `tests/Support/PostgresTestDatabase.php` comment blocks updated: the helper is now documented as a guard (a no-op when the default is already pgsql; it redirects Isolation, Concurrency, and the PostgreSQL-bound unit tests to the `NODIA_TEST_DB_*` connection only if the environment forces the default onto another driver). The helper and its call sites were kept, not removed, so a forced `DB_CONNECTION=sqlite` in someone's shell can never make the isolation proofs vacuous.
+
+Test evidence:
+
+- Baseline before the change: full `composer test` green on the sqlite default, 132 passed, 468 assertions.
+- After the change: full `composer test` green, same 132 passed, 468 assertions, all six suites. No Feature-suite failures from transaction semantics surfaced; the budgeted flakiness triage was not needed (no test uses RefreshDatabase yet, so no migration or transaction-wrapping behavior changed).
+- Driver verified against ground truth, not inferred: a throwaway Feature test asserting `DB::connection()->getDriverName() === 'pgsql'` and `current_database() === 'nodia_test'` passed and was then deleted.
+- Pint clean; Larastan clean (0 errors); `composer types:generate` produced no changes (no Data classes touched).
+
+Deviations:
+
+- None. Note for task-04: flipping the connection does not by itself put the roles migration on the automated path, because no suite runs migrations yet (nothing uses RefreshDatabase); task-04's migrations plus its isolation tests complete that, as task-01's journal note anticipated.
 
 ### Review rounds
 
