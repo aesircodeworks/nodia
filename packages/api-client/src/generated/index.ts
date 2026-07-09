@@ -64,7 +64,9 @@ export type ErrorCode =
   | 'invalid_tenant_header'
   | 'tenant_access_denied'
   | 'unknown_domain'
-  | 'invalid_credentials';
+  | 'invalid_credentials'
+  | 'invalid_refresh_token'
+  | 'refresh_token_reused';
 export type HealthChecksData = {
   database: CheckResult;
   redis: CheckResult;
@@ -130,6 +132,9 @@ export type ProblemData = {
   detail: string;
   code: string;
   correlation_id?: string;
+};
+export type RefreshTokenRequestData = {
+  refresh_token: string;
 };
 export type RegisterTenantDomainData = {
   domain: string;

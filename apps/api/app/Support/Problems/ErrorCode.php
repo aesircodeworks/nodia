@@ -27,6 +27,8 @@ enum ErrorCode: string
     case TenantAccessDenied = 'tenant_access_denied';
     case UnknownDomain = 'unknown_domain';
     case InvalidCredentials = 'invalid_credentials';
+    case InvalidRefreshToken = 'invalid_refresh_token';
+    case RefreshTokenReused = 'refresh_token_reused';
 
     public function status(): int
     {
@@ -51,6 +53,8 @@ enum ErrorCode: string
             self::TenantAccessDenied => 403,
             self::UnknownDomain => 404,
             self::InvalidCredentials => 401,
+            self::InvalidRefreshToken => 401,
+            self::RefreshTokenReused => 401,
         };
     }
 
@@ -77,6 +81,8 @@ enum ErrorCode: string
             self::TenantAccessDenied => 'Tenant access denied',
             self::UnknownDomain => 'Unknown domain',
             self::InvalidCredentials => 'Invalid credentials',
+            self::InvalidRefreshToken => 'Invalid refresh token',
+            self::RefreshTokenReused => 'Refresh token reused',
         };
     }
 

@@ -3,9 +3,11 @@
 namespace App\Identity;
 
 use App\Identity\OAuth\IdentityAccessToken;
+use App\Identity\OAuth\IdentityRefreshTokenRepository;
 use DateInterval;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Passport\Bridge\RefreshTokenRepository;
 use Laravel\Passport\Passport;
 
 /**
@@ -21,6 +23,17 @@ use Laravel\Passport\Passport;
  */
 class IdentityServiceProvider extends ServiceProvider
 {
+    public function register(): void
+    {
+        // PassportServiceProvider resolves Bridge\RefreshTokenRepository
+        // (the concrete class, not an interface) through the container for
+        // both the password grant and the refresh grant, so binding it
+        // here reaches every code path that creates or rotates a refresh
+        // token (stage-03 plan, Slice 2: reuse detection and family
+        // revocation, App\Identity\OAuth\IdentityRefreshTokenRepository).
+        $this->app->bind(RefreshTokenRepository::class, IdentityRefreshTokenRepository::class);
+    }
+
     public function boot(): void
     {
         Passport::ignoreRoutes();

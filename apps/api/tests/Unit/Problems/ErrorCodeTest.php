@@ -24,6 +24,8 @@ test('the registry holds exactly the known codes', function () {
         'tenant_access_denied',
         'unknown_domain',
         'invalid_credentials',
+        'invalid_refresh_token',
+        'refresh_token_reused',
     ]);
 });
 
@@ -52,6 +54,8 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'tenant_access_denied' => [ErrorCode::TenantAccessDenied, 403, 'Tenant access denied', '/problems/tenant-access-denied'],
     'unknown_domain' => [ErrorCode::UnknownDomain, 404, 'Unknown domain', '/problems/unknown-domain'],
     'invalid_credentials' => [ErrorCode::InvalidCredentials, 401, 'Invalid credentials', '/problems/invalid-credentials'],
+    'invalid_refresh_token' => [ErrorCode::InvalidRefreshToken, 401, 'Invalid refresh token', '/problems/invalid-refresh-token'],
+    'refresh_token_reused' => [ErrorCode::RefreshTokenReused, 401, 'Refresh token reused', '/problems/refresh-token-reused'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

@@ -51,6 +51,14 @@ function contractStaffUser(): User
 
 function contractStaffBearer(): string
 {
+    return contractStaffTokenPair()['access_token'];
+}
+
+/**
+ * @return array{access_token: string, refresh_token: string, token_type: string, expires_in: int}
+ */
+function contractStaffTokenPair(): array
+{
     contractStaffUser();
 
     $response = test()->postJson('/v1/auth/staff/token', [
@@ -58,7 +66,10 @@ function contractStaffBearer(): string
         'password' => 'password',
     ]);
 
-    return (string) $response->json('access_token');
+    /** @var array{access_token: string, refresh_token: string, token_type: string, expires_in: int} $pair */
+    $pair = $response->json();
+
+    return $pair;
 }
 
 /**
@@ -185,6 +196,16 @@ function documentedResponseExercisers(): array
             'email' => 'not-an-email',
             'password' => 'x',
         ]),
+        'post /v1/auth/staff/refresh 200' => function (): TestResponse {
+            $pair = contractStaffTokenPair();
+
+            return test()->postJson('/v1/auth/staff/refresh', ['refresh_token' => $pair['refresh_token']]);
+        },
+        'post /v1/auth/staff/refresh 401' => fn (): TestResponse => test()->postJson('/v1/auth/staff/refresh', [
+            'refresh_token' => 'not-a-real-refresh-token',
+        ]),
+        'post /v1/auth/staff/refresh 422' => fn (): TestResponse => test()->postJson('/v1/auth/staff/refresh', []),
+        'post /v1/auth/staff/logout 401' => fn (): TestResponse => test()->postJson('/v1/auth/staff/logout'),
         'get /v1/me 200' => fn (): TestResponse => test()->getJson('/v1/me', [
             'Authorization' => 'Bearer '.contractStaffBearer(),
         ]),

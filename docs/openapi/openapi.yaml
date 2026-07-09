@@ -356,6 +356,76 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ValidationProblem'
+  /v1/auth/staff/refresh:
+    post:
+      operationId: refreshStaffToken
+      summary: Rotate a staff refresh token for a new token pair
+      description: >-
+        Unauthenticated (the refresh token itself is the credential).
+        Rotation is single-use: the presented refresh token is revoked in
+        the same request that issues its replacement, guarded by a
+        conditional UPDATE checked by affected-row count so two concurrent
+        rotations of the same token succeed exactly once (docs/decisions/011,
+        stage-03 plan Slice 2). Presenting an already-rotated refresh token
+        is treated as reuse: it revokes every live token issued from the
+        same original login (code refresh_token_reused). An expired,
+        malformed, or unknown refresh token fails with
+        invalid_refresh_token, as does the loser of a concurrent rotation
+        race.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: A new access and refresh token pair.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          description: >-
+            The refresh token is expired, malformed, or unknown (code
+            invalid_refresh_token), or it was already rotated away from
+            and is being presented again (code refresh_token_reused),
+            which also revokes every live token issued from its login.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/RefreshTokenProblem'
+        '422':
+          description: Request validation failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+  /v1/auth/staff/logout:
+    post:
+      operationId: logoutStaff
+      summary: Revoke the current staff session
+      description: >-
+        Staff bearer only. Revokes the presented access token and its live
+        refresh token; other sessions for the same user are unaffected
+        (stage-03 plan, Slice 2).
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: The session's access and refresh token are revoked.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
   /v1/me:
     get:
       operationId: getCurrentUser
@@ -535,6 +605,14 @@ components:
         expires_in:
           type: integer
           description: Access token lifetime in seconds.
+      additionalProperties: false
+    RefreshTokenRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
       additionalProperties: false
     Membership:
       type: object
@@ -928,6 +1006,25 @@ components:
             code:
               type: string
               enum: [invalid_credentials]
+      unevaluatedProperties: false
+    RefreshTokenProblem:
+      description: >-
+        Problem document for a rejected refresh token: it is expired,
+        malformed, or unknown (code invalid_refresh_token, also used for
+        the loser of a concurrent rotation race), or it was already
+        rotated away from and is being presented again (code
+        refresh_token_reused), which also revokes every live token issued
+        from its login.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [401]
+            code:
+              type: string
+              enum: [invalid_refresh_token, refresh_token_reused]
       unevaluatedProperties: false
     UnauthenticatedProblem:
       description: >-
