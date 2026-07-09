@@ -20,7 +20,7 @@ Verified starting state: Stage 1 is done (commit 61d886b marks it done; problem 
 - [x] task-05: `tenant_domains` migration, two-tenant isolation fixture, isolation tests (plan task 5, slice 3)
 - [x] task-06: `CreateTenant`, `UpdateBranding`, `ConfigureGateways` Actions, Data objects, `TenantCreated` event class (plan task 6)
 - [x] task-07: `RegisterDomain`, `MakeDomainPrimary`, `RemoveDomain` Actions, Data objects, `DomainVerified` event class (plan task 7)
-- [ ] task-08: `TenancyServiceProvider` with the three route groups and the placeholder platform auth alias (plan task 8)
+- [x] task-08: `TenancyServiceProvider` with the three route groups and the placeholder platform auth alias (plan task 8)
 - [ ] task-09: Tenant create, read, update endpoints with feature, contract, and isolation tests, OpenAPI, regenerated TypeScript (plan task 9, slice 4)
 - [ ] task-10: Domain endpoints with feature, contract, and concurrency tests, OpenAPI, regenerated TypeScript (plan task 10, slice 5)
 - [ ] task-11: Tenant resolution middleware for both populations, resolution matrix, Octane no-leak test (plan task 11, slice 6; blocked on the domain-resolution open question)
@@ -195,6 +195,30 @@ Test evidence:
 Deviations:
 
 - None in scope. Notes: the replay no-op is asserted through `updated_at` frozen to a past value surviving the replayed call, direct evidence the conditional UPDATE matched zero rows. The plan's make-primary concurrency bullets (double-promotion race) remain task-10's, where the endpoint lands. `RegisterDomain` honors `is_primary: true` at registration; if the tenant already has a primary, the partial unique index rejects it, and whether task-10 surfaces that as a distinct problem code is that task's decision (the plan's POST error table lists only `domain_already_registered`).
+
+### task-08: TenancyServiceProvider with three route groups and placeholder platform auth alias
+
+- Timestamp: Thu Jul 9 15:47:22 -03 2026
+- Commits: `a5926d3` (feat(tenancy): wire the three route groups and the placeholder platform auth alias)
+
+What landed:
+
+- `apps/api/app/Tenancy/TenancyServiceProvider.php`, registered in `bootstrap/providers.php`: the first context service provider (system-design 3.2 puts it at the context root, so it joined the architecture preset's ignore list next to the context exceptions). It registers the three populations of system-design 4.1 as router middleware groups: `tenancy.platform` (`auth.platform` alias, then `PlatformRequestTransaction`), `tenancy.admin` (`ResolveTenantFromHeader` slot), `tenancy.storefront` (`ResolveTenantFromHost` slot), plus the platform route group under `/v1` loading `app/Tenancy/Http/routes/platform.php` (empty; tasks 9 and 10 populate it). Admin and storefront ship route-less per the plan; later stages attach routes through the group names, never by importing Tenancy's middleware.
+- `apps/api/app/Tenancy/Http/Middleware/PlatformAuthPlaceholder.php` behind the `auth.platform` alias (the name Stage 3 rebinds to Passport plus capability policies): pass-through in the `testing` and `local` environments, throws `AuthenticationException` everywhere else, so a premature deploy renders the 401 `auth.unauthenticated` problem document instead of exposing tenant CRUD (the plan's Risks mitigation).
+- `apps/api/app/Tenancy/Http/Middleware/PlatformRequestTransaction.php`: the platform posture, wrapping the rest of the request in `TenantTransaction::asPlatform` (task-02's wrapper), so handlers run under `SET LOCAL ROLE nodia_platform` with `app.tenant_id` set to the sentinel. One discovered subtlety: Laravel 13's routing pipeline (`Illuminate\Routing\Pipeline::handleException`, verified in vendor) renders exceptions thrown below a route middleware into responses before the middleware sees them, so a naive wrapper would commit partial writes behind a 500. The middleware detects the exception carried by the rendered response and throws the internal `RenderedErrorRollback` to abort the transaction, then returns the already-rendered response, so error responses and rollbacks stay paired without double reporting.
+- `apps/api/app/Tenancy/Http/Middleware/ResolveTenantFromHeader.php` and `ResolveTenantFromHost.php`: the resolution middleware slots for the admin and storefront groups. Bodies land in task-11; until then both throw `LogicException` on any invocation, so a route attached to either group before resolution exists fails loudly instead of executing without tenant context.
+- `apps/api/tests/Architecture/ContextBoundariesTest.php` gained the Http-layer confinement rule for all eight contexts (a context's `Http` namespace is only used inside that context), mirroring the Models rule for the new wiring; `PresetTest` ignores extended for `TenancyServiceProvider` and `RenderedErrorRollback`.
+
+Test evidence:
+
+- `tests/Feature/Tenancy/TenancyRouteGroupsTest.php` (6 tests: group and alias registration; platform posture probe asserting `current_user` is `nodia_platform`, `app.tenant_id` is the sentinel, transaction level 1, `TenantContext::isPlatform()`, and no context or transaction residue after the response; 401 problem documents in `production` and `staging`; pass-through in `local`; rollback of writes behind a failing handler) and `tests/Unit/Tenancy/PlatformAuthPlaceholderTest.php` (4 tests: environment matrix) written first; all 10 failed as expected (`Target class [tenancy.platform] does not exist`, middleware class not found), then went green after implementation (10 passed, 34 assertions).
+- Full `composer test`: 209 passed, 670 assertions, all six suites. Pint clean; Larastan clean (0 errors). `composer types:generate` produced no changes (no Data classes in this task), so nothing regenerated to commit.
+
+Deviations:
+
+- The contract step of the TDD loop does not apply: this task ships no endpoint, so there is no request or response Data object and no OpenAPI path to merge. Probe routes are test-registered and absent from the spec by design (the existing `assertMatchesProblemSchema` macro covers their problem documents).
+- The plan's Endpoints intro says the admin and storefront groups carry a "resolution middleware slot"; this run interprets the slot as a real middleware class per group whose body throws until task-11 implements it, so premature route attachment fails loudly rather than running unscoped. The `nodia_app` posture for those groups therefore also lands in task-11, inside the resolution middleware, since posture needs the resolved tenant id.
+- The rollback-behind-rendered-errors behavior of `PlatformRequestTransaction` is not spelled out by the plan but is required for the request-transaction posture to be safe: Laravel's routing pipeline converts downstream exceptions to responses before route middleware see them, which would otherwise commit partial writes behind error responses. Feature-tested and recorded here so task-11 reuses the same pattern for the `nodia_app` posture.
 
 ### Review rounds
 
