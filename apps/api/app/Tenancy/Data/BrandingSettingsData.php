@@ -1,0 +1,17 @@
+<?php
+
+namespace App\Tenancy\Data;
+
+use Spatie\LaravelData\Attributes\MapName;
+use Spatie\LaravelData\Data;
+use Spatie\LaravelData\Mappers\SnakeCaseMapper;
+use Spatie\LaravelData\Optional;
+
+#[MapName(SnakeCaseMapper::class)]
+class BrandingSettingsData extends Data
+{
+    public function __construct(
+        public string|Optional $primaryColor,
+        public string|Optional $logoUrl,
+    ) {}
+}

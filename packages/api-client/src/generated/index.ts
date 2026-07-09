@@ -1,4 +1,16 @@
+export type BrandingSettingsData = {
+  primary_color?: string;
+  logo_url?: string;
+};
 export type CheckResult = 'ok' | 'failed';
+export type CreateTenantData = {
+  name: string;
+  default_locale: string;
+  supported_locales: string[];
+  branding_settings?: BrandingSettingsData;
+  enabled_gateways?: string[];
+  payout_schedule?: Record<string, any> | null;
+};
 export type CursorPaginatedDataCollection<TKey, TValue> = CursorPaginator<TKey, TValue>;
 export type CursorPaginator<TKey, TValue> = {
   data: TKey extends string ? Record<TKey, TValue> : TValue[];
@@ -81,6 +93,30 @@ export type ProblemData = {
   detail: string;
   code: string;
   correlation_id?: string;
+};
+export type TenantCreatedPayload = {
+  tenant_id: string;
+  name: string;
+  default_locale: string;
+};
+export type TenantData = {
+  id: string;
+  name: string;
+  branding_settings: BrandingSettingsData;
+  default_locale: string;
+  supported_locales: string[];
+  enabled_gateways: string[];
+  payout_schedule: Record<string, any> | null;
+  created_at: string;
+  updated_at: string;
+};
+export type UpdateTenantData = {
+  name?: string;
+  branding_settings?: BrandingSettingsData;
+  default_locale?: string;
+  supported_locales?: string[];
+  enabled_gateways?: string[];
+  payout_schedule?: Record<string, any> | null;
 };
 export type ValidationProblemData = {
   errors: Record<string, string[]>;
