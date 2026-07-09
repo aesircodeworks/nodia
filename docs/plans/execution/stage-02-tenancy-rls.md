@@ -21,7 +21,7 @@ Verified starting state: Stage 1 is done (commit 61d886b marks it done; problem 
 - [x] task-06: `CreateTenant`, `UpdateBranding`, `ConfigureGateways` Actions, Data objects, `TenantCreated` event class (plan task 6)
 - [x] task-07: `RegisterDomain`, `MakeDomainPrimary`, `RemoveDomain` Actions, Data objects, `DomainVerified` event class (plan task 7)
 - [x] task-08: `TenancyServiceProvider` with the three route groups and the placeholder platform auth alias (plan task 8)
-- [ ] task-09: Tenant create, read, update endpoints with feature, contract, and isolation tests, OpenAPI, regenerated TypeScript (plan task 9, slice 4)
+- [x] task-09: Tenant create, read, update endpoints with feature, contract, and isolation tests, OpenAPI, regenerated TypeScript (plan task 9, slice 4)
 - [ ] task-10: Domain endpoints with feature, contract, and concurrency tests, OpenAPI, regenerated TypeScript (plan task 10, slice 5)
 - [ ] task-11: Tenant resolution middleware for both populations, resolution matrix, Octane no-leak test (plan task 11, slice 6; blocked on the domain-resolution open question)
 - [ ] task-12: Domain verification endpoint plus contract (plan task 12, slice 7 first half)
@@ -219,6 +219,36 @@ Deviations:
 - The contract step of the TDD loop does not apply: this task ships no endpoint, so there is no request or response Data object and no OpenAPI path to merge. Probe routes are test-registered and absent from the spec by design (the existing `assertMatchesProblemSchema` macro covers their problem documents).
 - The plan's Endpoints intro says the admin and storefront groups carry a "resolution middleware slot"; this run interprets the slot as a real middleware class per group whose body throws until task-11 implements it, so premature route attachment fails loudly rather than running unscoped. The `nodia_app` posture for those groups therefore also lands in task-11, inside the resolution middleware, since posture needs the resolved tenant id.
 - The rollback-behind-rendered-errors behavior of `PlatformRequestTransaction` is not spelled out by the plan but is required for the request-transaction posture to be safe: Laravel's routing pipeline converts downstream exceptions to responses before route middleware see them, which would otherwise commit partial writes behind error responses. Feature-tested and recorded here so task-11 reuses the same pattern for the `nodia_app` posture.
+
+### task-09: platform tenant create, read, and update endpoints
+
+- Timestamp: Thu Jul 9 16:08:51 -03 2026
+- Commits: `28c4e86` (feat(tenancy): add platform tenant create, read, and update endpoints)
+
+What landed:
+
+- `apps/api/app/Tenancy/Http/Controllers/TenantController.php` plus routes in `platform.php`: `POST /v1/tenants` (201 TenantData via `CreateTenant`), `GET /v1/tenants` (spatie/laravel-query-builder, allowlist `filter[name]` partial and sorts `name`/`created_at` both directions, default `-created_at`, page pagination returned as laravel-data's `PaginatedDataCollection`, the standard `data`/`links`/`meta` envelope), `GET /v1/tenants/{tenant}`, and `PATCH /v1/tenants/{tenant}` routing branding and locale fields to `UpdateBranding` and gateway fields to `ConfigureGateways`. Item routes carry `whereUuid`, so a malformed id is a route miss (404 `request.not_found`) while a well-formed unknown id is 404 `tenant_not_found`. spatie/laravel-query-builder ^7.3 installed per ADR 014.
+- Problem plumbing: `ErrorCode` gains `invalid_query_parameter` (400), `tenant_not_found` (404), and `default_locale_not_supported` (422); new `App\Support\Problems\HasErrorCode` interface lets domain exceptions map to codes without Support importing any context. `DefaultLocaleNotSupportedException` implements it; new `TenantNotFoundException` implements it; the vendor `InvalidQuery` exceptions (which cannot implement it) are mapped explicitly in `ProblemRenderer` before the generic HttpException arm. Exception messages become the problem `detail` (never stable contract).
+- Request validation: `CreateTenantData` and `UpdateTenantData` gained `rules()` (required trio on create; `sometimes`/`filled` on update; `array`+`list`+`filled` items for `supported_locales` and `enabled_gateways`; `payout_schedule` nullable array), so create-time and update-time garbage renders 422 `request.validation_failed` with the errors map and `ConfigureGateways`' invariant guard is unreachable from HTTP.
+- Contract: all four paths merged into `docs/openapi/openapi.yaml` with strict response schemas (`Tenant`, `BrandingSettings`, `TenantPage`/`PageLink`/`PageMeta` pinned to laravel-data's actual paginated output, `TenantNotFoundProblem`, `InvalidQueryParameterProblem`, and `TenantUnprocessableProblem` as a Problem-plus-oneOf covering both 422 codes); nine new exercisers in `DocumentedResponseCoverageTest` (which now migrates and cleans the test database) keep every documented response conformance-asserted. Request parameter schemas are deliberately loose (deepObject `filter`, free-string `sort`) so error-path exercisers stay request-valid; the allowlist is enforced by the API and asserted behaviorally.
+- `BrandingSettingsData` fields changed from `string|Optional` to `?string` with null defaults so empty branding serializes as a JSON object with both keys instead of `[]` (an all-Optional Data object collapses to an empty PHP array), keeping the `object` typing of the contract; stored branding now always carries both keys.
+- `UpdateBranding` gained the opaque `payout_schedule` passthrough (unit-tested: present, absent, explicit null), settling the routing question task-06 left open: no Action owns the field before Stage 8c, so the tenant profile update carries it.
+- `apps/api/tests/Feature/Tenancy/TenantEndpointsTest.php` (22 tests): wire shape with snake_case keys and ISO 8601 UTC timestamps, defaults, both 422 codes with and without the errors map, envelope, filter, all four sorts, unknown filter and unknown sort each 400, show/patch happy paths and 404s, PATCH field routing and untouched-field semantics, all conformance-asserted. `apps/api/tests/Isolation/PlatformEndpointsIsolationTest.php` (4 tests): list, read, update, and create over HTTP with injected `X-Tenant-Id` and `Host` headers for tenant A still behave platform-scoped (tenant B remains visible and writable), proving the posture comes from the route group, never from headers.
+- Architecture preset: `App\Tenancy\Http\Controllers` and `TenantNotFoundException` joined the commented ignore list (context-owned controllers and exceptions, same rationale as `App\Tenancy\Models`).
+
+Test evidence:
+
+- Feature tests written first: 21 of 22 failed (404s, missing routes; the malformed-uuid case passed by construction), then all 22 green after implementation (110 assertions). ErrorCode registry unit test updated first and failing, UpdateBranding payout passthrough unit tests written first and failing, isolation tests written before the routes existed.
+- Intermediate failures during the loop, both mine: query-builder v7's `allowedFilters`/`allowedSorts` take variadics, not arrays, and the Laravel arch preset flags controllers outside `App\Http\Controllers` (base `Controller` import dropped, ignore entry added, matching the Models precedent).
+- Full `composer test`: 249 passed, 869 assertions, all six suites (Contract 17, Isolation 35 including the 4 new HTTP tests). Pint clean; Larastan clean (0 errors). `composer types:generate` regenerated `BrandingSettingsData` (nullable fields) and `ErrorCode` (three new codes) in `packages/api-client/src/generated`; committed with the code; `pnpm --filter api-client typecheck` clean.
+
+Deviations and decisions:
+
+- `GET /v1/tenants` includes the sentinel platform tenant row (the platform posture reads all rows and the plan defines no exclusion); revisit if product wants infrastructure rows hidden from the listing.
+- `BrandingSettingsData`'s move from Optional to nullable fields is a deliberate contract decision, not drift: the plan's "typed optional fields" is satisfied on input (both keys may be omitted) while the response shape stays a stable object. Two task-06 unit assertions were updated for the new stored shape.
+- The 422 response is one OpenAPI response object covering both `request.validation_failed` and `default_locale_not_supported` (RFC 9457 problems distinguished by `code`, statuses shared), expressed as `allOf` Problem plus a `oneOf`, keeping the strictness gate satisfied.
+- Both 422 codes on POST and PATCH, 400 on list, and 404 on item routes are rendered through the new `HasErrorCode` seam, which later Tenancy tasks (409s in task-10, resolution errors in task-11) can reuse without touching `ProblemRenderer` again; the vendor `InvalidQuery` mapping is the one exception, by necessity.
+- The running dev API container was not rebuilt to probe the new routes over curl (its image predates this stage); end-to-end behavior is exercised through the HTTP kernel in the Feature and Isolation suites against real PostgreSQL.
 
 ### Review rounds
 
