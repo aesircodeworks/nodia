@@ -12,7 +12,7 @@ Update this table when a stage starts and when it merges.
 
 | Stage | Status |
 | --- | --- |
-| Stage 1: Delivery Kernel and Test Harness | In progress (Phase 0 landed part of it) |
+| Stage 1: Delivery Kernel and Test Harness | In progress (blocked: 2026-07-09 run completed 0 of 10 tasks, task-01 agent returned no result; see the execution journal) |
 | Stage 2: Tenancy and RLS Regime | Not started |
 | Stage 3: Identity, AuthN, AuthZ | Not started |
 | Stage 4: Transactional Outbox | Not started |
