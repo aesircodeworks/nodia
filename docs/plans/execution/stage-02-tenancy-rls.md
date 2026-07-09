@@ -17,7 +17,7 @@ Verified starting state: Stage 1 is done (commit 61d886b marks it done; problem 
 - [x] task-02: Tenant context holder and SET LOCAL transaction wrapper in Support (plan task 2, slice 1)
 - [x] task-03: Default test connection to PostgreSQL for all suites (plan task 3)
 - [x] task-04: `tenants` migration, sentinel platform tenant, model, factory, isolation tests (plan task 4, slice 2)
-- [ ] task-05: `tenant_domains` migration, two-tenant isolation fixture, isolation tests (plan task 5, slice 3)
+- [x] task-05: `tenant_domains` migration, two-tenant isolation fixture, isolation tests (plan task 5, slice 3)
 - [ ] task-06: `CreateTenant`, `UpdateBranding`, `ConfigureGateways` Actions, Data objects, `TenantCreated` event class (plan task 6)
 - [ ] task-07: `RegisterDomain`, `MakeDomainPrimary`, `RemoveDomain` Actions, Data objects, `DomainVerified` event class (plan task 7)
 - [ ] task-08: `TenancyServiceProvider` with the three route groups and the placeholder platform auth alias (plan task 8)
@@ -123,6 +123,30 @@ Deviations:
 
 - None in scope. Slice 2 in the plan also names `CreateTenant` and the `TenantCreated` event class; the task breakdown assigns those to task 6, and this run's task list follows the task breakdown, so they are deliberately not here.
 - `created_at`/`updated_at` use two explicit `timestampTz` columns instead of `timestampsTz()` to honor the plan's not-null requirement; behavior is otherwise identical.
+
+### task-05: tenant_domains migration, two-tenant isolation fixture, isolation tests
+
+- Timestamp: Thu Jul 9 15:12:53 -03 2026
+- Commits: `da5fc4c` (feat(tenancy): add tenant_domains table and the reusable two-tenant isolation fixture)
+
+What landed:
+
+- `apps/api/database/migrations/2026_07_09_000002_create_tenant_domains_table.php`: the first tenant-scoped child table per the plan's Data model (uuid PK, `tenant_id` not-null FK to `tenants(id)`, `domain` unique platform-wide, `is_primary` defaulting false, not-null timestamptz timestamps), the `tenant_id` index, the partial unique index `tenant_domains_primary_per_tenant_idx` on `(tenant_id) WHERE is_primary` created by raw statement with the custom `_idx` name because the builder cannot express partial indexes (data-conventions), and RLS via the task-01 `Rls::applyTenantPolicies` helper with `platformWrite: true` (domain CRUD is platform-admin surface this stage), all in the same migration that creates the table.
+- `apps/api/app/Tenancy/Models/TenantDomain.php` (`HasUuids`, boolean cast on `is_primary`, attribute-based `#[Fillable]`) and `apps/api/database/factories/Tenancy/Models/TenantDomainFactory.php` (explicit `$model`, `tenant_id` chained to `Tenant::factory()`, domains generated lowercase, `is_primary` false by default).
+- `apps/api/tests/Isolation/Support/TenantFixture.php`: the constants-only class became the reusable two-tenant fixture, `seed()` creating tenant A and B with one primary domain each under `nodia_platform` (the production provisioning posture) and `clean()` removing domains then non-sentinel tenants. This is the shared harness later stages' isolation tests build on, superseding the Stage 1 probe tables, which remain only where the suite proves the RLS helper itself (`RlsBootstrapTest`, `TenantIsolationHarnessTest`). `TenantsIsolationTest` was refactored onto `seed()`/`clean()` so there is exactly one harness.
+- `apps/api/tests/Isolation/TenantDomainsIsolationTest.php` (written first; all 6 errored before implementation): the full deny matrix on `tenant_domains`: cross-tenant SELECT empty, cross-tenant UPDATE and DELETE affecting zero rows, INSERT bearing a foreign `tenant_id` rejected by `WITH CHECK`, a raw `DB::select` bypassing all Eloquent scoping still seeing only the current tenant's rows (ADR 003: the database is the guarantee), and `nodia_platform` reading both tenants' domains without tenant context.
+- `apps/api/tests/Unit/Tenancy/TenantDomainTest.php` (written first, errored): UUIDv7 primary keys, boolean cast on `is_primary`, factory domains already lowercase.
+
+Test evidence:
+
+- New tests first failed as expected (12 isolation errors and 3 unit errors, `Class "App\Tenancy\Models\TenantDomain" not found`; the 6 refactored `TenantsIsolationTest` tests errored too because the shared fixture now seeds domains), then all went green after implementation: Isolation 31 passed (67 assertions), the 3 new unit tests passed.
+- Full `composer test`: 150 passed, 510 assertions, all six suites. Pint clean; Larastan clean (0 errors); `composer types:generate` produced no changes (no Data classes in this task; they arrive with task-06).
+- Migration exercised directly against `nodia_test` beyond the suite run: `migrate:fresh`, `migrate:rollback --step=1`, `migrate` all clean; `\d tenant_domains` confirms the unique domain constraint, the `tenant_id` index, the partial unique index `(tenant_id) WHERE is_primary` under its custom name, the FK, forced row security, and all three policies (`tenant_domains_tenant_isolation` FOR ALL with USING and WITH CHECK, `tenant_domains_platform_read` FOR SELECT, `tenant_domains_platform_write` FOR ALL to `nodia_platform`).
+
+Deviations:
+
+- None in scope. Slice 3 in the plan also names `RegisterDomain` and the `DomainVerified` event class; the task breakdown assigns those to task 7, and this run follows the task breakdown.
+- The double-promotion race test for the partial unique index is deliberately not here: the plan's concurrency bullets for make-primary belong to Slice 5 (task-10), where the transition itself lands. This task ships the database guard; task-10 proves it under contention.
 
 ### Review rounds
 
