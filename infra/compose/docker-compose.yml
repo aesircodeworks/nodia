@@ -22,6 +22,7 @@ services:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./postgres/create-test-database.sh:/docker-entrypoint-initdb.d/create-test-database.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-nodia} -d ${DB_DATABASE:-nodia_api}"]
       interval: 5s

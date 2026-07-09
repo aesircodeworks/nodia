@@ -7,6 +7,20 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## Testing
+
+`composer test` runs six Pest suites: Feature, Unit, Contract, Architecture, Isolation, and Concurrency. Run one with `php artisan test --testsuite=Isolation`.
+
+Feature, Unit, and Contract run on the in-memory SQLite default from `phpunit.xml`. Isolation and Concurrency only prove anything against real PostgreSQL (row-level security, genuine lock contention), so they refuse to run on SQLite and instead connect to a dedicated test database, never the dev `nodia_api` database.
+
+Locally, `make up` is the only setup: the compose stack's init script (`infra/compose/postgres/create-test-database.sh`) creates the `nodia_test` database on first cluster initialization, and the suites default to it (host `127.0.0.1`, port `5432`, user `nodia`, password `nodia`, database `nodia_test`). PostgreSQL only runs init scripts against an empty data volume, so a stack created before the script existed needs either `make fresh` (drops all volumes) or a one-off:
+
+```sh
+docker compose -f infra/compose/docker-compose.yml exec postgres createdb -U nodia nodia_test
+```
+
+To point the two suites at a different PostgreSQL server, set any of `NODIA_TEST_DB_HOST`, `NODIA_TEST_DB_PORT`, `NODIA_TEST_DB_DATABASE`, `NODIA_TEST_DB_USERNAME`, `NODIA_TEST_DB_PASSWORD`. When the environment already provides a `pgsql` default connection through `DB_*` variables, as the CI jobs do, it is used as-is and the overrides are ignored.
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
