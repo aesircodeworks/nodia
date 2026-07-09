@@ -1,6 +1,6 @@
 # Nodia Implementation Roadmap
 
-This roadmap breaks implementation into vertical slices that can be built, tested, and demoed end to end. It prioritizes the true MVP: one organizer can publish a general-admission event, one buyer can purchase a ticket through one payment gateway, and door staff can validate that ticket.
+This roadmap breaks implementation into vertical slices that can be built, tested, and demoed end to end. It prioritizes the true MVP: one tenant can publish a general-admission event, one buyer can purchase a ticket through one payment gateway, and door staff can validate that ticket.
 
 The system design remains the architectural source of truth. This document is sequencing guidance, not a commitment to build every eventual capability before launch.
 
@@ -16,7 +16,7 @@ Update this table when a phase starts (link its spec folder) and when it merges 
 | Phase 3: Inventory Hold and Checkout Slice | Not started | |
 | Phase 4: First Payment and Ticket Issuance | Not started | |
 | Phase 5: Basic Check-in | Not started | |
-| Phase 6: Organizer Operations | Not started | |
+| Phase 6: Tenant Operations | Not started | |
 | Phase 7: Production Hardening | Not started | |
 
 ## MVP Scope
@@ -37,7 +37,7 @@ Included:
 - Basic refunds if required by the selected gateway and launch market
 - Basic email confirmation with QR ticket
 - Online-first check-in with a small offline buffer
-- Minimal organizer reporting: orders, tickets sold, gross sales, check-ins
+- Minimal tenant reporting: orders, tickets sold, gross sales, check-ins
 - Customer PII anonymization and export for GDPR and LGPD requests
 - Production deployment path with backups, logs, errors, and smoke tests
 
@@ -74,7 +74,7 @@ Exit criteria:
 
 ## Phase 1: Tenant and Identity Slice
 
-Goal: an organizer can sign in, select a tenant, and access tenant-scoped API data.
+Goal: a user can sign in, select a tenant, and access tenant-scoped API data.
 
 Vertical slice:
 
@@ -89,13 +89,13 @@ Vertical slice:
 
 Exit criteria:
 
-- A staff user can sign into admin and view only their tenant.
+- A user can sign into admin and view only their tenant.
 - RLS isolation tests prove cross-tenant reads and writes fail.
 - Architecture tests prevent cross-context model imports.
 
 ## Phase 2: Publishable General-Admission Event
 
-Goal: an organizer can create and publish a simple event that appears on the storefront.
+Goal: a tenant can create and publish a simple event that appears on the storefront.
 
 Vertical slice:
 
@@ -108,7 +108,7 @@ Vertical slice:
 
 Exit criteria:
 
-- An organizer can create a venue, event, and ticket type, then publish it.
+- A tenant can create a venue, event, and ticket type, then publish it.
 - A buyer can open the tenant storefront and view the event with accurate price and availability.
 - Draft events are not visible publicly.
 
@@ -170,13 +170,13 @@ Vertical slice:
 
 Exit criteria:
 
-- A check-in staff user can scan a paid ticket once successfully.
+- A user with a check-in role can scan a paid ticket once successfully.
 - A second scan is flagged as duplicate.
 - A short offline period does not lose scans once the device reconnects.
 
-## Phase 6: Organizer Operations
+## Phase 6: Tenant Operations
 
-Goal: an organizer can run the event without direct database or support intervention.
+Goal: a tenant can run the event without direct database or support intervention.
 
 Vertical slice:
 
