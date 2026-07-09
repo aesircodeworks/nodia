@@ -433,6 +433,28 @@ No repository code was implicated, so no source or test changes were made. The g
 
 Consequence: the stage 2 diff has still received no substantive Codex review; the environment is now capable of running one, so the next review round performs it.
 
+#### Review round 2
+
+Recorded at Thu Jul 9 17:32:11 -03 2026.
+
+Findings received: one, blocking. Codex again performed no review: the reviewer had no tool access because the workspace command host binary `/opt/homebrew/bin/codex-code-mode-host` is missing, so it could not read the diff or any repository files. As in round 1, the finding is about the environment, not the Nodia repository; this time the cause is different from round 1's model-availability 400.
+
+Root cause, confirmed against ground truth:
+
+- Codex CLI 0.144.0 (the version round 1 upgraded to) moved command execution to hosted code mode by default (openai/codex PR 31500). In hosted mode every command the model runs is executed by a separate `codex-code-mode-host` process; `codex-rs/code-mode/src/remote_session.rs` resolves that binary from the `CODEX_CODE_MODE_HOST_PATH` env var, else as a sibling of the invoked `codex` executable, which here is the `/opt/homebrew/bin/codex` symlink, hence the `/opt/homebrew/bin/codex-code-mode-host` path in the finding.
+- The Homebrew cask for codex 0.144.0 installs only the main binary (its artifact stanza is `binary "codex-#{arch}-#{os}", target: "codex"`); it does not ship `codex-code-mode-host`, even though the upstream `rust-v0.144.0` GitHub release publishes `codex-code-mode-host-aarch64-apple-darwin.tar.gz` and the official npm distribution (`@openai/codex` 0.144.0, via its darwin-arm64 platform package) bundles the host next to the codex binary. The cask at homebrew-cask HEAD still has the gap, and no issue or PR about it exists yet in Homebrew/homebrew-cask or openai/codex.
+- Reproduced locally: a trivial `codex exec` command task fails with `failed to spawn code-mode host /opt/homebrew/bin/codex-code-mode-host: No such file or directory`.
+- Remediation verified: with the exact-version host binary downloaded from the `rust-v0.144.0` release and `CODEX_CODE_MODE_HOST_PATH` pointing at it for a single invocation, the same `codex exec` task executed its command and reported correct output.
+
+What was not done, and why: the actual repair, placing `codex-code-mode-host` next to the codex binary (or persisting `CODEX_CODE_MODE_HOST_PATH`), is a persistent change outside this repository, and the permission system denied installing the downloaded binary into `/opt/homebrew` ("Unauthorized Persistence" / "Code from External"). Equivalent routes (npm global install shadowing the brew codex, editing shell profiles or user-level settings to persist the env var) carry the same intent the denial flagged, so they were not attempted as workarounds. The fix is left to the user; either option below was validated or inspected in this round:
+
+1. Version-matched host next to the brew install (mirrors what this round verified): `gh release download rust-v0.144.0 --repo openai/codex --pattern 'codex-code-mode-host-aarch64-apple-darwin.tar.gz'`, extract into `/opt/homebrew/Caskroom/codex/0.144.0/`, then `ln -s /opt/homebrew/Caskroom/codex/0.144.0/codex-code-mode-host-aarch64-apple-darwin /opt/homebrew/bin/codex-code-mode-host`. Codex resolves the host from disk on every spawn, so no broker restart is needed. A future `brew upgrade codex` leaves the symlink dangling, which fails loudly rather than silently running a stale host; re-run the download for the new version (or drop the symlink once the cask ships the host itself).
+2. Replace the brew install with the official npm distribution, which is complete: `npm install -g @openai/codex` (installs into the Herd nvm bin dir, which precedes `/opt/homebrew/bin` on PATH), then `brew uninstall --cask codex` to avoid a shadowed duplicate.
+
+No repository code was implicated, so no source or test changes were made. The gates were re-run per the round protocol: Pint passed, Larastan passed with 0 errors, Pest passed 364 tests with 1366 assertions across all six suites.
+
+Consequence: the stage 2 diff has still received no substantive Codex review across two rounds. The blocking finding stands until the user installs the host binary; the moment either remedy above is applied, the next review round can run (verified end to end this round via the env-var override).
+
 ### Decisions and deviations
 
 - task-11: anonymous domain resolution (storefront Host lookup, Caddy verification) runs under the dedicated narrow `nodia_resolver` role, not `nodia_platform`; system-design 4.3 stands unamended and no audit sampling is involved. Full rationale in the task-11 entry.
