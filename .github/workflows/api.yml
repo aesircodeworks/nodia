@@ -40,6 +40,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
+          extensions: pcntl, sockets
           coverage: none
       - name: Get Composer cache directory
         id: composer-cache
@@ -67,7 +68,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
-          extensions: pdo_pgsql, redis
+          extensions: pdo_pgsql, redis, pcntl, sockets
           coverage: none
       - name: Get Composer cache directory
         id: composer-cache
@@ -128,7 +129,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
-          extensions: pdo_pgsql, redis
+          extensions: pdo_pgsql, redis, pcntl, sockets
           coverage: none
       - name: Get Composer cache directory
         id: composer-cache
@@ -161,6 +162,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
+          extensions: pcntl, sockets
           coverage: none
       - name: Get Composer cache directory
         id: composer-cache
@@ -226,7 +228,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
-          extensions: pdo_pgsql, redis
+          extensions: pdo_pgsql, redis, pcntl, sockets
           coverage: none
       - name: Get Composer cache directory
         id: composer-cache
@@ -292,7 +294,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
-          extensions: pdo_pgsql, redis
+          extensions: pdo_pgsql, redis, pcntl, sockets
           coverage: none
       - name: Get Composer cache directory
         id: composer-cache
@@ -339,7 +341,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
-          extensions: redis
+          extensions: redis, pcntl, sockets
           coverage: none
       - name: Get Composer cache directory
         id: composer-cache
