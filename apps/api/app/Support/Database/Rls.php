@@ -117,6 +117,21 @@ final class Rls
     }
 
     /**
+     * Grants full CRUD to nodia_app and nodia_platform without enabling
+     * row level security. Reserved for the Passport oauth tables
+     * (data-conventions Tenancy exception, Stage 3 plan): token and client
+     * rows are authentication infrastructure keyed to identities rather
+     * than tenant-scoped domain data, so there is no tenant_id column to
+     * scope a policy against. Tenant isolation for customer tokens instead
+     * rests on the token's tenant claim being checked at the application
+     * layer (the tenant_mismatch behavior), not on the database.
+     */
+    public static function grantUnscoped(string $table): void
+    {
+        DB::statement("grant select, insert, update, delete on {$table} to nodia_app, nodia_platform");
+    }
+
+    /**
      * FORCE keeps the table owner subject to the policies, so migrations
      * and seeders run inside the regime instead of around it. The
      * two-argument current_setting() returns NULL when app.tenant_id was

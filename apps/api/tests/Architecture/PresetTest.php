@@ -1,5 +1,6 @@
 <?php
 
+use App\Identity\IdentityServiceProvider;
 use App\Support\Money\CurrencyMismatchException;
 use App\Support\Problems\ErrorCode;
 use App\Support\Tenancy\InvalidTenantIdException;
@@ -49,6 +50,9 @@ arch()->preset()->laravel()->ignoring([
     TenantAccessDeniedException::class,
     RenderedErrorRollback::class,
     TenancyServiceProvider::class,
+    IdentityServiceProvider::class,
     'App\Tenancy\Models',
     'App\Tenancy\Http\Controllers',
+    'App\Identity\Models',
+    'App\Identity\Http\Controllers',
 ]);

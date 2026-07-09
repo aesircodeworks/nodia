@@ -1,5 +1,6 @@
 <?php
 
+use App\Identity\Models\Customer;
 use App\Models\User;
 
 return [
@@ -42,6 +43,22 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+
+        // The two identity populations of system-design 5.4: staff
+        // authenticate against the `users` provider, customers against
+        // the tenant-scoped `customers` provider. Both ride Passport's
+        // token guard; nothing in this stage uses the session guard
+        // above, which stays only because Laravel's default scaffolding
+        // (password broker, etc.) expects a `web` guard to exist.
+        'staff' => [
+            'driver' => 'passport',
+            'provider' => 'users',
+        ],
+
+        'customer' => [
+            'driver' => 'passport',
+            'provider' => 'customers',
+        ],
     ],
 
     /*
@@ -71,6 +88,15 @@ return [
         //     'driver' => 'database',
         //     'table' => 'users',
         // ],
+
+        // Customers are tenant-scoped attendee identities (ADR 007), never
+        // staff; the `customers` table and full model land in a later
+        // Stage 3 task, but the provider is wired now alongside the guard
+        // it backs.
+        'customers' => [
+            'driver' => 'eloquent',
+            'model' => Customer::class,
+        ],
     ],
 
     /*
