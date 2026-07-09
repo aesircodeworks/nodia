@@ -313,6 +313,45 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/TenantDomainIsPrimaryProblem'
+  /v1/internal/domain-verification:
+    get:
+      operationId: verifyDomain
+      summary: Confirm a domain is registered (Caddy on-demand TLS ask)
+      description: >-
+        Network-internal endpoint consumed by the edge proxy's on-demand TLS
+        ask during the handshake; infrastructure must never route it through
+        the public edge. Unauthenticated by design. Existence of the
+        normalized (lowercased) domain in tenant_domains is the gate, so
+        matching is case-insensitive. The parameter schema stays loose on
+        purpose: hostname validity is enforced by the API, which rejects a
+        malformed value as unprocessable.
+      parameters:
+        - name: domain
+          in: query
+          required: true
+          description: Hostname to verify; mixed case is accepted.
+          schema:
+            type: string
+      responses:
+        '204':
+          description: The domain is registered to a tenant; issue the certificate.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+        '404':
+          description: No tenant has this domain registered.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnknownDomainProblem'
+        '422':
+          description: >-
+            The domain parameter is missing or is not a well-formed
+            hostname.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
   /v1/health:
     get:
       operationId: getHealth
@@ -672,6 +711,21 @@ components:
             code:
               type: string
               enum: [tenant_domain_is_primary]
+      unevaluatedProperties: false
+    UnknownDomainProblem:
+      description: >-
+        Problem document for a well-formed domain that is not registered to
+        any tenant; the edge proxy must refuse to issue a certificate.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [404]
+            code:
+              type: string
+              enum: [unknown_domain]
       unevaluatedProperties: false
     TenantNotFoundProblem:
       description: Problem document for a tenant id that references no tenant.

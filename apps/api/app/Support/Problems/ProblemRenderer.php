@@ -108,6 +108,7 @@ class ProblemRenderer
             ErrorCode::MissingTenantHeader => 'The request must carry the acting tenant in the X-Tenant-Id header.',
             ErrorCode::InvalidTenantHeader => 'The X-Tenant-Id header must be a UUID.',
             ErrorCode::TenantAccessDenied => 'You do not have access to this tenant.',
+            ErrorCode::UnknownDomain => 'No tenant has this domain registered.',
         };
     }
 }

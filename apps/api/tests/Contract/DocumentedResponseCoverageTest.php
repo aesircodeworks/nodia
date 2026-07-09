@@ -135,6 +135,16 @@ function documentedResponseExercisers(): array
         'delete /v1/tenant-domains/{tenant_domain} 409' => fn (): TestResponse => test()->deleteJson(
             '/v1/tenant-domains/'.contractDomain(['is_primary' => true])->id,
         ),
+        // The 204 documents no content, so it has no coverage key here; the
+        // feature test conformance-asserts it. The 422 exerciser keeps the
+        // request spec-valid (the parameter schema is a loose string) by
+        // sending a present-but-malformed domain rather than omitting it.
+        'get /v1/internal/domain-verification 404' => fn (): TestResponse => test()->getJson(
+            '/v1/internal/domain-verification?domain=unregistered.example.com',
+        ),
+        'get /v1/internal/domain-verification 422' => fn (): TestResponse => test()->getJson(
+            '/v1/internal/domain-verification?domain='.urlencode('not a hostname'),
+        ),
     ];
 }
 

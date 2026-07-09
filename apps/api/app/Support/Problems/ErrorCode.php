@@ -25,6 +25,7 @@ enum ErrorCode: string
     case MissingTenantHeader = 'missing_tenant_header';
     case InvalidTenantHeader = 'invalid_tenant_header';
     case TenantAccessDenied = 'tenant_access_denied';
+    case UnknownDomain = 'unknown_domain';
 
     public function status(): int
     {
@@ -47,6 +48,7 @@ enum ErrorCode: string
             self::MissingTenantHeader => 400,
             self::InvalidTenantHeader => 400,
             self::TenantAccessDenied => 403,
+            self::UnknownDomain => 404,
         };
     }
 
@@ -71,6 +73,7 @@ enum ErrorCode: string
             self::MissingTenantHeader => 'Missing tenant header',
             self::InvalidTenantHeader => 'Invalid tenant header',
             self::TenantAccessDenied => 'Tenant access denied',
+            self::UnknownDomain => 'Unknown domain',
         };
     }
 

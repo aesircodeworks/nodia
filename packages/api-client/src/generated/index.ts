@@ -29,6 +29,9 @@ export type CursorPaginator<TKey, TValue> = {
   };
 };
 export type CursorPaginatorInterface<TKey, TValue> = CursorPaginator<TKey, TValue>;
+export type DomainVerificationData = {
+  domain: string;
+};
 export type DomainVerifiedPayload = {
   tenant_domain_id: string;
   tenant_id: string;
@@ -52,7 +55,8 @@ export type ErrorCode =
   | 'unknown_host'
   | 'missing_tenant_header'
   | 'invalid_tenant_header'
-  | 'tenant_access_denied';
+  | 'tenant_access_denied'
+  | 'unknown_domain';
 export type HealthChecksData = {
   database: CheckResult;
   redis: CheckResult;

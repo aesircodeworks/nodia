@@ -22,6 +22,7 @@ test('the registry holds exactly the known codes', function () {
         'missing_tenant_header',
         'invalid_tenant_header',
         'tenant_access_denied',
+        'unknown_domain',
     ]);
 });
 
@@ -48,6 +49,7 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'missing_tenant_header' => [ErrorCode::MissingTenantHeader, 400, 'Missing tenant header', '/problems/missing-tenant-header'],
     'invalid_tenant_header' => [ErrorCode::InvalidTenantHeader, 400, 'Invalid tenant header', '/problems/invalid-tenant-header'],
     'tenant_access_denied' => [ErrorCode::TenantAccessDenied, 403, 'Tenant access denied', '/problems/tenant-access-denied'],
+    'unknown_domain' => [ErrorCode::UnknownDomain, 404, 'Unknown domain', '/problems/unknown-domain'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

@@ -36,5 +36,7 @@ class TenancyServiceProvider extends ServiceProvider
         Route::middleware('tenancy.platform')
             ->prefix('v1')
             ->group(__DIR__.'/Http/routes/platform.php');
+
+        Route::prefix('v1')->group(__DIR__.'/Http/routes/internal.php');
     }
 }

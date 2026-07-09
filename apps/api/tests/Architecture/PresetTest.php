@@ -13,6 +13,7 @@ use App\Tenancy\Exceptions\TenantAccessDeniedException;
 use App\Tenancy\Exceptions\TenantDomainIsPrimaryException;
 use App\Tenancy\Exceptions\TenantDomainNotFoundException;
 use App\Tenancy\Exceptions\TenantNotFoundException;
+use App\Tenancy\Exceptions\UnknownDomainException;
 use App\Tenancy\Exceptions\UnknownHostException;
 use App\Tenancy\Http\Middleware\RenderedErrorRollback;
 use App\Tenancy\TenancyServiceProvider;
@@ -41,6 +42,7 @@ arch()->preset()->laravel()->ignoring([
     TenantDomainIsPrimaryException::class,
     TenantDomainNotFoundException::class,
     TenantNotFoundException::class,
+    UnknownDomainException::class,
     UnknownHostException::class,
     MissingTenantHeaderException::class,
     InvalidTenantHeaderException::class,
