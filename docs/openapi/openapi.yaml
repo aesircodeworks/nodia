@@ -431,8 +431,10 @@ paths:
       operationId: getCurrentUser
       summary: Fetch the authenticated staff user
       description: >-
-        Staff bearer only; asserts no tenant. memberships is always empty
-        until a later Stage 3 task activates membership resolution.
+        Staff bearer only; asserts no tenant. memberships lists every one
+        of the caller's own membership rows across every tenant, resolved
+        through the memberships_self_read RLS policy with app.user_id set
+        by the auth layer.
       security:
         - BearerAuth: []
       responses:
@@ -617,8 +619,10 @@ components:
     Membership:
       type: object
       description: >-
-        Wire shape only until a later Stage 3 task starts producing rows;
-        CurrentUser.memberships is an empty array of this shape until then.
+        One row of CurrentUser.memberships: the caller's own membership in
+        one tenant (scope tenant) or their platform-scope administrator
+        membership (scope platform, tenant_id the sentinel platform
+        tenant).
       required:
         - id
         - user_id

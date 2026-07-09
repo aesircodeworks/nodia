@@ -1,5 +1,9 @@
 <?php
 
+use App\Identity\Enums\MembershipScope;
+use App\Identity\Models\Membership;
+use App\Identity\Models\Role;
+use App\Models\User;
 use App\Support\Database\Rls;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Tenancy\TenantTransaction;
@@ -9,13 +13,20 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Tests\Support\MigratedDatabase;
 use Tests\Support\PostgresTestDatabase;
+use Tests\Support\StaffTokens;
 
 /*
- * Slice 6 of the stage-02 plan: the resolution matrix for both request
- * populations, the SET LOCAL proof, and the Octane no-leak simulation.
- * The tenancy.admin and tenancy.storefront groups ship without production
+ * Slice 6 of the stage-02 plan: the resolution matrix for the storefront
+ * population, the SET LOCAL proof, and the Octane no-leak simulation. The
+ * tenancy.admin and tenancy.storefront groups ship without production
  * routes, so every test registers a test-only probe route inside the
- * group it exercises.
+ * group it exercises. The admin population's own resolution matrix,
+ * including staff authentication and membership validation, moved to
+ * tests/Feature/Tenancy/TenantMembershipResolutionTest.php once stage-03
+ * task-05 put auth:staff ahead of ResolveTenantFromHeader in the
+ * tenancy.admin group; the header-shape cases below stayed generic
+ * (storefront only) so this file keeps proving Stage 2's own mechanics
+ * without needing a staff bearer.
  */
 
 const RESOLUTION_TENANT_A = '019797f0-0000-7000-8000-0000000000fa';
@@ -47,10 +58,23 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
+    // Deleted under nodia_app, scoped to the one tenant the membership
+    // leak-test writes to: memberships carries no platform write policy
+    // (stage-03 plan, Data model), so nodia_platform alone could not see
+    // past its tenant_isolation policy to remove the row, and the
+    // dangling FK would then block the tenant delete below. Harmless
+    // no-op for every other test in this file, which creates none.
+    app(TenantTransaction::class)->asTenant(RESOLUTION_TENANT_B, function (): void {
+        DB::table('memberships')->delete();
+    });
+
     app(TenantTransaction::class)->asPlatform(function (): void {
+        DB::table('roles')->whereNotNull('tenant_id')->delete();
         TenantDomain::query()->delete();
         Tenant::query()->whereKeyNot(config()->string('tenancy.platform_tenant_id'))->delete();
     });
+
+    User::query()->delete();
 });
 
 function registerResolutionProbe(string $group): void
@@ -64,7 +88,7 @@ function registerResolutionProbe(string $group): void
     ]));
 }
 
-it('enforces the resolution matrix for both populations', function (string $group, ?string $host, array $headers, int $status, ?string $code, ?string $tenantId) {
+it('enforces the resolution matrix for the storefront population', function (string $group, ?string $host, array $headers, int $status, ?string $code, ?string $tenantId) {
     registerResolutionProbe($group);
 
     // The Host header cannot be injected through the headers argument:
@@ -97,11 +121,6 @@ it('enforces the resolution matrix for both populations', function (string $grou
     'custom domain resolves' => ['storefront', 'tickets.acme.com', [], 200, null, RESOLUTION_TENANT_A],
     'mixed-case host with port resolves' => ['storefront', 'Tickets.ACME.Com:8443', [], 200, null, RESOLUTION_TENANT_A],
     'unknown host' => ['storefront', 'unknown.example', [], 404, 'unknown_host', null],
-    'valid header resolves' => ['admin', null, ['X-Tenant-Id' => RESOLUTION_TENANT_B], 200, null, RESOLUTION_TENANT_B],
-    'missing header' => ['admin', null, [], 400, 'missing_tenant_header', null],
-    'blank header' => ['admin', null, ['X-Tenant-Id' => '   '], 400, 'missing_tenant_header', null],
-    'malformed header' => ['admin', null, ['X-Tenant-Id' => 'not-a-uuid'], 400, 'invalid_tenant_header', null],
-    'unknown tenant id' => ['admin', null, ['X-Tenant-Id' => '019797f0-dead-7000-8000-000000000000'], 403, 'tenant_access_denied', null],
 ]);
 
 it('leaves no tenant context or transaction residue after a resolved request', function () {
@@ -121,12 +140,27 @@ it('never leaks tenant context between sequential kernel handles on one worker p
         'context_tenant_id' => app(TenantContext::class)->tenantId(),
     ]));
 
+    $staff = User::factory()->create();
+    $token = StaffTokens::issue($staff);
+
+    app(TenantTransaction::class)->asTenant(RESOLUTION_TENANT_B, function () use ($staff): void {
+        Membership::factory()->create([
+            'user_id' => $staff->id,
+            'tenant_id' => RESOLUTION_TENANT_B,
+            'role_id' => Role::factory()->create(['tenant_id' => RESOLUTION_TENANT_B])->id,
+            'scope' => MembershipScope::Tenant,
+        ]);
+    });
+
     $this->getJson('http://acme.nodia.example/v1/__probe/resolution')
         ->assertOk()
         ->assertJsonPath('tenant_setting', RESOLUTION_TENANT_A)
         ->assertJsonPath('context_tenant_id', RESOLUTION_TENANT_A);
 
-    $this->getJson('/v1/__probe/admin-resolution', ['X-Tenant-Id' => RESOLUTION_TENANT_B])
+    $this->getJson('/v1/__probe/admin-resolution', [
+        'X-Tenant-Id' => RESOLUTION_TENANT_B,
+        'Authorization' => 'Bearer '.$token,
+    ])
         ->assertOk()
         ->assertJsonPath('tenant_setting', RESOLUTION_TENANT_B)
         ->assertJsonPath('context_tenant_id', RESOLUTION_TENANT_B);

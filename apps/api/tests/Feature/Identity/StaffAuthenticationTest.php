@@ -1,7 +1,13 @@
 <?php
 
+use App\Identity\Enums\MembershipScope;
+use App\Identity\Models\Membership;
+use App\Identity\Models\Role;
 use App\Models\User;
+use App\Support\Tenancy\TenantTransaction;
+use App\Tenancy\Models\Tenant;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Laravel\Passport\Passport;
 use Lcobucci\JWT\Configuration;
 use Lcobucci\JWT\Encoding\JoseEncoder;
@@ -174,6 +180,75 @@ describe('GET /v1/me', function (): void {
                 'mfa_enabled' => false,
                 'memberships' => [],
             ]);
+    });
+
+    it('returns every one of the caller own memberships across tenants, including a platform-scope one, through memberships_self_read', function (): void {
+        $user = staffUser(['email' => 'multi-member-staff@example.com', 'name' => 'Multi Member']);
+
+        $tenantId = '019797f3-0000-7000-8000-0000000000aa';
+        $platformTenantId = config()->string('tenancy.platform_tenant_id');
+
+        [$tenantRoleId, $platformRoleId] = app(TenantTransaction::class)->asPlatform(function () use ($tenantId): array {
+            Tenant::factory()->create(['id' => $tenantId, 'name' => 'Multi Member Tenant']);
+
+            return [
+                Role::factory()->create(['tenant_id' => $tenantId, 'name' => 'Box Office Custom'])->id,
+                Role::query()->whereNull('tenant_id')->firstOrFail()->id,
+            ];
+        });
+
+        $tenantMembershipId = app(TenantTransaction::class)->asTenant($tenantId, fn () => Membership::factory()->create([
+            'user_id' => $user->id,
+            'tenant_id' => $tenantId,
+            'role_id' => $tenantRoleId,
+            'scope' => MembershipScope::Tenant,
+        ])->id);
+
+        $platformMembershipId = app(TenantTransaction::class)->asTenant($platformTenantId, fn () => Membership::factory()->platform()->create([
+            'user_id' => $user->id,
+            'role_id' => $platformRoleId,
+        ])->id);
+
+        $token = $this->postJson('/v1/auth/staff/token', [
+            'email' => 'multi-member-staff@example.com',
+            'password' => 'password',
+        ])->json('access_token');
+
+        $this->getJson('/v1/me', ['Authorization' => 'Bearer '.$token])
+            ->assertOk()
+            ->assertConformsToOpenApi()
+            ->assertJson([
+                'id' => $user->id,
+                'name' => 'Multi Member',
+                'email' => 'multi-member-staff@example.com',
+                'mfa_enabled' => false,
+            ])
+            ->assertJsonCount(2, 'memberships')
+            ->assertJsonFragment([
+                'id' => $tenantMembershipId,
+                'user_id' => $user->id,
+                'user_name' => 'Multi Member',
+                'user_email' => 'multi-member-staff@example.com',
+                'tenant_id' => $tenantId,
+                'role_id' => $tenantRoleId,
+                'role_name' => 'Box Office Custom',
+                'scope' => 'tenant',
+            ])
+            ->assertJsonFragment([
+                'id' => $platformMembershipId,
+                'user_id' => $user->id,
+                'tenant_id' => $platformTenantId,
+                'role_id' => $platformRoleId,
+                'scope' => 'platform',
+            ]);
+
+        app(TenantTransaction::class)->asTenant($tenantId, fn () => DB::table('memberships')->delete());
+        app(TenantTransaction::class)->asTenant($platformTenantId, fn () => DB::table('memberships')->delete());
+
+        app(TenantTransaction::class)->asPlatform(function () use ($tenantId): void {
+            DB::table('roles')->where('tenant_id', $tenantId)->delete();
+            Tenant::query()->whereKey($tenantId)->delete();
+        });
     });
 
     it('is unauthenticated without a bearer token', function (): void {

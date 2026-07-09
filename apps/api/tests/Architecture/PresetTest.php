@@ -1,6 +1,7 @@
 <?php
 
 use App\Identity\Capability;
+use App\Identity\Enums\MembershipAccessOutcome;
 use App\Identity\Enums\MembershipScope;
 use App\Identity\Exceptions\InvalidCredentialsException;
 use App\Identity\Exceptions\InvalidMembershipScopeException;
@@ -41,11 +42,15 @@ arch()->preset()->security();
 // and MembershipScope are enums the preset expects only under App\Enums
 // (stage-03 plan, Data model); they live with the bounded context whose
 // registry they are instead, like ErrorCode lives with the problem-document
-// renderer rather than App\Enums.
+// renderer rather than App\Enums. MembershipAccessOutcome (stage-03
+// task-05) is the same story: Identity's own internal resolution result,
+// never part of the wire contract, so it stays with the Action that
+// returns it.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
     MembershipScope::class,
+    MembershipAccessOutcome::class,
     CurrencyMismatchException::class,
     InvalidTenantIdException::class,
     InvalidCredentialsException::class,

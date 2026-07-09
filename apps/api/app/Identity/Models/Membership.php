@@ -4,11 +4,13 @@ namespace App\Identity\Models;
 
 use App\Identity\Enums\MembershipScope;
 use App\Identity\Exceptions\InvalidMembershipScopeException;
+use App\Models\User;
 use Database\Factories\Identity\Models\MembershipFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
@@ -45,6 +47,26 @@ class Membership extends Model
         if ($scope === MembershipScope::Platform && $tenantId !== config()->string('tenancy.platform_tenant_id')) {
             throw InvalidMembershipScopeException::forNonSentinelTenant($tenantId);
         }
+    }
+
+    /**
+     * @return BelongsTo<Role, $this>
+     */
+    public function role(): BelongsTo
+    {
+        return $this->belongsTo(Role::class);
+    }
+
+    /**
+     * App\Models\User is not a bounded-context model (data-conventions,
+     * task-04 journal), so referencing it here is unrestricted the same
+     * way MembershipFactory already does.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     /**

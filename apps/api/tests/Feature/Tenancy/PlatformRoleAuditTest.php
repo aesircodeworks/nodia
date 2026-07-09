@@ -1,15 +1,21 @@
 <?php
 
+use App\Identity\Enums\MembershipScope;
+use App\Identity\Models\Membership;
+use App\Identity\Models\Role;
+use App\Models\User;
 use App\Support\Tenancy\PlatformRoleAudit;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Monolog\Level;
 use Tests\Support\LogCapture;
 use Tests\Support\MigratedDatabase;
 use Tests\Support\PostgresTestDatabase;
+use Tests\Support\StaffTokens;
 
 /*
  * Slice 7 second half of the stage-02 plan: every request executing under
@@ -154,6 +160,31 @@ it('emits no audit entry for requests that never assume the platform role', func
     'admin header resolution (nodia_app)' => [function ($test): void {
         Route::middleware('tenancy.admin')->prefix('v1')->get('/__probe/audit-admin', fn () => response()->noContent());
 
-        $test->getJson('/v1/__probe/audit-admin', ['X-Tenant-Id' => AUDIT_TENANT_ID])->assertNoContent();
+        $staff = User::factory()->create();
+        $token = StaffTokens::issue($staff);
+
+        app(TenantTransaction::class)->asTenant(AUDIT_TENANT_ID, function () use ($staff): void {
+            Membership::factory()->create([
+                'user_id' => $staff->id,
+                'tenant_id' => AUDIT_TENANT_ID,
+                'role_id' => Role::factory()->create(['tenant_id' => AUDIT_TENANT_ID])->id,
+                'scope' => MembershipScope::Tenant,
+            ]);
+        });
+
+        $test->getJson('/v1/__probe/audit-admin', [
+            'X-Tenant-Id' => AUDIT_TENANT_ID,
+            'Authorization' => 'Bearer '.$token,
+        ])->assertNoContent();
+
+        app(TenantTransaction::class)->asTenant(AUDIT_TENANT_ID, function (): void {
+            DB::table('memberships')->delete();
+        });
+
+        app(TenantTransaction::class)->asPlatform(function (): void {
+            DB::table('roles')->whereNotNull('tenant_id')->delete();
+        });
+
+        User::query()->whereKey($staff->id)->delete();
     }],
 ]);

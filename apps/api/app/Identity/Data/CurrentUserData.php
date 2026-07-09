@@ -21,7 +21,10 @@ class CurrentUserData extends Data
         public array $memberships,
     ) {}
 
-    public static function fromModel(User $user): self
+    /**
+     * @param  list<MembershipData>  $memberships
+     */
+    public static function fromModel(User $user, array $memberships): self
     {
         return new self(
             $user->id,
@@ -30,8 +33,7 @@ class CurrentUserData extends Data
             // users.mfa_enabled ships in a later Stage 3 task; no user can
             // have MFA confirmed before that column exists.
             false,
-            // memberships and roles ship in a later Stage 3 task.
-            [],
+            $memberships,
         );
     }
 }

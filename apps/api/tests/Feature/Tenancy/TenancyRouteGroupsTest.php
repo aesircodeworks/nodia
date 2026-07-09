@@ -30,7 +30,7 @@ it('registers the three tenancy middleware groups and the platform auth alias', 
 
     expect($groups)->toHaveKeys(['tenancy.platform', 'tenancy.admin', 'tenancy.storefront'])
         ->and($groups['tenancy.platform'])->toBe(['auth.platform', PlatformRequestTransaction::class])
-        ->and($groups['tenancy.admin'])->toBe([ResolveTenantFromHeader::class])
+        ->and($groups['tenancy.admin'])->toBe(['auth:staff', ResolveTenantFromHeader::class])
         ->and($groups['tenancy.storefront'])->toBe([ResolveTenantFromHost::class])
         ->and($router->getMiddleware()['auth.platform'] ?? null)->toBe(PlatformAuthPlaceholder::class);
 });

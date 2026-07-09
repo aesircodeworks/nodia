@@ -175,6 +175,84 @@ it('rejects a resolver transaction inside an active tenant transaction before an
         ->and(app(TenantContext::class)->hasTenant())->toBeFalse();
 });
 
+it('sets app.user_id alongside app.tenant_id when asTenant is given a user id', function () {
+    $tenantId = Str::uuid7()->toString();
+    $userId = Str::uuid7()->toString();
+
+    $observed = app(TenantTransaction::class)->asTenant(
+        $tenantId,
+        fn () => DB::selectOne("select current_setting('app.user_id', true) as user_id")->user_id,
+        $userId,
+    );
+
+    expect($observed)->toBe($userId);
+});
+
+it('leaves app.user_id unset when asTenant is given no user id', function () {
+    $observed = app(TenantTransaction::class)->asTenant(
+        Str::uuid7()->toString(),
+        fn () => DB::selectOne("select current_setting('app.user_id', true) as user_id")->user_id,
+    );
+
+    expect($observed)->toBeIn([null, '']);
+});
+
+it('runs the callback under the nodia_app posture with app.user_id set and no app.tenant_id for the authenticated-staff posture', function () {
+    $userId = Str::uuid7()->toString();
+
+    $observed = app(TenantTransaction::class)->asAuthenticatedStaff($userId, fn () => [
+        'transaction_level' => DB::transactionLevel(),
+        'role' => DB::selectOne('select current_user as role')->role,
+        'user_id' => DB::selectOne("select current_setting('app.user_id', true) as user_id")->user_id,
+        'tenant_id' => DB::selectOne("select current_setting('app.tenant_id', true) as tenant_id")->tenant_id,
+        'has_tenant' => app(TenantContext::class)->hasTenant(),
+    ]);
+
+    expect($observed)->toBe([
+        'transaction_level' => 1,
+        'role' => Rls::APP_ROLE,
+        'user_id' => $userId,
+        'tenant_id' => null,
+        'has_tenant' => false,
+    ]);
+
+    expect(DB::transactionLevel())->toBe(0)
+        ->and(app(TenantContext::class)->hasTenant())->toBeFalse();
+});
+
+it('elevates an open tenant transaction from nodia_app to nodia_platform without leaving it', function () {
+    $tenantId = Str::uuid7()->toString();
+
+    $observed = app(TenantTransaction::class)->asTenant($tenantId, function () {
+        $transaction = app(TenantTransaction::class);
+        $transaction->elevateToPlatformRole();
+
+        return [
+            'role' => DB::selectOne('select current_user as role')->role,
+            'tenant_id' => DB::selectOne("select current_setting('app.tenant_id', true) as tenant_id")->tenant_id,
+            'context_tenant_id' => app(TenantContext::class)->tenantId(),
+            'is_platform' => app(TenantContext::class)->isPlatform(),
+            'transaction_level' => DB::transactionLevel(),
+        ];
+    });
+
+    expect($observed)->toBe([
+        'role' => Rls::PLATFORM_ROLE,
+        'tenant_id' => $tenantId,
+        'context_tenant_id' => $tenantId,
+        'is_platform' => true,
+        'transaction_level' => 1,
+    ]);
+
+    expect(app(TenantContext::class)->hasTenant())->toBeFalse()
+        ->and(DB::transactionLevel())->toBe(0);
+});
+
+it('rejects elevateToPlatformRole outside an active tenant transaction', function () {
+    expect(fn () => app(TenantTransaction::class)->elevateToPlatformRole())
+        ->toThrow(LogicException::class);
+});
+
 it('rejects a resolver transaction inside an already open database transaction', function () {
     DB::beginTransaction();
 
