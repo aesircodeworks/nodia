@@ -1,0 +1,23 @@
+# Stage Plans
+
+Detailed implementation plans for each stage of the [Nodia API implementation plan](../api-implementation-plan.md). The master plan owns stage ordering, the TDD method, the contract pipeline, and the status table; each document below expands one stage into scope, data model, events, endpoints, TDD sequencing, tasks, and exit criteria. Stage numbers in the Dependencies column refer to other rows in this table.
+
+| Stage | Plan | Scope | Dependencies |
+| --- | --- | --- | --- |
+| 1 | [Delivery Kernel and Test Harness](stage-01-delivery-kernel.md) | RFC 9457 problem documents and error code registry, Support/Money, the six-suite test matrix, real isolation and concurrency harnesses, OpenAPI conformance gate, time control | Phase 0 skeleton |
+| 2 | [Tenancy and RLS Regime](stage-02-tenancy-rls.md) | Tenants and tenant domains, RLS bootstrap and per-table policy pattern, tenant resolution middleware for both populations, domain verification endpoint | 1 |
+| 3 | [Identity, AuthN, AuthZ](stage-03-identity.md) | Passport OAuth for staff and customers, memberships and capability RBAC, MFA enrollment and enforcement, guest customers and claim flow, activity log | 1, 2 |
+| 4 | [Transactional Outbox](stage-04-outbox.md) | Outbox tables and recording API, after-commit dispatcher and Horizon queues, reconciliation sweeper, ordered consumption, replay primitive, identity and Tenancy event producers | 1, 2, 3 |
+| 5a | [Catalog Core and Publish](stage-05a-catalog-core.md) | Venues, events, ticket types, publish and cancel lifecycle with catalog events, admin CRUD and host-resolved storefront reads with locale negotiation | 1, 2, 3, 4 |
+| 5b | [Seating Templates](stage-05b-seating-templates.md) | Seat maps and seats as reusable venue templates, document-style upsert with seat identity preservation, event-to-template linkage | 1, 2, 3, 4, 5a |
+| 5c | [Search and Media](stage-05c-search-media.md) | Media through medialibrary (event images, tenant branding), PostgreSQL full-text search projection behind an EventSearcher interface, rebuild command | 1, 2, 3, 4, 5a |
+| 6 | [Inventory and Reserved Seating](stage-06-inventory.md) | Oversell-proof inventory counters, holds with TTL and sweeper, event seat materialization on publish, seated holds, availability and seat management surfaces | 1, 2, 3, 4, 5a, 5b |
+| 7 | [Orders, Tickets, Promo Codes](stage-07-orders.md) | Order state machine from holds, exactly-once ticket issuance, signed rotatable QR payloads, promo codes with atomic limits, buyer and staff order surfaces | 1, 2, 3, 4, 5a, 6 |
+| 8a | [Payments and Webhooks](stage-08a-payments-webhooks.md) | GatewayAdapter and FakeGateway, payment initiation with Idempotency-Key, webhook ingestion, payment expiry and reconciliation poller, circuit breaker, confirmation email and ticket PDF consumers | 1, 2, 3, 4, 5a, 5c, 6, 7 |
+| 8b | [Ledger and Refunds](stage-08b-ledger-refunds.md) | Append-only ledger projection, commission configuration and refund policy, full and partial refunds with ticket voiding, ledger and balance reads | 1, 2, 3, 4, 7, 8a |
+| 8c | [Payouts and Sub-merchant Onboarding](stage-08c-payouts.md) | Sub-merchant onboarding abstraction and KYC lifecycle, payout mirroring from gateway webhooks, checkout offer gating, payout ledger legs and reconciliation | 1, 2, 3, 4, 7, 8a, 8b |
+| 8d | [Real Gateway Adapter](stage-08d-real-gateway.md) | Production adapter behind the existing interface, real webhook signatures, KYC flow, recorded-fixture sandbox harness and adapter conformance suite; gated on the launch gateway ADR | 1, 2, 8a, 8b, 8c, launch gateway ADR |
+| 9 | [Check-in and Offline Reconciliation](stage-09-checkin.md) | Ticket manifest and signing key distribution, per-event key rotation, first-scan-wins scan recording, offline batch reconciliation, check-in assignments | 1, 2, 3, 4, 7 (Stage 8 slices merged per the master plan) |
+| 10 | [High-Demand On-Sales](stage-10-on-sales.md) | Waiting room queue and gatekeeper, signed admission tokens, per-customer purchase limits, rate limiting tiers, cached availability reads | 1, 2, 3, 4, 5a, 6 |
+| 11 | [Reporting and Exports](stage-11-reporting.md) | Daily sales, event finance, and attendance projections, dashboard read endpoints, CSV export lifecycle, rebuild tooling with replay equivalence | 1, 2, 3, 4, 5a, 7, 8a, 8b; 9 for the attendance slice |
+| 12 | [Compliance, Operations, Hardening](stage-12-hardening.md) | GDPR and LGPD erasure and data subject export, retention and outbox archival, audited operational commands, security sweep, smoke suite CI gate, load tests | 1 through 11 |

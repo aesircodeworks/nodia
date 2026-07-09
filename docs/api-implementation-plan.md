@@ -103,7 +103,7 @@ Exit: cross-tenant access provably fails; platform role reads provably succeed a
 
 Goal: both identity populations can authenticate, and every subsequent endpoint has a real authorization layer to test against.
 
-- Passport OAuth 2.0: short-lived JWT access tokens with explicit lifetimes, rotating refresh tokens with reuse detection, revocation, identity-type and tenant claims per api-conventions.
+- Passport OAuth 2.0: short-lived JWT access tokens with explicit lifetimes, rotating refresh tokens with reuse detection, revocation, identity-type and tenant claims per api-conventions; staff password reset for forgotten credentials (enumeration-safe request endpoint, single-use time-limited token, revocation of live tokens on reset).
 - `users`, `memberships`, custom RBAC (`roles` with global templates and per-tenant custom roles, flat capability sets), Gates and Policies evaluating capability plus tenant context.
 - MFA enrollment and enforcement for platform-scope staff and financially privileged roles (the mechanism is testable now; the payout and refund capabilities it guards arrive in Stage 8).
 - `customers`: tenant-scoped, guest creation with nullable password, claim-by-email-verification flow, per-tenant email uniqueness.
@@ -123,11 +123,11 @@ Goal: the event backbone, both recording and delivery, so every context after th
 - `outbox_deliveries`, after-commit dispatcher, Horizon queues, per-subscriber tracking, reconciliation sweeper with the stability-window semantics from system-design 9.1.
 - Ordered-consumption helper for consumers that need per-aggregate sequence order (the ledger projection will be its first real user).
 - Replay primitive: rescan in sequence order to rebuild a projection.
-- Attach the identity event producers deferred from Stage 3: `UserInvited`, `UserRoleChanged`, and `CustomerRegistered` recorded by their Actions.
+- Attach the identity event producers deferred from Stage 3 (`UserInvited`, `UserRoleChanged`, `CustomerRegistered`) and the Tenancy producers deferred from Stage 2 (`TenantCreated`, `DomainVerified`), each recorded by its Action, with the missing Tenancy rows added to the system-design 9.3 registry in the same change.
 
 Tests first: recording rolls back with the producing transaction; duplicate delivery to an idempotent test subscriber causes exactly one effect; the sweeper re-enqueues a delivery stranded between commit and enqueue; ordered consumption defers an event whose predecessor is unprocessed.
 
-Exit: at-least-once delivery with idempotent consumption proven end to end against Redis and real PostgreSQL; the identity Actions record their events.
+Exit: at-least-once delivery with idempotent consumption proven end to end against Redis and real PostgreSQL; the identity and Tenancy Actions record their events.
 
 ### Stage 5: Event Catalog
 
