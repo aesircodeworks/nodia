@@ -133,3 +133,22 @@ Deviations and decisions:
 - The running local stack's postgres volume predates the init script, so `nodia_test` was created there with the documented one-off `createdb` rather than `make fresh` (avoids dropping the dev stack's volumes mid-run). Exit criterion 5's "no configuration beyond make up" holds for fresh stacks via the init script.
 - The stage plan does not specify the guard's connectivity assertion; it was added beyond the driver-name check because `getDriverName()` reads config without connecting, which would let the guard pass green against an unreachable database.
 - Overrides use dedicated `NODIA_TEST_DB_*` names instead of `DB_*` because locally `phpunit.xml` pins `DB_DATABASE=:memory:` and a developer `.env` points `DB_*` at the dev `nodia_api` database, exactly what these suites must never touch.
+
+### task-04: ADR 019, OpenAPI conformance tooling selection spike (slice 4 spike)
+
+Completed Thu Jul 9 12:36:18 -03 2026. Commit `f1fb9a1`, `docs: adr 019 openapi conformance tooling`.
+
+What landed:
+
+- `docs/decisions/019-spectator-for-openapi-conformance.md`, following the existing ADR format. Decision: hotmeteor/spectator provides the `assertConformsToOpenApi` macro (criterion a); the Data-class drift gate (criterion b) is built from strict component schemas (`additionalProperties: false` plus exhaustive `required`, enforced by a Contract suite strictness test) and Contract suite coverage checks (spec validity, bidirectional route-to-spec drift, every documented response conformance-asserted), not from spec generation.
+- All maintenance and capability claims were verified against live sources on 2026-07-09 per the master plan's binding requirement, via Packagist, GitHub, and the projects' own docs: spectator v3.0.2 (2026-05-01, PHP ^8.3, Laravel >=12, OpenAPI 3.1 since the 2.0 rewrite on cebe/php-openapi plus opis/json-schema); league/openapi-psr7-validator 0.24 (2026-05-08, OpenAPI 3.0.x only via the devizzent/cebe-php-openapi fork); osteel/openapi-httpfoundation-testing v0.14 (2025-12-04, pre-1.0, delegates to the league validator). The repo spec being 3.1.0 disqualifies the latter two.
+- The master plan's directed fallback for an unsatisfied criterion b (generate the document from the Data classes, gate on generated-vs-committed diff) was evaluated for feasibility and not adopted: dedoc/scramble's laravel-data support is a paid Scramble PRO feature (a spend decision this task cannot make), xolvionl/laravel-data-openapi-generator is unmaintained since mid-2024 and absent from Packagist, and basillangevin/laravel-data-json-schemas emits per-class JSON Schema 2019-09, not an OpenAPI document. The ADR records the residual risk (optional-field variants and union branches inside one operation are only as covered as their tests) and the revisit triggers.
+- No production code, no test changes; task-05 implements the ADR.
+
+Test evidence:
+
+- `composer lint` (Pint): passed. `composer analyse` (Larastan): 0 errors. `composer test`: 84 passed, 0 failed, 341 assertions across all six suites. `composer types:generate`: ran clean, no diff. All run post-ADR as instructed even though the change is docs-only.
+
+Deviations and decisions:
+
+- The task directive said that if no tool satisfies criterion b the decision is to generate the OpenAPI document from the Data classes. The spike found that path infeasible with maintained free tooling (details above and in the ADR), so the ADR instead keeps the hand-maintained YAML and constructs the drift gate from spectator plus schema strictness and coverage rules, satisfying the master plan's underlying requirement that drift cannot escape through untested shapes at the operation level. This is a recorded, reviewable deviation; if a Scramble PRO license is approved, the ADR names that as a revisit trigger.
