@@ -152,3 +152,26 @@ Test evidence:
 Deviations and decisions:
 
 - The task directive said that if no tool satisfies criterion b the decision is to generate the OpenAPI document from the Data classes. The spike found that path infeasible with maintained free tooling (details above and in the ADR), so the ADR instead keeps the hand-maintained YAML and constructs the drift gate from spectator plus schema strictness and coverage rules, satisfying the master plan's underlying requirement that drift cannot escape through untested shapes at the operation level. This is a recorded, reviewable deviation; if a Scramble PRO license is approved, the ADR names that as a revisit trigger.
+
+### task-05: OpenAPI conformance assertions and Contract suite gate (slice 4 remainder)
+
+Completed Thu Jul 9 13:10:45 -03 2026. Commit `5a76435`, `test: openapi conformance assertions and contract suite gate`.
+
+What landed:
+
+- Uncommitted partial task-05 work found in the tree was inspected against the stage plan and ADR 019 and adopted: spectator ^3.0 as a dev dependency, the `assertConformsToOpenApi` and `assertMatchesProblemSchema` macros in `tests/TestCase.php`, `tests/Support/OpenApiSpec.php` (spec loading, meta-schema validation via opis/json-schema against the vendored official OpenAPI 3.1 meta-schema so the check runs offline, component-schema validation with an `unevaluatedProperties: false` wrapper, operation and response-schema enumeration, `$ref` resolution), `tests/Contract/{OpenApiDocumentValidityTest,ResponseSchemaStrictnessTest,RouteSpecDriftTest}.php` replacing the task-03 harness stub, both `HealthEndpointTest` responses chained with `assertConformsToOpenApi()`, and `ProblemResponsesTest` routing every matrix case through `assertMatchesProblemSchema` (`ValidationProblem` for the 422). The adopted work had a real bug: `RouteSpecDriftTest` passed its custom failure message as a second argument to Pest's `toContain`, which treats every argument as a needle, so both drift tests failed even with route and spec in sync (observed: 86 of 88 passing). Fixed with `Assert::assertContains` and its message parameter.
+- New in this run: `tests/Contract/DocumentedResponseCoverageTest.php` implements ADR 019's remaining coverage rule (every documented response is exercised with conformance asserted) as an executable check: a dataset over every documented `method /path status` triple fails any response with no registered exerciser, each exerciser's response is status-asserted and conformance-asserted, and a companion test fails exercisers targeting undocumented responses. Exercisers exist for `get /v1/health 200` and `503`. `ApiErrorRenderingTest`'s no-Accept 404 case retrofitted with `assertMatchesProblemSchema`. `OpenApiSpec::path()` made container-free (`dirname` instead of `base_path`) so the dataset can enumerate the spec before the app boots.
+- CI (`.github/workflows/api.yml`): the paths filter gains `docs/openapi/**` so spec-only edits trigger the API jobs (without it, a shape-breaking YAML edit would merge without the gate running, violating exit criterion 1), and the contract-drift job gains a redis service, the phpredis extension, and an explicit `php artisan test --testsuite=Contract` step ahead of the TypeScript drift check (redis is needed because the coverage test exercises the healthy 200). The Pest job also runs the Contract suite as part of `composer test` with no change.
+
+Every gate was proven to bite by introducing then reverting a deliberate mismatch (none merged): a fake required field on `HealthReport` in the YAML failed the health 200 feature test and the Contract coverage exerciser ("The required properties (uptime) are missing"); an extra property on `HealthReportData` failed conformance via `additionalProperties: false`; a fake required member on the `Problem` component failed all 8 problem-matrix cases; removing `additionalProperties: false` from `HealthReport` failed the strictness test; a temporary app route failed route-to-spec drift and a phantom spec path failed spec-to-route drift; removing the 503 exerciser failed the coverage dataset case with the instructive message.
+
+Test evidence:
+
+- `composer test`: 91 passed, 0 failed, 367 assertions across all six suites (Feature 27, Unit 41, Contract 8, Architecture 11, Isolation 2, Concurrency 2).
+- `composer lint` (Pint): passed after fixing import ordering in the two touched files. `composer analyse` (Larastan): 0 errors. `composer types:generate`: ran clean, no diff (no Data classes changed).
+- Workflow YAML confirmed parseable after the CI edits.
+
+Deviations and decisions:
+
+- ADR 019 phrases the coverage rule as "exercised by a conformance-asserted feature test"; it is implemented as the Contract suite exercising every documented response itself, because a static scan of feature tests for conformance assertions would be unverifiable and brittle. The Contract check is strictly stronger: it executes the request and asserts conformance rather than trusting that a feature test somewhere does.
+- The CI step went into the contract-drift job (the task allowed either that job or the Pest job) so the spec gates are a named, independent check alongside the generated-types drift gate; the cost is a redis service on that job.
