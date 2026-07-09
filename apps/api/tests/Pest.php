@@ -23,9 +23,10 @@ pest()->extend(TestCase::class)->in('Feature', 'Unit', 'Contract');
 |--------------------------------------------------------------------------
 |
 | These suites only prove anything against real PostgreSQL (row-level
-| security, genuine lock contention), so they never run on the SQLite
-| default; Tests\Support\PostgresTestDatabase points them at the real
-| database. The Isolation suite additionally downgrades its connection to
+| security, genuine lock contention). phpunit.xml already defaults every
+| suite to the pgsql test database; Tests\Support\PostgresTestDatabase
+| guards these two against an environment that forces another driver.
+| The Isolation suite additionally downgrades its connection to
 | an unprivileged role whenever the configured user would bypass RLS
 | (superuser or BYPASSRLS), because a bypassing role would make every
 | isolation proof vacuous. See the API README, "Testing".

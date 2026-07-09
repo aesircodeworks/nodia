@@ -11,15 +11,15 @@
 
 `composer test` runs six Pest suites: Feature, Unit, Contract, Architecture, Isolation, and Concurrency. Run one with `php artisan test --testsuite=Isolation`.
 
-Feature, Unit, and Contract run on the in-memory SQLite default from `phpunit.xml`. Isolation and Concurrency only prove anything against real PostgreSQL (row-level security, genuine lock contention), so they refuse to run on SQLite and instead connect to a dedicated test database, never the dev `nodia_api` database. Unit tests of PostgreSQL-bound mechanics (the tenant transaction wrapper's `SET LOCAL`s) opt into the same test database through `Tests\Support\PostgresTestDatabase`.
+All six suites run against real PostgreSQL, matching CI: `phpunit.xml` defaults the test connection to the dedicated `nodia_test` database (host `127.0.0.1`, port `5432`, user `nodia`, password `nodia`), never the dev `nodia_api` database. There is no SQLite fallback: the tenancy migrations carry PostgreSQL-only DDL (`CREATE POLICY`, `FORCE ROW LEVEL SECURITY`) and the tenant transaction wrapper executes `SET LOCAL`, none of which SQLite can parse, and driver-conditional migrations that skip RLS policies are rejected because they would let tests exercise a database without the isolation guarantees.
 
-Locally, `make up` is the only setup: the compose stack's init script (`infra/compose/postgres/create-test-database.sh`) creates the `nodia_test` database on first cluster initialization, and the suites default to it (host `127.0.0.1`, port `5432`, user `nodia`, password `nodia`, database `nodia_test`). PostgreSQL only runs init scripts against an empty data volume, so a stack created before the script existed needs either `make fresh` (drops all volumes) or a one-off:
+Locally, `make up` is the only setup: the compose stack's init script (`infra/compose/postgres/create-test-database.sh`) creates the `nodia_test` database on first cluster initialization. PostgreSQL only runs init scripts against an empty data volume, so a stack created before the script existed needs either `make fresh` (drops all volumes) or a one-off:
 
 ```sh
 docker compose -f infra/compose/docker-compose.yml exec postgres createdb -U nodia nodia_test
 ```
 
-To point the two suites at a different PostgreSQL server, set any of `NODIA_TEST_DB_HOST`, `NODIA_TEST_DB_PORT`, `NODIA_TEST_DB_DATABASE`, `NODIA_TEST_DB_USERNAME`, `NODIA_TEST_DB_PASSWORD`. When the environment already provides a `pgsql` default connection through `DB_*` variables, as the CI jobs do, it is used as-is and the overrides are ignored.
+To point the suites at a different PostgreSQL server, export `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, and `DB_PASSWORD` before running them, as the CI jobs do: exported variables take precedence over the `phpunit.xml` defaults. `Tests\Support\PostgresTestDatabase` stays as a guard for the suites that prove nothing off PostgreSQL (Isolation, Concurrency, and the PostgreSQL-bound unit tests): if the default connection is ever forced away from `pgsql`, it redirects them to the connection described by the `NODIA_TEST_DB_*` variables instead of letting them run on the wrong driver.
 
 Superusers and `BYPASSRLS` roles skip row-level security entirely, so the Isolation suite never trusts the configured user: when that user would bypass RLS (the compose stack's `nodia` user and the CI service user are the cluster superuser), the suite creates an unprivileged `nodia_isolation` login role through the privileged connection and reconnects as it before any isolation test runs. When the configured user is already unprivileged, the connection is used as-is.
 

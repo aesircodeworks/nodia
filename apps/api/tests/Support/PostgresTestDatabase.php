@@ -7,11 +7,11 @@ namespace Tests\Support;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Points the default connection at real PostgreSQL for tests that prove
- * nothing on the SQLite default (RLS, SET LOCAL, genuine lock contention).
- * When the environment already provides a pgsql default (the CI jobs
- * export DB_*), it is used as-is; otherwise the connection targets the
- * compose stack's dedicated test database, overridable through the
+ * Guard for tests that prove nothing off PostgreSQL (RLS, SET LOCAL,
+ * genuine lock contention). phpunit.xml defaults every suite to the pgsql
+ * test database, so this is normally a no-op; when the environment forces
+ * the default connection onto another driver, it redirects these tests to
+ * the compose stack's dedicated test database, overridable through the
  * NODIA_TEST_DB_* variables. See the API README, "Testing".
  */
 final class PostgresTestDatabase
