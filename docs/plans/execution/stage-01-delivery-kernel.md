@@ -229,3 +229,33 @@ Finding 2 (blocking, `HealthController.php:28`, direct `CarbonImmutable::now()`)
 - API README Testing section gains the plan-required note: domain time flows through the framework clock, and TTL tests must never sleep.
 
 Gate re-run after both fixes: `composer lint` (Pint) passed; `composer analyse` (Larastan) passed, 0 errors; `composer test` 104 passed, 0 failed, 400 assertions across all six suites (Concurrency now 3, Architecture 13, Unit 45). No Data classes changed, so no generated TypeScript drift.
+
+### Review round 2
+
+Ran after the round 1 fixes: verdict approve, 0 actionable findings, 0 minor findings. The run ended review-clean.
+
+### Run summary (closed Thu Jul 9 13:42 -03 2026)
+
+- Tasks completed: 8 of the 10 plan items. task-01 through task-06 landed through the task flow (commits `88dfcb1`, `4577492`, `7509642`, `f1fb9a1`, `5a76435`, `a3ab368`); plan items 8 and 9 (slices 6 and 7) landed as accepted review round 1 fixes (`026fe51`, `87b999a`) rather than as their own task runs, with full TDD discipline preserved (red first, proven-to-bite, gates re-run).
+- Not completed: task-07 (throwaway-branch proof that a failing isolation probe blocks CI, exit criterion 6) is blocked; the implementer agent returned no result, and the task was also unexecutable as specified because `feat/api-implementation` has never been pushed to origin, so there is no remote branch to fork the throwaway probe from and no CI run covers any of this stage's work. task-10 (mark Stage 1 done in the status table) deliberately not executed as written, since criterion 6 is unmet; the status table gets an honest partial status instead.
+- Gate: green. First pass after task-06 (13:24): Pint passed, Larastan 0 errors, Pest 97 passed / 383 assertions across all six suites, `composer types:generate` produced no drift, `pnpm typecheck` passed in all five TS workspaces. Re-run after the review fixes: 104 passed / 400 assertions, all other checks unchanged. Re-verified at close (13:41): `composer test` 104 passed, 0 failed, 400 assertions.
+- Review rounds: round 1 needs-fixes (3 blocking findings, all accepted and fixed, none declined); round 2 approve (0 findings). Review-clean at close.
+- Unresolved or declined findings: none.
+- Blockers: task-07 as above. Unblocking requires pushing the branch (or merging the stage work) so CI runs exist, then executing the throwaway-probe exercise and recording the run link here.
+- Commit hygiene deviation: commit `026fe51` unintentionally swept in the pre-existing user-staged deletion of 44 files under `.claude/skills/` (the speckit, subagent-driven-development, systematic-debugging, and test-driven-development skill trees) alongside the concurrency harness. Those deletions predate the run and earlier commits had deliberately excluded them; recorded here rather than rewritten out of history since nothing has been pushed but history rewriting was not in scope.
+
+### Exit criteria assessment (Thu Jul 9 13:42 -03 2026)
+
+Assessed against HEAD `efc8a1f` with the full suite re-run at close. 8 of 9 criteria are met (two of them with their CI leg unexercised because the branch is unpushed); criterion 6 is not met.
+
+1. Health conformance both ways: met locally, CI leg unexercised. Both `HealthEndpointTest` responses chain `assertConformsToOpenApi()` (`5a76435`), and shape-breaking mutations on either side were proven to fail via the six deliberate-mismatch exercises journaled under task-05 (fake required field in YAML, extra Data property, strictness removal, route and spec drift, missing exerciser). The CI gate steps exist in `.github/workflows/api.yml` (Contract suite in the contract-drift job, `docs/openapi/**` in the paths filter) but no CI run has ever executed them.
+2. Problem documents under `/v1`: met. `ProblemResponsesTest` covers the full matrix (404, 405, 422 with `errors` map, 401, 403, 429 with `Retry-After`, 500 with no leak under debug off, content type without Accept), every case echoing `X-Correlation-Id` and validated against the `Problem`/`ValidationProblem` component schemas; health 503 renders `type /problems/health-degraded` through the shared renderer (`88dfcb1`). Passing in the close-out run.
+3. `App\Support\Money`: met. Value object, `CurrencyMismatchException`, Eloquent cast, laravel-data cast and transformer, 28 unit tests now under `tests/Unit/Money` (`4577492`, relocated by `7509642`); generated TypeScript `{amount: number; currency: string}` committed with the drift gate clean.
+4. Six suites: met locally, CI leg unverified. `phpunit.xml` declares Feature, Unit, Contract, Architecture, Isolation, Concurrency; `composer test` runs all six (104 passed / 400 assertions at close). The CI Pest, Architecture, Isolation, and Concurrency jobs are wired for them but have not run on this branch.
+5. SQLite refusal and zero-config PostgreSQL: met. Both driver guards were verified red on SQLite with the instructive message before wiring, and also assert live connectivity to `nodia_test`; fresh stacks get `nodia_test` from the compose init script with no configuration beyond `make up` (`7509642`; the one pre-existing dev volume needed the documented one-off `createdb`). The isolation suite additionally self-downgrades to the unprivileged `nodia_isolation` role so RLS is honest (`a3ab368`).
+6. Failing isolation probe blocks CI: not met. Task-07 blocked; no throwaway branch, no red CI run, no link to cite. This is the criterion keeping the stage open.
+7. Concurrency harness: met. The read-then-write probe demonstrably loses updates (deliberate break oversold 211 against quantity 25; single-worker break failed with no contention) and the conditional-UPDATE probe accounts exactly (grants sum to 25, final `taken` 25), stable across 8 consecutive green full-suite runs (`026fe51`).
+8. Time control: met. `FrameworkClockTest` proves the TTL pattern under `freezeTime` and `travel(11)->minutes()` with no sleeping, and `TimeSourceTest` keeps `app/` off uncontrollable time sources, proven to bite on the pre-fix `HealthController::now()` call (`87b999a`).
+9. Gates over the merged work: met. Pint passed, Larastan 0 errors, Architecture suite 13 tests green, and `packages/api-client/src/generated` matches regeneration exactly (no hand edits).
+
+Stage 1 therefore stays In progress, blocked solely on exit criterion 6.

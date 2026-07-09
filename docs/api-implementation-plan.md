@@ -12,7 +12,7 @@ Update this table when a stage starts and when it merges.
 
 | Stage | Status |
 | --- | --- |
-| Stage 1: Delivery Kernel and Test Harness | In progress (blocked: 2026-07-09 run completed 0 of 10 tasks, task-01 agent returned no result; see the execution journal) |
+| Stage 1: Delivery Kernel and Test Harness | In progress (blocked on exit criterion 6: throwaway-branch CI proof that a failing isolation probe blocks merge; all other criteria met locally, but the branch is unpushed so no CI run covers the stage; see the execution journal) |
 | Stage 2: Tenancy and RLS Regime | Not started |
 | Stage 3: Identity, AuthN, AuthZ | Not started |
 | Stage 4: Transactional Outbox | Not started |
