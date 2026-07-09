@@ -23,7 +23,7 @@ Verified starting state: Stage 1 is done (commit 61d886b marks it done; problem 
 - [x] task-08: `TenancyServiceProvider` with the three route groups and the placeholder platform auth alias (plan task 8)
 - [x] task-09: Tenant create, read, update endpoints with feature, contract, and isolation tests, OpenAPI, regenerated TypeScript (plan task 9, slice 4)
 - [x] task-10: Domain endpoints with feature, contract, and concurrency tests, OpenAPI, regenerated TypeScript (plan task 10, slice 5)
-- [ ] task-11: Tenant resolution middleware for both populations, resolution matrix, Octane no-leak test (plan task 11, slice 6; blocked on the domain-resolution open question)
+- [x] task-11: Tenant resolution middleware for both populations, resolution matrix, Octane no-leak test (plan task 11, slice 6; domain-resolution open question settled, see the task entry and Decisions)
 - [ ] task-12: Domain verification endpoint plus contract (plan task 12, slice 7 first half)
 - [ ] task-13: Platform-role audit log seam and its tests (plan task 13, slice 7 second half)
 - [ ] task-14: Stage close: status table to done, `DomainVerified` trigger decision recorded (plan task 14)
@@ -280,10 +280,45 @@ Deviations and decisions:
 - The make-primary race loser maps to 409 `tenant_domain_is_primary` (`forConcurrentPromotion`) instead of leaking a 500. That 409 is not documented in OpenAPI because it cannot be produced deterministically by a single-threaded exerciser and the coverage gate requires one per documented response; the concurrency test asserts the code whenever the interleaving produces the conflict.
 - TDD ordering note: the concurrency tests were written after the endpoint slice went green rather than before implementation, because the invariant guards themselves (unique and partial unique indexes, conditional UPDATEs) landed test-first in tasks 05 and 07; this task's races prove the shipped guards through the full HTTP path. The registration race is deterministic; the make-primary assertion tolerates the serialized interleaving, with the row-count invariant asserted unconditionally.
 
+### task-11: tenant resolution middleware for both populations
+
+- Timestamp: Thu Jul 9 16:46:45 -03 2026
+- Commits: `d0b24c3` (feat(tenancy): add the nodia_resolver role for anonymous domain resolution), `3a5dfcf` (feat(tenancy): resolve tenant context from Host and X-Tenant-Id)
+
+Decision, anonymous domain resolution versus system-design 4.3 (the open question the plan requires settled before this task merges): a dedicated narrow resolver role, `nodia_resolver`, the first of the plan's listed candidates. NOLOGIN, NOBYPASSRLS, its entire privilege surface is SELECT on `tenant_domains` through the permissive `tenant_domains_resolver_read` policy; it can neither write `tenant_domains` nor read any other table, `tenants` included. Storefront Host lookup runs under it (and task-12's Caddy verification endpoint will), so `nodia_platform` remains exactly what 4.3 says it is: assumable by platform-scope staff only, every use recorded in the activity log. No 4.3 amendment is needed because the resolver role is not the cross-tenant platform role and grants access to nothing but the table whose whole purpose is answering "which tenant owns this host"; no audit sampling is involved anywhere. The rejected alternatives: a permissive resolution policy for `nodia_app` would have destroyed tenant isolation on `tenant_domains` (this task's own isolation test fails under it), and amending 4.3 needs the design owner and turned out unnecessary. Stage 4's queue-worker tension with 4.3 remains its own open question; nothing here prejudges it.
+
+What landed:
+
+- `apps/api/database/migrations/2026_07_09_000003_create_domain_resolver_role.php`: idempotent `nodia_resolver` creation, membership grant to the migration user (same pre-provisioning escape hatch as the roles migration), SELECT grant and resolver read policy on `tenant_domains`. A new migration rather than an edit because the roles and tenant_domains migrations are merged. `down()` drops the policy and revokes; the cluster-level role is never dropped.
+- `apps/api/app/Support/Database/Rls.php`: `RESOLVER_ROLE`, `createResolverRole()`, `grantResolverMembershipToCurrentUser()`, and `applyResolverReadPolicy($table)` so the grant travels with the policy if a later stage ever extends resolution.
+- `apps/api/app/Support/Tenancy/TenantTransaction.php` gained `asDomainResolver($callback)`: a short transaction under `SET LOCAL ROLE nodia_resolver`, no tenant setting, no `TenantContext` entry, rejected inside any open transaction (stricter than the tenant postures' context-based guard, because the resolver never enters the context that guard reads).
+- `apps/api/app/Tenancy/Actions/ResolveDomain.php`: `normalizeHost()` (trim, lowercase, port stripped; bracketed IPv6 keeps its brackets and simply never matches) and `tenantIdFor()` running the lookup under the resolver posture; an empty normalized host short-circuits to null without SQL.
+- `apps/api/app/Tenancy/Http/Middleware/ResolveTenantFromHost.php`: resolves the Host header through `ResolveDomain`, unknown hosts render 404 `unknown_host`, and the resolved request runs inside `TenantTransaction::asTenant` for the owning tenant.
+- `apps/api/app/Tenancy/Http/Middleware/ResolveTenantFromHeader.php`: X-Tenant-Id presence (400 `missing_tenant_header`, blank counts as missing), UUID shape (400 `invalid_tenant_header`), then existence checked inside the tenant transaction itself: under the tenant's own posture the `tenants` FOR SELECT policy exposes exactly the row whose id matches `app.tenant_id`, so RLS answers existence with no extra role and an unknown tenant renders 403 `tenant_access_denied`, deliberately contract-identical (code and message shape) to the Stage 3 membership denial.
+- `apps/api/app/Tenancy/Http/Middleware/TransactsRequests.php`: the rendered-error rollback pattern task-08 discovered, extracted from `PlatformRequestTransaction` into a trait all three posture middleware share.
+- Problem plumbing: `ErrorCode` gained `unknown_host` (404), `missing_tenant_header` (400), `invalid_tenant_header` (400), `tenant_access_denied` (403), rendered through the task-09 `HasErrorCode` seam by four new context exceptions; regenerated `packages/api-client/src/generated` committed.
+- `tests/Feature/Tenancy/TenantResolutionTest.php`: the plan's data-driven resolution matrix against test-only probe routes (platform subdomain, custom domain, mixed-case host with port, unknown host, valid header, missing, blank, malformed, unknown tenant id), each error a conformance-asserted problem document; the SET LOCAL proof (probe returns `current_setting('app.tenant_id')`, `current_user`, transaction level, and the container context); the Octane simulation (three sequential kernel handles on one process across both populations, each observing only its own tenant, no residue after); rollback of writes behind a failing storefront handler, reusing the shared trait's guarantee under the `nodia_app` posture.
+- `tests/Isolation/DomainResolverIsolationTest.php`: resolver reads both tenants' domains with no tenant context; INSERT, UPDATE, DELETE on `tenant_domains` and SELECT on `tenants` all permission-denied; the resolver policy grants `nodia_app` nothing. `tests/Isolation/StorefrontResolutionIsolationTest.php`: through the storefront probe route, tenant A's host sees only A's `tenant_domains` rows (and B only B's). `RlsHonestConnection` grants the downgraded isolation role resolver membership, mirroring the migration.
+- `tests/Unit/Tenancy/ResolveDomainTest.php` (host normalization before lookup, resolution against real PostgreSQL) and five new `TenantTransactionTest` cases for the resolver posture invariants.
+
+Test evidence:
+
+- Slice A (resolver role) tests written first: 33 failed (`RESOLVER_ROLE` and `createResolverRole()` undefined, `ResolveDomain` not found), green after implementation (34 passed, 71 assertions including the touched `TenantTransactionTest`). Slice B (middleware) tests written first: the run aborted on the ErrorCode dataset referencing missing enum cases, then after implementation all 34 matrix, posture, isolation, and registry tests passed.
+- One intermediate failure was the test harness, not the implementation: Laravel's `Request::create()` overwrites `HTTP_HOST` with the URI's host, so a Host header passed through the headers argument silently becomes `localhost`; storefront cases carry the host in the request URL instead, with a comment in the test recording the trap.
+- Full `composer test`: 333 passed, 1232 assertions, all six suites (Isolation 46, up 8). Pint clean; Larastan clean (0 errors). `composer types:generate` regenerated `ErrorCode` (four new codes); `pnpm --filter api-client typecheck` clean.
+- The resolver migration was exercised directly against `nodia_test` beyond the suite run: `migrate:fresh`, `migrate:rollback --step=1`, `migrate` all clean; `pg_roles` confirms `nodia_resolver` NOLOGIN, NOBYPASSRLS, non-superuser; `pg_policy` shows all four `tenant_domains` policies including `tenant_domains_resolver_read` (`polcmd = 'r'`).
+
+Deviations and decisions:
+
+- The contract step ships no OpenAPI path, same as task-08 and for the same reason: this task adds no production endpoint, the probe routes are test-registered, and the resolution error surface attaches to future routes in these groups. The four codes join the spec when task-12 and Stage 3+ document routes that produce them.
+- The admin happy path, a blank (whitespace) header case, and a mixed-case-host-with-port case were added to the plan's six-row matrix; additions, not changes.
+- `asDomainResolver` rejects execution inside any open transaction rather than only inside a tenant transaction, deliberately stricter than `asTenant`/`asPlatform`: the resolver posture never enters `TenantContext`, so the context-based nesting guard cannot see it, and `SET LOCAL ROLE` inside a savepoint would survive the savepoint's release.
+- The rollback-behind-rendered-errors test for the `nodia_app` posture is not demanded by the plan's Slice 6 bullets but pins the shared trait's guarantee for both tenant-scoped groups, since task-08's equivalent test only covered the platform group.
+
 ### Review rounds
 
 (none yet)
 
 ### Decisions and deviations
 
-(none yet)
+- task-11: anonymous domain resolution (storefront Host lookup, Caddy verification) runs under the dedicated narrow `nodia_resolver` role, not `nodia_platform`; system-design 4.3 stands unamended and no audit sampling is involved. Full rationale in the task-11 entry.
