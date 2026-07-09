@@ -513,3 +513,13 @@ Exit criteria walk (the 12 checks from the stage plan, each verified against the
 12. Met. Architecture suite green including the Models and Http confinement rules; Pint and Larastan clean; all six suites run in `composer test` against PostgreSQL (gate entry above).
 
 The master plan status table (`docs/api-implementation-plan.md`) marks Stage 2 "Done", set by task-14 commit `4890103` and confirmed accurate at close-out: every exit criterion is met, the gates are green, and the review ended with no unaddressed blocking or important findings against the repository. The absence of a substantive external review is recorded above as the honest caveat to that classification.
+
+## Run: 2026-07-09, CI close-out
+
+Interactive session after the workflow run closed the stage.
+
+- Pushed the stage 2 commits to origin (`41db5a3`). The first CI pass exposed two defects the unpushed workflow run could not have caught:
+  - The API Contract Drift job had no PostgreSQL service while task-03 moved the Contract suite onto the database; the suite failed with connection refused. Fixed by giving the job the same postgres service and DB env as the other API jobs (`6f5f778`).
+  - The regenerated api-client types carried `Record<string, any>` for `payout_schedule` in three Data classes, rejected by the Packages ESLint no-explicit-any rule. Fixed by pinning the property to `Record<string, unknown> | null` with `LiteralTypeScriptType`, plus the transformer's `Optional` attribute on the request DTOs so the literal annotation does not drop the `?` optionality marker the wire contract had (`91d57fd`).
+- Both fixes verified locally (Pint, Larastan, 364 Pest tests across all six suites, api-client ESLint and tsc) and on CI: all five workflows green on `6f5f778`, including API Contract Drift and Packages.
+- Codex review: still unavailable. Root cause identified: codex 0.144.0 was installed from the Homebrew cask, which ships only the main binary; the `codex-code-mode-host` binary it needs to execute commands is absent, so every review attempt (plugin runtime and direct `codex exec`) fails without reading any code. The user chose to skip the external review for stage 2 rather than install the npm runtime. Stage 2 remains Done with that caveat.
