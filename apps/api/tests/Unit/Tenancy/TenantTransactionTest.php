@@ -13,6 +13,7 @@ use Tests\Support\PostgresTestDatabase;
 beforeEach(function (): void {
     PostgresTestDatabase::use();
     Rls::createRoles();
+    Rls::createResolverRole();
     Rls::grantMembershipToCurrentUser();
 });
 
@@ -129,4 +130,60 @@ it('rejects nesting a tenant transaction inside an active one before any SQL exe
 
     expect(DB::transactionLevel())->toBe(0)
         ->and(app(TenantContext::class)->hasTenant())->toBeFalse();
+});
+
+it('runs the callback under the nodia_resolver posture with no tenant setting', function () {
+    $observed = app(TenantTransaction::class)->asDomainResolver(fn () => currentPostgresState());
+
+    expect($observed['transaction_level'])->toBe(1)
+        ->and($observed['role'])->toBe(Rls::RESOLVER_ROLE)
+        ->and($observed['tenant_id'])->toBeIn([null, '']);
+});
+
+it('does not enter the tenant context while resolving', function () {
+    $hadTenant = app(TenantTransaction::class)->asDomainResolver(
+        fn () => app(TenantContext::class)->hasTenant(),
+    );
+
+    expect($hadTenant)->toBeFalse();
+});
+
+it('leaves no connection state behind after a resolver transaction', function () {
+    app(TenantTransaction::class)->asDomainResolver(fn () => null);
+
+    $state = currentPostgresState();
+
+    expect($state['transaction_level'])->toBe(0)
+        ->and($state['role'])->not->toBe(Rls::RESOLVER_ROLE)
+        ->and(app(TenantContext::class)->hasTenant())->toBeFalse();
+});
+
+it('rejects a resolver transaction inside an active tenant transaction before any SQL executes', function () {
+    $transaction = app(TenantTransaction::class);
+
+    expect(fn () => $transaction->asTenant(Str::uuid7()->toString(), function () use ($transaction) {
+        DB::enableQueryLog();
+
+        try {
+            $transaction->asDomainResolver(fn () => null);
+        } finally {
+            expect(DB::getQueryLog())->toBe([]);
+        }
+    }))->toThrow(LogicException::class);
+
+    expect(DB::transactionLevel())->toBe(0)
+        ->and(app(TenantContext::class)->hasTenant())->toBeFalse();
+});
+
+it('rejects a resolver transaction inside an already open database transaction', function () {
+    DB::beginTransaction();
+
+    try {
+        expect(fn () => app(TenantTransaction::class)->asDomainResolver(fn () => null))
+            ->toThrow(LogicException::class);
+
+        expect(DB::transactionLevel())->toBe(1);
+    } finally {
+        DB::rollBack();
+    }
 });

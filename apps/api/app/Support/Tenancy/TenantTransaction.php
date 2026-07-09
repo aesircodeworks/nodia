@@ -44,6 +44,33 @@ final readonly class TenantTransaction
     }
 
     /**
+     * The anonymous domain-resolution posture: a short transaction under
+     * the narrow nodia_resolver role with no tenant setting and no
+     * TenantContext entry, used to look a Host up in tenant_domains before
+     * any tenant context exists. Rejected inside any open transaction
+     * (not just tenant ones, which resolver lookups never set context
+     * for), because SET LOCAL ROLE inside a savepoint survives the
+     * savepoint's release and would bleed into the outer transaction.
+     *
+     * @template TReturn
+     *
+     * @param  Closure(): TReturn  $callback
+     * @return TReturn
+     */
+    public function asDomainResolver(Closure $callback): mixed
+    {
+        if ($this->context->hasTenant() || DB::transactionLevel() > 0) {
+            throw new LogicException('A transaction is already active; the domain resolver posture must run in its own transaction.');
+        }
+
+        return DB::transaction(function () use ($callback): mixed {
+            DB::statement('set local role '.Rls::RESOLVER_ROLE);
+
+            return $callback();
+        });
+    }
+
+    /**
      * Nesting is rejected because SET LOCAL inside a savepoint survives
      * the savepoint's release: an inner posture would silently bleed into
      * the remainder of the outer transaction.

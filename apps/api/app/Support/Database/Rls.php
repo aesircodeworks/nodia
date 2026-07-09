@@ -22,6 +22,8 @@ final class Rls
 
     public const PLATFORM_ROLE = 'nodia_platform';
 
+    public const RESOLVER_ROLE = 'nodia_resolver';
+
     public static function createRoles(): void
     {
         DB::unprepared(<<<'SQL'
@@ -36,6 +38,58 @@ final class Rls
                 end if;
             end
             $$;
+            SQL);
+    }
+
+    /**
+     * The narrow infrastructure role that answers anonymous domain
+     * resolution (storefront Host lookup, Caddy domain verification)
+     * before any tenant context exists. It is deliberately not
+     * nodia_platform: system-design 4.3 reserves that role for
+     * platform-scope staff with every use recorded in the activity log,
+     * and anonymous traffic satisfies neither. Its entire privilege
+     * surface is the per-table SELECT applyResolverReadPolicy() grants.
+     */
+    public static function createResolverRole(): void
+    {
+        DB::unprepared(<<<'SQL'
+            do $$
+            begin
+                if not exists (select from pg_roles where rolname = 'nodia_resolver') then
+                    create role nodia_resolver nologin nobypassrls nosuperuser nocreatedb nocreaterole;
+                end if;
+            end
+            $$;
+            SQL);
+    }
+
+    public static function grantResolverMembershipToCurrentUser(): void
+    {
+        DB::unprepared(<<<'SQL'
+            do $$
+            begin
+                if not pg_has_role(current_user, 'nodia_resolver', 'member') then
+                    execute format('grant nodia_resolver to %I', current_user);
+                end if;
+            end
+            $$;
+            SQL);
+    }
+
+    /**
+     * Grants the resolver role its SELECT on one table and the permissive
+     * read policy that lets the anonymous lookup see every tenant's rows.
+     * Confined to the tables domain resolution genuinely needs (this
+     * stage: tenant_domains only); the policy targets nodia_resolver
+     * alone, so tenant-scoped and platform postures are unaffected.
+     */
+    public static function applyResolverReadPolicy(string $table): void
+    {
+        DB::statement("grant select on {$table} to nodia_resolver");
+
+        DB::statement(<<<SQL
+            create policy {$table}_resolver_read on {$table}
+                for select to nodia_resolver using (true)
             SQL);
     }
 

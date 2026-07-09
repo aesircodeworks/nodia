@@ -52,8 +52,9 @@ final class RlsHonestConnection
             SQL);
 
         Rls::createRoles();
+        Rls::createResolverRole();
 
-        DB::unprepared('grant nodia_app, nodia_platform to nodia_isolation');
+        DB::unprepared('grant nodia_app, nodia_platform, nodia_resolver to nodia_isolation');
 
         config()->set('database.connections.pgsql', [
             ...config('database.connections.pgsql'),
