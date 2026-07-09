@@ -4,7 +4,9 @@ use App\Support\Money\CurrencyMismatchException;
 use App\Support\Problems\ErrorCode;
 use App\Support\Tenancy\InvalidTenantIdException;
 use App\Tenancy\Exceptions\DefaultLocaleNotSupportedException;
+use App\Tenancy\Exceptions\InvalidDomainNameException;
 use App\Tenancy\Exceptions\InvalidGatewayConfigurationException;
+use App\Tenancy\Exceptions\TenantDomainIsPrimaryException;
 
 arch()->preset()->php();
 arch()->preset()->security();
@@ -22,6 +24,8 @@ arch()->preset()->laravel()->ignoring([
     CurrencyMismatchException::class,
     InvalidTenantIdException::class,
     DefaultLocaleNotSupportedException::class,
+    InvalidDomainNameException::class,
     InvalidGatewayConfigurationException::class,
+    TenantDomainIsPrimaryException::class,
     'App\Tenancy\Models',
 ]);

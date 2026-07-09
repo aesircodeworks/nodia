@@ -29,6 +29,11 @@ export type CursorPaginator<TKey, TValue> = {
   };
 };
 export type CursorPaginatorInterface<TKey, TValue> = CursorPaginator<TKey, TValue>;
+export type DomainVerifiedPayload = {
+  tenant_domain_id: string;
+  tenant_id: string;
+  domain: string;
+};
 export type ErrorCode =
   | 'request.not_found'
   | 'request.method_not_allowed'
@@ -94,6 +99,10 @@ export type ProblemData = {
   code: string;
   correlation_id?: string;
 };
+export type RegisterTenantDomainData = {
+  domain: string;
+  is_primary?: boolean;
+};
 export type TenantCreatedPayload = {
   tenant_id: string;
   name: string;
@@ -110,6 +119,14 @@ export type TenantData = {
   created_at: string;
   updated_at: string;
 };
+export type TenantDomainData = {
+  id: string;
+  tenant_id: string;
+  domain: string;
+  is_primary: boolean;
+  created_at: string;
+  updated_at: string;
+};
 export type UpdateTenantData = {
   name?: string;
   branding_settings?: BrandingSettingsData;
@@ -117,6 +134,9 @@ export type UpdateTenantData = {
   supported_locales?: string[];
   enabled_gateways?: string[];
   payout_schedule?: Record<string, any> | null;
+};
+export type UpdateTenantDomainData = {
+  is_primary?: boolean;
 };
 export type ValidationProblemData = {
   errors: Record<string, string[]>;
