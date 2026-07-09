@@ -23,6 +23,8 @@ To point the two suites at a different PostgreSQL server, set any of `NODIA_TEST
 
 Superusers and `BYPASSRLS` roles skip row-level security entirely, so the Isolation suite never trusts the configured user: when that user would bypass RLS (the compose stack's `nodia` user and the CI service user are the cluster superuser), the suite creates an unprivileged `nodia_isolation` login role through the privileged connection and reconnects as it before any isolation test runs. When the configured user is already unprivileged, the connection is used as-is.
 
+Domain time flows through the framework clock (`now()` or the `Date` facade, immutable via `Date::use(CarbonImmutable::class)`), and the Architecture suite keeps app code off uncontrollable time sources. Anything TTL-based is tested with `$this->freezeTime()` and `$this->travel(...)`; TTL tests must never sleep.
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:

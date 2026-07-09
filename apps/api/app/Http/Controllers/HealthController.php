@@ -6,8 +6,8 @@ use App\Enums\CheckResult;
 use App\Http\Data\HealthChecksData;
 use App\Http\Data\HealthDegradedProblemData;
 use App\Http\Data\HealthReportData;
-use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Storage;
@@ -25,7 +25,7 @@ class HealthController extends Controller
             $this->checkStorage(),
         );
 
-        $report = HealthReportData::make($checks, CarbonImmutable::now());
+        $report = HealthReportData::make($checks, Date::now());
 
         if ($this->isHealthy($checks)) {
             return $report;
