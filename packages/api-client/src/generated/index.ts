@@ -9,7 +9,7 @@ export type CreateTenantData = {
   supported_locales: string[];
   branding_settings?: BrandingSettingsData;
   enabled_gateways?: string[];
-  payout_schedule?: Record<string, any> | null;
+  payout_schedule?: Record<string, unknown> | null;
 };
 export type CursorPaginatedDataCollection<TKey, TValue> = CursorPaginator<TKey, TValue>;
 export type CursorPaginator<TKey, TValue> = {
@@ -129,7 +129,7 @@ export type TenantData = {
   default_locale: string;
   supported_locales: string[];
   enabled_gateways: string[];
-  payout_schedule: Record<string, any> | null;
+  payout_schedule: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 };
@@ -147,7 +147,7 @@ export type UpdateTenantData = {
   default_locale?: string;
   supported_locales?: string[];
   enabled_gateways?: string[];
-  payout_schedule?: Record<string, any> | null;
+  payout_schedule?: Record<string, unknown> | null;
 };
 export type UpdateTenantDomainData = {
   is_primary?: boolean;

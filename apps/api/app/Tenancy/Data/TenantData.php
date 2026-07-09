@@ -7,6 +7,7 @@ use Carbon\CarbonImmutable;
 use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Mappers\SnakeCaseMapper;
+use Spatie\TypeScriptTransformer\Attributes\LiteralTypeScriptType;
 
 #[MapName(SnakeCaseMapper::class)]
 class TenantData extends Data
@@ -23,6 +24,7 @@ class TenantData extends Data
         public string $defaultLocale,
         public array $supportedLocales,
         public array $enabledGateways,
+        #[LiteralTypeScriptType('Record<string, unknown> | null')]
         public ?array $payoutSchedule,
         public string $createdAt,
         public string $updatedAt,

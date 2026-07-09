@@ -6,6 +6,8 @@ use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Mappers\SnakeCaseMapper;
 use Spatie\LaravelData\Optional;
+use Spatie\TypeScriptTransformer\Attributes\LiteralTypeScriptType;
+use Spatie\TypeScriptTransformer\Attributes\Optional as TypeScriptOptional;
 
 #[MapName(SnakeCaseMapper::class)]
 class CreateTenantData extends Data
@@ -21,6 +23,8 @@ class CreateTenantData extends Data
         public array $supportedLocales,
         public BrandingSettingsData|Optional $brandingSettings,
         public array|Optional $enabledGateways,
+        #[TypeScriptOptional]
+        #[LiteralTypeScriptType('Record<string, unknown> | null')]
         public array|Optional|null $payoutSchedule,
     ) {}
 
