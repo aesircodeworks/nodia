@@ -449,7 +449,13 @@ paths:
         reveals whether an account exists. The access token is a JWT
         carrying identity_type staff and the subject id; it carries no
         tenant claim, because the acting tenant is asserted per request via
-        X-Tenant-Id (docs/api-conventions.md).
+        X-Tenant-Id (docs/api-conventions.md). Once credentials are valid,
+        an enrolled user (mfa_enabled) must also supply mfa_code, either
+        the current TOTP code or an unused recovery code (consumed
+        atomically on use): omitting it fails with mfa_required, a wrong
+        or already-used one with mfa_code_invalid (stage-03 plan, task
+        breakdown item 11; Risks: "MFA challenge inside the OAuth token
+        exchange").
       requestBody:
         required: true
         content:
@@ -469,7 +475,10 @@ paths:
         '401':
           description: >-
             The email is unknown or the password is wrong (code
-            invalid_credentials); both cases render identically.
+            invalid_credentials, both cases render identically); an
+            enrolled user's request omitted mfa_code (code mfa_required);
+            or the presented mfa_code is wrong or already used (code
+            mfa_code_invalid).
           content:
             application/problem+json:
               schema:
@@ -583,6 +592,148 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/InvitationTokenProblem'
+        '422':
+          description: Request validation failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+  /v1/auth/mfa/enrollment:
+    post:
+      operationId: enrollMfa
+      summary: Begin TOTP MFA enrollment
+      description: >-
+        Staff bearer only; asserts no tenant (stage-03 plan, MFA endpoint
+        table). Generates a fresh TOTP secret and stores it unconfirmed;
+        POST /v1/auth/mfa/enrollment/confirm verifies a code against it
+        and flips MFA on. Calling this again before confirming simply
+        replaces the pending secret. Deliberately outside the
+        tenancy.admin and tenancy.platform groups, so a caller whose
+        acting membership requires confirmed MFA can always reach this
+        endpoint (mfa_enforcement_required never applies here).
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The pending TOTP secret and its otpauth:// URI.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MfaEnrollment'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '409':
+          description: MFA is already enrolled and confirmed for this account.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MfaAlreadyEnrolledProblem'
+  /v1/auth/mfa/enrollment/confirm:
+    post:
+      operationId: confirmMfaEnrollment
+      summary: Confirm TOTP MFA enrollment and receive recovery codes
+      description: >-
+        Staff bearer only; asserts no tenant (stage-03 plan, MFA endpoint
+        table). Verifies code against the pending secret POST
+        /v1/auth/mfa/enrollment stored, then flips MFA on and issues a
+        fresh batch of single-use recovery codes. The plaintext codes are
+        returned in this response only and never again; only their
+        digests are persisted.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmMfaRequest'
+      responses:
+        '200':
+          description: The account's MFA is confirmed; recovery codes are issued once.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MfaRecoveryCodes'
+        '401':
+          description: >-
+            Missing, invalid, or expired bearer token, or the presented
+            code does not match the pending secret's current TOTP window
+            (code mfa_code_invalid).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MfaConfirmProblem'
+        '409':
+          description: No enrollment has been started (code mfa_not_enrolled).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MfaNotEnrolledProblem'
+        '422':
+          description: Request validation failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+  /v1/auth/mfa/disable:
+    post:
+      operationId: disableMfa
+      summary: Disable TOTP MFA
+      description: >-
+        Staff bearer only; asserts no tenant (stage-03 plan, MFA endpoint
+        table). Accepts either a valid TOTP code or a still-unused
+        recovery code as proof of possession. Denied while any of the
+        caller's memberships, in any tenant, mandate confirmed MFA
+        (platform-scope, or a role holding a financially privileged
+        capability): disabling under an enforcing membership is
+        mfa_enforced_for_role, checked before the code so a doomed request
+        never spends a recovery code.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DisableMfaRequest'
+      responses:
+        '204':
+          description: MFA is disabled; the secret and all recovery codes are cleared.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+        '401':
+          description: >-
+            Missing, invalid, or expired bearer token, or the presented
+            code is wrong or already used (code mfa_code_invalid).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MfaConfirmProblem'
+        '403':
+          description: >-
+            At least one of the caller's memberships mandates confirmed
+            MFA (code mfa_enforced_for_role).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MfaEnforcedForRoleProblem'
+        '409':
+          description: MFA is not enrolled for this account.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MfaNotEnrolledProblem'
         '422':
           description: Request validation failed.
           content:
@@ -1319,6 +1470,12 @@ components:
           format: email
         password:
           type: string
+        mfa_code:
+          type: [string, 'null']
+          description: >-
+            Required once the user has confirmed MFA: either the current
+            TOTP code or an unused recovery code (stage-03 plan, task
+            breakdown item 11).
       additionalProperties: false
     TokenPair:
       type: object
@@ -1474,6 +1631,53 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Membership'
+      additionalProperties: false
+    MfaEnrollment:
+      type: object
+      description: >-
+        Response for POST /v1/auth/mfa/enrollment (stage-03 plan, task
+        breakdown item 11). The secret is not yet confirmed; POST
+        /v1/auth/mfa/enrollment/confirm verifies a code against it.
+      required:
+        - secret
+        - otpauth_uri
+      properties:
+        secret:
+          type: string
+        otpauth_uri:
+          type: string
+          description: otpauth:// URI for an authenticator app to scan or import.
+      additionalProperties: false
+    ConfirmMfaRequest:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          description: The current TOTP code from the pending secret's authenticator app.
+      additionalProperties: false
+    MfaRecoveryCodes:
+      type: object
+      description: >-
+        Response for POST /v1/auth/mfa/enrollment/confirm. The plaintext
+        codes are returned here only and never again.
+      required:
+        - recovery_codes
+      properties:
+        recovery_codes:
+          type: array
+          items:
+            type: string
+      additionalProperties: false
+    DisableMfaRequest:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          description: A current TOTP code or a still-unused recovery code.
       additionalProperties: false
     BrandingSettings:
       type: object
@@ -1896,9 +2100,13 @@ components:
       unevaluatedProperties: false
     InvalidCredentialsProblem:
       description: >-
-        Problem document for a staff token request with an unknown email or
-        a wrong password; both cases render identically so the response
-        never reveals whether an account exists.
+        Problem document for a staff token request that fails: an unknown
+        email or a wrong password (code invalid_credentials, both cases
+        render identically so the response never reveals whether an
+        account exists); an enrolled user's request that omitted mfa_code
+        (code mfa_required, stage-03 plan task breakdown item 11); or a
+        present mfa_code that matches neither the current TOTP window nor
+        any unused recovery code (code mfa_code_invalid).
       allOf:
         - $ref: '#/components/schemas/Problem'
         - type: object
@@ -1908,7 +2116,7 @@ components:
               enum: [401]
             code:
               type: string
-              enum: [invalid_credentials]
+              enum: [invalid_credentials, mfa_required, mfa_code_invalid]
       unevaluatedProperties: false
     RefreshTokenProblem:
       description: >-
@@ -1949,7 +2157,11 @@ components:
         Problem document for an authenticated caller whose acting
         membership's role does not hold the capability the endpoint
         requires, evaluated as capability plus tenant context, never role
-        names (system-design 5.3, ADR 012).
+        names (system-design 5.3, ADR 012); or whose acting membership
+        mandates confirmed MFA and has not confirmed it (code
+        mfa_enforcement_required, stage-03 plan task breakdown item 11),
+        raised by EnforceMfaCompliance ahead of this endpoint's capability
+        check.
       allOf:
         - $ref: '#/components/schemas/Problem'
         - type: object
@@ -1959,14 +2171,17 @@ components:
               enum: [403]
             code:
               type: string
-              enum: [missing_capability]
+              enum: [missing_capability, mfa_enforcement_required]
       unevaluatedProperties: false
     TenantAccessDeniedProblem:
       description: >-
         Problem document for a staff bearer with no membership in the
         asserted tenant (X-Tenant-Id), raised by ResolveTenantFromHeader
         ahead of any endpoint-specific capability check (stage-03 plan,
-        Slice 3).
+        Slice 3); or whose acting membership mandates confirmed MFA and
+        has not confirmed it (code mfa_enforcement_required, task
+        breakdown item 11), raised by EnforceMfaCompliance after tenant
+        resolution.
       allOf:
         - $ref: '#/components/schemas/Problem'
         - type: object
@@ -1976,15 +2191,17 @@ components:
               enum: [403]
             code:
               type: string
-              enum: [tenant_access_denied]
+              enum: [tenant_access_denied, mfa_enforcement_required]
       unevaluatedProperties: false
     RoleForbiddenProblem:
       description: >-
         Problem document for a 403 on a role-mutating endpoint: either the
         caller has no membership in the asserted tenant (code
         tenant_access_denied, raised by ResolveTenantFromHeader before the
-        handler is reached), or the acting membership does not hold
-        roles.manage (code missing_capability).
+        handler is reached), the acting membership does not hold
+        roles.manage (code missing_capability), or the acting membership
+        mandates confirmed MFA and has not confirmed it (code
+        mfa_enforcement_required, task breakdown item 11).
       allOf:
         - $ref: '#/components/schemas/Problem'
         - type: object
@@ -1994,7 +2211,7 @@ components:
               enum: [403]
             code:
               type: string
-              enum: [tenant_access_denied, missing_capability]
+              enum: [tenant_access_denied, missing_capability, mfa_enforcement_required]
       unevaluatedProperties: false
     NotFoundProblem:
       description: >-
@@ -2093,8 +2310,10 @@ components:
         Problem document for a 403 on a membership-mutating endpoint:
         either the caller has no membership in the asserted tenant (code
         tenant_access_denied, raised by ResolveTenantFromHeader before the
-        handler is reached), or the acting membership does not hold
-        memberships.manage (code missing_capability).
+        handler is reached), the acting membership does not hold
+        memberships.manage (code missing_capability), or the acting
+        membership mandates confirmed MFA and has not confirmed it (code
+        mfa_enforcement_required, task breakdown item 11).
       allOf:
         - $ref: '#/components/schemas/Problem'
         - type: object
@@ -2104,7 +2323,7 @@ components:
               enum: [403]
             code:
               type: string
-              enum: [tenant_access_denied, missing_capability]
+              enum: [tenant_access_denied, missing_capability, mfa_enforcement_required]
       unevaluatedProperties: false
     MembershipExistsProblem:
       description: >-
@@ -2153,6 +2372,72 @@ components:
             code:
               type: string
               enum: [invitation_token_invalid, invitation_token_expired]
+      unevaluatedProperties: false
+    MfaAlreadyEnrolledProblem:
+      description: >-
+        Problem document for POST /v1/auth/mfa/enrollment when the caller
+        has already confirmed MFA (stage-03 plan, task breakdown item 11).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [mfa_already_enrolled]
+      unevaluatedProperties: false
+    MfaConfirmProblem:
+      description: >-
+        Problem document for a 401 on POST /v1/auth/mfa/enrollment/confirm
+        or POST /v1/auth/mfa/disable: a missing, invalid, or expired
+        bearer token (code auth.unauthenticated), or a presented code that
+        matches neither the current TOTP window nor any unused recovery
+        code (code mfa_code_invalid).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [401]
+            code:
+              type: string
+              enum: [auth.unauthenticated, mfa_code_invalid]
+      unevaluatedProperties: false
+    MfaNotEnrolledProblem:
+      description: >-
+        Problem document for POST /v1/auth/mfa/enrollment/confirm or POST
+        /v1/auth/mfa/disable when no enrollment has ever been started
+        (stage-03 plan, task breakdown item 11).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [mfa_not_enrolled]
+      unevaluatedProperties: false
+    MfaEnforcedForRoleProblem:
+      description: >-
+        Problem document for POST /v1/auth/mfa/disable when at least one
+        of the caller's memberships is platform-scope or holds a
+        financially privileged capability (stage-03 plan, MFA enforcement
+        paragraph).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [403]
+            code:
+              type: string
+              enum: [mfa_enforced_for_role]
       unevaluatedProperties: false
     InvalidQueryParameterProblem:
       description: >-

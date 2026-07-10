@@ -14,9 +14,11 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Assert;
+use PragmaRX\Google2FA\Google2FA;
 use Tests\Support\MigratedDatabase;
 use Tests\Support\OpenApiSpec;
 use Tests\Support\PostgresTestDatabase;
+use Tests\Support\TotpCodes;
 
 beforeEach(function (): void {
     PostgresTestDatabase::use();
@@ -25,6 +27,14 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     $sentinel = config()->string('tenancy.platform_tenant_id');
+
+    // The MFA exercisers (task breakdown item 11) confirm MFA for several
+    // contract-mfa-*@example.com users, which are otherwise kept forever
+    // the same way contract-staff@example.com is; their mfa_recovery_codes
+    // rows would otherwise dangle and block an unrelated later suite's
+    // blanket User::query()->delete() the same way a stale memberships row
+    // would (see the comment below).
+    DB::table('mfa_recovery_codes')->delete();
 
     // contractPlatformBearer() recreates its membership and role idempotently
     // per call (its own docblock), so deleting them here every test is safe
@@ -63,6 +73,22 @@ afterEach(function (): void {
  * of colliding on the unique email, and the membership lookup below is
  * idempotent for the same reason (task breakdown item 7: the
  * tenancy.platform group now requires a bearer holding tenants.manage).
+ * Platform-scope memberships are unconditionally MFA-enforcing (task
+ * breakdown item 11), so the reused row is created MFA-confirmed from the
+ * start rather than flipped afterward the way
+ * Tests\Support\PlatformStaff::token() does for a fresh row each call:
+ * firstOrCreate would otherwise reuse a row whose MFA got confirmed by an
+ * earlier dataset iteration, and the plain password-only exchange below
+ * would then fail with mfa_required on every call after the first. A
+ * fresh TOTP code for the persisted secret is computed on every call
+ * instead, since a stale code would fail once its window passes.
+ *
+ * users.mfa_secret, mfa_enabled, and mfa_confirmed_at are deliberately
+ * absent from User's #[Fillable(...)] list (only name/email/password are
+ * mass-assignable), so setting them through User::factory()->raw() merged
+ * into firstOrCreate()'s create attributes would be silently dropped;
+ * forceFill() is required here, the same way every MFA Action
+ * (App\Identity\Actions\EnrollMfa and friends) already sets them.
  */
 function contractPlatformBearer(Capability $capability = Capability::TenantsManage): string
 {
@@ -70,14 +96,22 @@ function contractPlatformBearer(Capability $capability = Capability::TenantsMana
         ? 'contract-platform-staff@example.com'
         : 'contract-incapable-staff@example.com';
 
-    $user = User::query()->firstOrCreate(
-        ['email' => $email],
-        User::factory()->raw(['email' => $email]),
-    );
+    $google2fa = new Google2FA;
+
+    $user = User::query()->firstOrCreate(['email' => $email], User::factory()->raw(['email' => $email]));
+
+    if (! $user->mfa_enabled) {
+        $user->forceFill([
+            'mfa_enabled' => true,
+            'mfa_secret' => $google2fa->generateSecretKey(),
+            'mfa_confirmed_at' => now(),
+        ])->save();
+    }
 
     $response = test()->postJson('/v1/auth/staff/token', [
         'email' => $email,
         'password' => 'password',
+        'mfa_code' => $google2fa->getCurrentOtp($user->mfa_secret),
     ]);
 
     $sentinel = config()->string('tenancy.platform_tenant_id');
@@ -241,6 +275,39 @@ function contractStaffTokenPair(): array
     $pair = $response->json();
 
     return $pair;
+}
+
+/**
+ * A fresh, unenrolled staff bearer for one MFA exerciser (stage-03 plan,
+ * task breakdown item 11). Each exerciser below gets its own email, never
+ * reused across cases the way contractStaffUser() deliberately is, since
+ * MFA enrollment is stateful and the different exercisers need different
+ * starting states (unenrolled, pending, confirmed).
+ */
+function contractMfaBearer(string $email): string
+{
+    $user = User::query()->firstOrCreate(['email' => $email], User::factory()->raw(['email' => $email]));
+
+    return test()->postJson('/v1/auth/staff/token', ['email' => $user->email, 'password' => 'password'])
+        ->json('access_token');
+}
+
+/**
+ * Enrolls and confirms MFA for a fresh bearer through the real endpoints,
+ * returning the bearer and the confirmed secret so an exerciser can
+ * compute a currently valid TOTP code.
+ *
+ * @return array{0: string, 1: string} token, secret
+ */
+function contractMfaConfirmedBearer(string $email): array
+{
+    $token = contractMfaBearer($email);
+    $headers = ['Authorization' => 'Bearer '.$token];
+
+    $secret = test()->postJson('/v1/auth/mfa/enrollment', [], $headers)->json('secret');
+    test()->postJson('/v1/auth/mfa/enrollment/confirm', ['code' => TotpCodes::current($secret)], $headers);
+
+    return [$token, $secret];
 }
 
 /**
@@ -472,6 +539,65 @@ function documentedResponseExercisers(): array
         ]),
         'post /v1/auth/staff/refresh 422' => fn (): TestResponse => test()->postJson('/v1/auth/staff/refresh', []),
         'post /v1/auth/staff/logout 401' => fn (): TestResponse => test()->postJson('/v1/auth/staff/logout'),
+        'post /v1/auth/mfa/enrollment 200' => fn (): TestResponse => test()->postJson('/v1/auth/mfa/enrollment', [], [
+            'Authorization' => 'Bearer '.contractMfaBearer('contract-mfa-enroll@example.com'),
+        ]),
+        'post /v1/auth/mfa/enrollment 401' => fn (): TestResponse => test()->postJson('/v1/auth/mfa/enrollment'),
+        'post /v1/auth/mfa/enrollment 409' => function (): TestResponse {
+            [$token] = contractMfaConfirmedBearer('contract-mfa-already-enrolled@example.com');
+
+            return test()->postJson('/v1/auth/mfa/enrollment', [], ['Authorization' => 'Bearer '.$token]);
+        },
+        'post /v1/auth/mfa/enrollment/confirm 200' => function (): TestResponse {
+            $token = contractMfaBearer('contract-mfa-confirm@example.com');
+            $headers = ['Authorization' => 'Bearer '.$token];
+            $secret = test()->postJson('/v1/auth/mfa/enrollment', [], $headers)->json('secret');
+
+            return test()->postJson('/v1/auth/mfa/enrollment/confirm', ['code' => TotpCodes::current($secret)], $headers);
+        },
+        'post /v1/auth/mfa/enrollment/confirm 401' => function (): TestResponse {
+            $token = contractMfaBearer('contract-mfa-confirm-wrong-code@example.com');
+            $headers = ['Authorization' => 'Bearer '.$token];
+            test()->postJson('/v1/auth/mfa/enrollment', [], $headers);
+
+            return test()->postJson('/v1/auth/mfa/enrollment/confirm', ['code' => '000000'], $headers);
+        },
+        'post /v1/auth/mfa/enrollment/confirm 409' => fn (): TestResponse => test()->postJson(
+            '/v1/auth/mfa/enrollment/confirm',
+            ['code' => '000000'],
+            ['Authorization' => 'Bearer '.contractMfaBearer('contract-mfa-confirm-not-enrolled@example.com')],
+        ),
+        'post /v1/auth/mfa/enrollment/confirm 422' => fn (): TestResponse => test()->postJson(
+            '/v1/auth/mfa/enrollment/confirm',
+            [],
+            ['Authorization' => 'Bearer '.contractMfaBearer('contract-mfa-confirm-validation@example.com')],
+        ),
+        'post /v1/auth/mfa/disable 401' => fn (): TestResponse => test()->postJson('/v1/auth/mfa/disable', ['code' => '000000']),
+        'post /v1/auth/mfa/disable 403' => function (): TestResponse {
+            [$token, $secret] = contractMfaConfirmedBearer('contract-mfa-disable-enforced@example.com');
+
+            $sentinel = config()->string('tenancy.platform_tenant_id');
+            $user = User::query()->where('email', 'contract-mfa-disable-enforced@example.com')->firstOrFail();
+
+            app(TenantTransaction::class)->asPlatform(function () use ($user, $sentinel): void {
+                Membership::factory()->platform()->create([
+                    'user_id' => $user->id,
+                    'role_id' => Role::factory()->create(['tenant_id' => $sentinel])->id,
+                ]);
+            });
+
+            return test()->postJson('/v1/auth/mfa/disable', ['code' => TotpCodes::current($secret)], ['Authorization' => 'Bearer '.$token]);
+        },
+        'post /v1/auth/mfa/disable 409' => fn (): TestResponse => test()->postJson(
+            '/v1/auth/mfa/disable',
+            ['code' => '000000'],
+            ['Authorization' => 'Bearer '.contractMfaBearer('contract-mfa-disable-not-enrolled@example.com')],
+        ),
+        'post /v1/auth/mfa/disable 422' => fn (): TestResponse => test()->postJson(
+            '/v1/auth/mfa/disable',
+            [],
+            ['Authorization' => 'Bearer '.contractMfaBearer('contract-mfa-disable-validation@example.com')],
+        ),
         'get /v1/me 200' => fn (): TestResponse => test()->getJson('/v1/me', [
             'Authorization' => 'Bearer '.contractStaffBearer(),
         ]),

@@ -141,6 +141,16 @@ it('evaluates capability plus tenant context for every capability against every 
     $user = User::factory()->create();
     $token = StaffTokens::issue($user);
 
+    // This matrix proves capability evaluation, not MFA enforcement
+    // (task breakdown item 11's own feature tests own that); Owner and
+    // Finance both carry a financially privileged capability
+    // (orders.refund / payouts.view), which would otherwise make every
+    // home-tenant probe for those two rows fail with
+    // mfa_enforcement_required before CapabilityGate ever runs, mirroring
+    // Tests\Support\PlatformStaff::token()'s own precedent for the same
+    // situation.
+    $user->forceFill(['mfa_enabled' => true, 'mfa_confirmed_at' => now()])->save();
+
     $homeRoleId = $roleName === CUSTOM_ROLE_NAME
         ? createRoleInTenant($homeTenantId, CUSTOM_ROLE_NAME, $homeCapabilities)
         : Role::query()->whereNull('tenant_id')->where('name', $roleName)->firstOrFail()->id;

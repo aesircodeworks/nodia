@@ -35,6 +35,12 @@ test('the registry holds exactly the known codes', function () {
         'last_owner_removal',
         'invitation_token_invalid',
         'invitation_token_expired',
+        'mfa_required',
+        'mfa_code_invalid',
+        'mfa_already_enrolled',
+        'mfa_not_enrolled',
+        'mfa_enforced_for_role',
+        'mfa_enforcement_required',
     ]);
 });
 
@@ -74,6 +80,12 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'last_owner_removal' => [ErrorCode::LastOwnerRemoval, 409, 'Last owner removal', '/problems/last-owner-removal'],
     'invitation_token_invalid' => [ErrorCode::InvitationTokenInvalid, 401, 'Invitation token invalid', '/problems/invitation-token-invalid'],
     'invitation_token_expired' => [ErrorCode::InvitationTokenExpired, 401, 'Invitation token expired', '/problems/invitation-token-expired'],
+    'mfa_required' => [ErrorCode::MfaRequired, 401, 'MFA required', '/problems/mfa-required'],
+    'mfa_code_invalid' => [ErrorCode::MfaCodeInvalid, 401, 'MFA code invalid', '/problems/mfa-code-invalid'],
+    'mfa_already_enrolled' => [ErrorCode::MfaAlreadyEnrolled, 409, 'MFA already enrolled', '/problems/mfa-already-enrolled'],
+    'mfa_not_enrolled' => [ErrorCode::MfaNotEnrolled, 409, 'MFA not enrolled', '/problems/mfa-not-enrolled'],
+    'mfa_enforced_for_role' => [ErrorCode::MfaEnforcedForRole, 403, 'MFA enforced for role', '/problems/mfa-enforced-for-role'],
+    'mfa_enforcement_required' => [ErrorCode::MfaEnforcementRequired, 403, 'MFA enforcement required', '/problems/mfa-enforcement-required'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

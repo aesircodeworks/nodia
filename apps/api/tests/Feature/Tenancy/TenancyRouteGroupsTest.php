@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnforceMfaCompliance;
 use App\Http\Middleware\RequireCapability;
 use App\Identity\Capability;
 use App\Models\User;
@@ -35,7 +36,7 @@ afterEach(function (): void {
     User::query()->delete();
 });
 
-it('registers the three tenancy middleware groups, the platform group rebound to Passport bearer plus tenants.manage', function () {
+it('registers the three tenancy middleware groups, the platform group rebound to Passport bearer plus tenants.manage, both admin-facing groups now MFA-enforced', function () {
     $router = app('router');
 
     $groups = $router->getMiddlewareGroups();
@@ -44,9 +45,10 @@ it('registers the three tenancy middleware groups, the platform group rebound to
         ->and($groups['tenancy.platform'])->toBe([
             'auth:staff',
             PlatformRequestTransaction::class,
+            EnforceMfaCompliance::class,
             RequireCapability::class.':'.Capability::TenantsManage->value,
         ])
-        ->and($groups['tenancy.admin'])->toBe(['auth:staff', ResolveTenantFromHeader::class])
+        ->and($groups['tenancy.admin'])->toBe(['auth:staff', ResolveTenantFromHeader::class, EnforceMfaCompliance::class])
         ->and($groups['tenancy.storefront'])->toBe([ResolveTenantFromHost::class]);
 });
 

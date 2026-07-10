@@ -41,4 +41,20 @@ return [
 
     'invitation_token_ttl_minutes' => (int) env('STAFF_INVITATION_TOKEN_TTL_MINUTES', 10_080),
 
+    /*
+    |--------------------------------------------------------------------------
+    | MFA Recovery Codes
+    |--------------------------------------------------------------------------
+    |
+    | POST /v1/auth/mfa/enrollment/confirm issues this many single-use
+    | recovery codes exactly once (stage-03 plan, MFA endpoint table). The
+    | plan does not mandate a count; 8 mirrors the common
+    | Google-Authenticator-ecosystem default (GitHub, Google) without being
+    | so many that a compromised list stays exploitable for long, recorded
+    | as a decision in the stage-03 execution journal.
+    |
+    */
+
+    'mfa_recovery_code_count' => (int) env('MFA_RECOVERY_CODE_COUNT', 8),
+
 ];

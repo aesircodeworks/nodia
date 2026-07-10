@@ -2,6 +2,7 @@
 
 namespace App\Tenancy;
 
+use App\Http\Middleware\EnforceMfaCompliance;
 use App\Http\Middleware\RequireCapability;
 use App\Identity\Capability;
 use App\Tenancy\Http\Middleware\PlatformRequestTransaction;
@@ -33,8 +34,17 @@ use Illuminate\Support\ServiceProvider;
  * against the acting membership PlatformRequestTransaction's posture
  * resolves under (the sentinel platform tenant, nodia_platform role).
  * RequireCapability runs after PlatformRequestTransaction so TenantContext
- * already carries that tenant when the capability check runs. MFA
- * enforcement joins this group once task breakdown item 11 lands.
+ * already carries that tenant when the capability check runs.
+ *
+ * Stage 3 task breakdown item 11 inserts App\Http\Middleware\
+ * EnforceMfaCompliance into both admin-facing groups, after the
+ * middleware that opens the tenant transaction and before
+ * RequireCapability on the platform group: a platform-scope or
+ * financially privileged caller who has not confirmed MFA is denied
+ * mfa_enforcement_required before any capability check ever runs, so the
+ * denial fires uniformly across every route in both groups (including
+ * capability-free reads like GET /v1/roles), never conditioned on which
+ * capability a particular route happens to require.
  */
 class TenancyServiceProvider extends ServiceProvider
 {
@@ -43,10 +53,11 @@ class TenancyServiceProvider extends ServiceProvider
         $router->middlewareGroup('tenancy.platform', [
             'auth:staff',
             PlatformRequestTransaction::class,
+            EnforceMfaCompliance::class,
             RequireCapability::class.':'.Capability::TenantsManage->value,
         ]);
 
-        $router->middlewareGroup('tenancy.admin', ['auth:staff', ResolveTenantFromHeader::class]);
+        $router->middlewareGroup('tenancy.admin', ['auth:staff', ResolveTenantFromHeader::class, EnforceMfaCompliance::class]);
         $router->middlewareGroup('tenancy.storefront', [ResolveTenantFromHost::class]);
 
         Route::middleware('tenancy.platform')

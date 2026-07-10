@@ -28,6 +28,9 @@ export type ChangeMembershipRoleData = {
   role_id: string;
 };
 export type CheckResult = 'ok' | 'failed';
+export type ConfirmMfaData = {
+  code: string;
+};
 export type CreateRoleData = {
   name: string;
   capabilities: string[];
@@ -65,6 +68,9 @@ export type CursorPaginator<TKey, TValue> = {
   };
 };
 export type CursorPaginatorInterface<TKey, TValue> = CursorPaginator<TKey, TValue>;
+export type DisableMfaData = {
+  code: string;
+};
 export type DomainVerificationData = {
   domain: string;
 };
@@ -104,7 +110,13 @@ export type ErrorCode =
   | 'membership_exists'
   | 'last_owner_removal'
   | 'invitation_token_invalid'
-  | 'invitation_token_expired';
+  | 'invitation_token_expired'
+  | 'mfa_required'
+  | 'mfa_code_invalid'
+  | 'mfa_already_enrolled'
+  | 'mfa_not_enrolled'
+  | 'mfa_enforced_for_role'
+  | 'mfa_enforcement_required';
 export type HealthChecksData = {
   database: CheckResult;
   redis: CheckResult;
@@ -164,6 +176,13 @@ export type MembershipData = {
   scope: string;
 };
 export type MembershipScope = 'tenant' | 'platform';
+export type MfaEnrollmentData = {
+  secret: string;
+  otpauth_uri: string;
+};
+export type MfaRecoveryCodesData = {
+  recovery_codes: string[];
+};
 export type Money = {
   amount: number;
   currency: string;
@@ -194,6 +213,7 @@ export type RoleData = {
 export type StaffTokenRequestData = {
   email: string;
   password: string;
+  mfa_code: string | null;
 };
 export type TenantCreatedPayload = {
   tenant_id: string;

@@ -30,9 +30,7 @@ class CurrentUserData extends Data
             $user->id,
             $user->name,
             $user->email,
-            // users.mfa_enabled ships in a later Stage 3 task; no user can
-            // have MFA confirmed before that column exists.
-            false,
+            $user->mfa_enabled,
             $memberships,
         );
     }

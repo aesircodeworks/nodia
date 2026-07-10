@@ -121,6 +121,12 @@ class ProblemRenderer
             ErrorCode::LastOwnerRemoval => 'This membership is the tenant\'s only Owner and cannot be demoted or removed.',
             ErrorCode::InvitationTokenInvalid => 'The invitation token is malformed, tampered with, or unknown.',
             ErrorCode::InvitationTokenExpired => 'The invitation token has expired.',
+            ErrorCode::MfaRequired => 'This account has MFA enabled; a valid TOTP or recovery code is required.',
+            ErrorCode::MfaCodeInvalid => 'The MFA code is invalid.',
+            ErrorCode::MfaAlreadyEnrolled => 'MFA is already enrolled and confirmed for this account.',
+            ErrorCode::MfaNotEnrolled => 'MFA enrollment has not been started for this account.',
+            ErrorCode::MfaEnforcedForRole => 'MFA cannot be disabled while the acting membership requires it.',
+            ErrorCode::MfaEnforcementRequired => 'This membership requires confirmed MFA before it can perform this action.',
         };
     }
 }

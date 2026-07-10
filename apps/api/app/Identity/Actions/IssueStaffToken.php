@@ -5,7 +5,9 @@ namespace App\Identity\Actions;
 use App\Identity\Data\StaffTokenRequestData;
 use App\Identity\Data\TokenPairData;
 use App\Identity\Exceptions\InvalidCredentialsException;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Laravel\Passport\Client;
 use League\OAuth2\Server\AuthorizationServer;
 use League\OAuth2\Server\Exception\OAuthServerException;
@@ -21,6 +23,23 @@ use Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory;
  * unknown username and a wrong password to the same invalid_grant error
  * (Laravel\Passport\Bridge\UserRepository never distinguishes the two),
  * which is exactly the no-enumeration behavior the stage-03 plan asks for.
+ *
+ * The MFA challenge (stage-03 plan, Risks: "MFA challenge inside the
+ * OAuth token exchange") is the mfa_code parameter injected straight into
+ * this same token request, the plan's preferred approach over the
+ * two-step mfa_token fallback: parameter injection proved entirely
+ * workable once this class already owned building the Request passed to
+ * the AuthorizationServer, so the fallback was never needed. Credentials
+ * are verified once, manually, with Hash::check against the same bcrypt
+ * digest Passport's own UserRepository checks, before either the MFA
+ * challenge or the AuthorizationServer call: this way a wrong mfa_code
+ * never mints and then discards a real access/refresh token pair, and an
+ * unknown email or wrong password still renders identically
+ * (invalid_credentials) whether or not the account has MFA enabled, so
+ * MFA enrollment itself is never revealed to a caller who fails on
+ * credentials alone. The subsequent AuthorizationServer call re-checks
+ * the same password through Passport's own grant, which is redundant but
+ * harmless and keeps the actual token-minting path untouched.
  */
 final class IssueStaffToken
 {
@@ -29,10 +48,15 @@ final class IssueStaffToken
     public function __construct(
         private readonly AuthorizationServer $server,
         private readonly ResponseInterface $blankResponse,
+        private readonly VerifyMfaChallenge $mfaChallenge,
     ) {}
 
     public function __invoke(StaffTokenRequestData $data): TokenPairData
     {
+        $user = $this->authenticate($data->email, $data->password);
+
+        ($this->mfaChallenge)($user, $data->mfaCode);
+
         $request = Request::create('/v1/auth/staff/token', 'POST', [
             'grant_type' => 'password',
             'client_id' => $this->staffClient()->getKey(),
@@ -80,5 +104,16 @@ final class IssueStaffToken
         return Client::query()
             ->where('provider', self::StaffProvider)
             ->firstOrFail();
+    }
+
+    private function authenticate(string $email, string $password): User
+    {
+        $user = User::query()->where('email', $email)->first();
+
+        if ($user === null || ! Hash::check($password, $user->password)) {
+            throw InvalidCredentialsException::becauseAuthenticationFailed();
+        }
+
+        return $user;
     }
 }

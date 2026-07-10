@@ -11,6 +11,12 @@ use App\Identity\Exceptions\InvitationTokenInvalidException;
 use App\Identity\Exceptions\LastOwnerRemovalException;
 use App\Identity\Exceptions\MembershipExistsException;
 use App\Identity\Exceptions\MembershipNotFoundException;
+use App\Identity\Exceptions\MfaAlreadyEnrolledException;
+use App\Identity\Exceptions\MfaCodeInvalidException;
+use App\Identity\Exceptions\MfaEnforcedForRoleException;
+use App\Identity\Exceptions\MfaEnforcementRequiredException;
+use App\Identity\Exceptions\MfaNotEnrolledException;
+use App\Identity\Exceptions\MfaRequiredException;
 use App\Identity\Exceptions\MissingCapabilityException;
 use App\Identity\Exceptions\RefreshTokenReusedException;
 use App\Identity\Exceptions\RoleInUseException;
@@ -85,6 +91,12 @@ arch()->preset()->laravel()->ignoring([
     LastOwnerRemovalException::class,
     InvitationTokenInvalidException::class,
     InvitationTokenExpiredException::class,
+    MfaRequiredException::class,
+    MfaCodeInvalidException::class,
+    MfaAlreadyEnrolledException::class,
+    MfaNotEnrolledException::class,
+    MfaEnforcedForRoleException::class,
+    MfaEnforcementRequiredException::class,
     StaffInvitationMail::class,
     DefaultLocaleNotSupportedException::class,
     DomainAlreadyRegisteredException::class,

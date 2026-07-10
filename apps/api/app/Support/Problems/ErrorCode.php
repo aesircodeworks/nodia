@@ -38,6 +38,12 @@ enum ErrorCode: string
     case LastOwnerRemoval = 'last_owner_removal';
     case InvitationTokenInvalid = 'invitation_token_invalid';
     case InvitationTokenExpired = 'invitation_token_expired';
+    case MfaRequired = 'mfa_required';
+    case MfaCodeInvalid = 'mfa_code_invalid';
+    case MfaAlreadyEnrolled = 'mfa_already_enrolled';
+    case MfaNotEnrolled = 'mfa_not_enrolled';
+    case MfaEnforcedForRole = 'mfa_enforced_for_role';
+    case MfaEnforcementRequired = 'mfa_enforcement_required';
 
     public function status(): int
     {
@@ -73,6 +79,12 @@ enum ErrorCode: string
             self::LastOwnerRemoval => 409,
             self::InvitationTokenInvalid => 401,
             self::InvitationTokenExpired => 401,
+            self::MfaRequired => 401,
+            self::MfaCodeInvalid => 401,
+            self::MfaAlreadyEnrolled => 409,
+            self::MfaNotEnrolled => 409,
+            self::MfaEnforcedForRole => 403,
+            self::MfaEnforcementRequired => 403,
         };
     }
 
@@ -110,6 +122,12 @@ enum ErrorCode: string
             self::LastOwnerRemoval => 'Last owner removal',
             self::InvitationTokenInvalid => 'Invitation token invalid',
             self::InvitationTokenExpired => 'Invitation token expired',
+            self::MfaRequired => 'MFA required',
+            self::MfaCodeInvalid => 'MFA code invalid',
+            self::MfaAlreadyEnrolled => 'MFA already enrolled',
+            self::MfaNotEnrolled => 'MFA not enrolled',
+            self::MfaEnforcedForRole => 'MFA enforced for role',
+            self::MfaEnforcementRequired => 'MFA enforcement required',
         };
     }
 

@@ -87,12 +87,21 @@ function createTenantMember(string $tenantId): array
 }
 
 /**
+ * Platform-scope memberships are unconditionally MFA-enforcing (stage-03
+ * plan, MFA enforcement paragraph, task breakdown item 11), so this
+ * helper confirms MFA after the password-only token exchange, mirroring
+ * Tests\Support\PlatformStaff::token()'s own precedent, or every case
+ * below that reaches the tenancy.admin probe would now fail with
+ * mfa_enforcement_required instead of the resolution outcome under test.
+ *
  * @return array{0: User, 1: string}
  */
 function createPlatformMember(): array
 {
     $user = User::factory()->create();
     $token = StaffTokens::issue($user);
+
+    $user->forceFill(['mfa_enabled' => true, 'mfa_confirmed_at' => now()])->save();
 
     $platformTenantId = config()->string('tenancy.platform_tenant_id');
 

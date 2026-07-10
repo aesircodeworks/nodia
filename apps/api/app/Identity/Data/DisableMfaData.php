@@ -7,12 +7,10 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Mappers\SnakeCaseMapper;
 
 #[MapName(SnakeCaseMapper::class)]
-class StaffTokenRequestData extends Data
+class DisableMfaData extends Data
 {
     public function __construct(
-        public string $email,
-        public string $password,
-        public ?string $mfaCode = null,
+        public string $code,
     ) {}
 
     /**
@@ -21,9 +19,7 @@ class StaffTokenRequestData extends Data
     public static function rules(): array
     {
         return [
-            'email' => ['required', 'string', 'email'],
-            'password' => ['required', 'string'],
-            'mfa_code' => ['nullable', 'string'],
+            'code' => ['required', 'string'],
         ];
     }
 }
