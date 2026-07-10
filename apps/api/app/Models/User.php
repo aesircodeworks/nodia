@@ -30,6 +30,9 @@ class User extends Authenticatable implements OAuthenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'mfa_enabled' => 'boolean',
+            'mfa_secret' => 'encrypted',
+            'mfa_confirmed_at' => 'datetime',
         ];
     }
 }
