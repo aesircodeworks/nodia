@@ -24,7 +24,7 @@ Verified starting state: Stages 1-3 are Done. Stage 4 is Not started. No `app/Su
 - [x] task-10: Replay primitive and artisan command (plan task 10)
 - [x] task-11: `UserInvited` producer in InviteUser (plan task 11)
 - [x] task-12: `UserRoleChanged` producer in AssignRole (plan task 12)
-- [ ] task-13: `CustomerRegistered` producer in RegisterCustomer (plan task 13)
+- [x] task-13: `CustomerRegistered` producer in RegisterCustomer (plan task 13)
 - [ ] task-14: `TenantCreated` and `DomainVerified` producers plus 9.3 registry rows (plan task 14)
 
 ### Review rounds
@@ -242,3 +242,21 @@ What landed:
 Deviations: none material. Same-role no-op reassignment still records `UserRoleChanged` with identical previous/new role ids (AssignRole always updates and records, matching the Action's pre-existing no-op path).
 
 Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff (`UserRoleChangedPayload` not emitted). Focused UserRoleChanged / LastOwnerGuard tests passed 15 tests, 50 assertions. `composer -d apps/api run test` (all six suites) passed 1053 tests, 4105 assertions, 0 failures.
+
+#### task-13: CustomerRegistered producer in RegisterCustomer (2026-07-10 04:55 -03)
+
+Commit: `3937759` (`feat(identity): CustomerRegistered producer in RegisterCustomer`), plus this journal entry.
+
+Landed plan task 13 / Slice 6 identity producer: `CustomerRegistered` event and payload, registry registration from Identity, recording inside RegisterCustomer's producing transaction, and the Slice 6 unit/feature suite.
+
+What landed:
+
+- `App\Identity\Events\CustomerRegistered` and `CustomerRegisteredPayload`: aggregate `customer` / customer id; envelope `tenant_id` from the customer; payload fields `customer_id`, `is_guest` only (no email or name). `is_guest` is true when `password` is null (guest creation) and false when a password was supplied (full registration). Payload carries `#[Hidden]` so it is excluded from TypeScript generation as an internal contract.
+- `IdentityServiceProvider` registers the `CustomerRegistered` type-name string on the outbox registry alongside `UserInvited` and `UserRoleChanged`.
+- `RegisterCustomer` injects `OutboxRecorder` and records after the customer insert in the enclosing storefront tenant request transaction.
+- Slice 6 tests: HTTP success persists exactly one outbox row for guest (`is_guest` true) and for password registration (`is_guest` false), with type, aggregate, tenant, correlation ID from `X-Correlation-Id`, and payload shape without PII; validation and email-taken failures record nothing (email-taken after a prior success leaves only the first row); unit payload field set and no email/name; optional rollback coupling after record leaves no row.
+- Existing registration-path feature/unit/concurrency suites clear `outbox_events` / `outbox_deliveries` in afterEach so tenant teardown is not blocked by the new FK rows.
+
+Deviations: none.
+
+Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff (`CustomerRegisteredPayload` not emitted). Focused CustomerRegistered / RegisterCustomer tests passed 14 tests, 53 assertions. `composer -d apps/api run test` (all six suites) passed 1061 tests, 4149 assertions, 0 failures.
