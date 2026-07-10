@@ -10,12 +10,14 @@
 // alongside RequireCapability on the mutating-only inner group, never on
 // the read routes, matching roles.php/memberships.php's own precedent.
 // Task breakdown item 5 (TDD slice 2) adds the events routes below,
-// gated by events.view for reads and events.manage for writes;
-// events.publish (publish/cancel) and ticket-types routes are task
-// breakdown items 8 and 9. Publish/cancel and ticket-types routes land in
-// later tasks.
+// gated by events.view for reads and events.manage for writes.
+// Task breakdown item 8 (TDD slice 3) adds the ticket-type routes below:
+// creation and listing nest under the owning event, detail and update are
+// top-level, per the api-conventions nesting rule. events.publish
+// (publish/cancel) routes are task breakdown item 9.
 
 use App\EventCatalog\Http\Controllers\EventController;
+use App\EventCatalog\Http\Controllers\TicketTypeController;
 use App\EventCatalog\Http\Controllers\VenueController;
 use App\Http\Middleware\RecordActivityAudit;
 use App\Http\Middleware\RequireCapability;
@@ -27,6 +29,8 @@ Route::middleware(RequireCapability::class.':'.Capability::EventsView->value)->g
     Route::get('/venues/{venue}', [VenueController::class, 'show'])->whereUuid('venue');
     Route::get('/events', [EventController::class, 'index']);
     Route::get('/events/{event}', [EventController::class, 'show'])->whereUuid('event');
+    Route::get('/events/{event}/ticket-types', [TicketTypeController::class, 'index'])->whereUuid('event');
+    Route::get('/ticket-types/{ticket_type}', [TicketTypeController::class, 'show'])->whereUuid('ticket_type');
 });
 
 Route::middleware([RequireCapability::class.':'.Capability::EventsManage->value, RecordActivityAudit::class])->group(function (): void {
@@ -34,4 +38,6 @@ Route::middleware([RequireCapability::class.':'.Capability::EventsManage->value,
     Route::patch('/venues/{venue}', [VenueController::class, 'update'])->whereUuid('venue');
     Route::post('/events', [EventController::class, 'store']);
     Route::patch('/events/{event}', [EventController::class, 'update'])->whereUuid('event');
+    Route::post('/events/{event}/ticket-types', [TicketTypeController::class, 'store'])->whereUuid('event');
+    Route::patch('/ticket-types/{ticket_type}', [TicketTypeController::class, 'update'])->whereUuid('ticket_type');
 });

@@ -1,6 +1,7 @@
 <?php
 
 use App\EventCatalog\Models\Event;
+use App\EventCatalog\Models\TicketType;
 use App\EventCatalog\Models\Venue;
 use App\Identity\Enums\MembershipScope;
 use App\Identity\Models\Customer;
@@ -59,6 +60,7 @@ afterEach(function (): void {
             DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
             DB::table('memberships')->where('tenant_id', $tenantId)->delete();
             DB::table('customers')->where('tenant_id', $tenantId)->delete();
+            DB::table('ticket_types')->where('tenant_id', $tenantId)->delete();
             DB::table('events')->where('tenant_id', $tenantId)->delete();
             DB::table('venues')->where('tenant_id', $tenantId)->delete();
         });
@@ -336,6 +338,43 @@ it('increases the acting tenant\'s activity_log count by exactly one for every m
 
         $test->patchJson('/v1/events/'.$eventId, [
             'timezone' => 'America/Chicago',
+        ], ['Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => $tenantId])->assertOk();
+
+        expect(activityLogCountForCoverageTenant($tenantId))->toBe($before + 1);
+    }],
+    'Stage 5a: create a ticket type' => [function (TestCase $test): void {
+        $tenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);
+        $token = coverageAdminBearer($tenantId, ['events.manage']);
+        $eventId = app(TenantTransaction::class)->asTenant(
+            $tenantId,
+            fn () => Event::factory()->create(['tenant_id' => $tenantId])->id,
+        );
+        $before = activityLogCountForCoverageTenant($tenantId);
+
+        $test->postJson("/v1/events/{$eventId}/ticket-types", [
+            'name' => 'Coverage Ticket',
+            'price' => ['amount' => 5000, 'currency' => 'USD'],
+            'sales_start' => null,
+            'sales_end' => null,
+        ], ['Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => $tenantId])->assertCreated();
+
+        expect(activityLogCountForCoverageTenant($tenantId))->toBe($before + 1);
+    }],
+    'Stage 5a: update a ticket type' => [function (TestCase $test): void {
+        $tenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);
+        $token = coverageAdminBearer($tenantId, ['events.manage']);
+        $eventId = app(TenantTransaction::class)->asTenant(
+            $tenantId,
+            fn () => Event::factory()->create(['tenant_id' => $tenantId])->id,
+        );
+        $ticketTypeId = app(TenantTransaction::class)->asTenant(
+            $tenantId,
+            fn () => TicketType::factory()->create(['tenant_id' => $tenantId, 'event_id' => $eventId])->id,
+        );
+        $before = activityLogCountForCoverageTenant($tenantId);
+
+        $test->patchJson('/v1/ticket-types/'.$ticketTypeId, [
+            'name' => 'Renamed Coverage Ticket',
         ], ['Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => $tenantId])->assertOk();
 
         expect(activityLogCountForCoverageTenant($tenantId))->toBe($before + 1);

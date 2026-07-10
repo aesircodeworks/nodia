@@ -135,6 +135,7 @@ class ProblemRenderer
             ErrorCode::PasswordResetTokenInvalid => 'The password reset token is unknown, malformed, or already used.',
             ErrorCode::PasswordResetTokenExpired => 'The password reset token has expired.',
             ErrorCode::CatalogEventImmutable => 'This event is canceled and can no longer be modified.',
+            ErrorCode::CatalogCurrencyMismatch => "The ticket type's currency does not match the tenant's settlement currency.",
         };
     }
 }

@@ -2,6 +2,7 @@
 
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Models\Event;
+use App\EventCatalog\Models\TicketType;
 use App\EventCatalog\Models\Venue;
 use App\Identity\Capability;
 use App\Identity\Enums\MembershipScope;
@@ -74,6 +75,13 @@ afterEach(function (): void {
             // needs this per-tenant nodia_app delete above rather than a
             // blanket nodia_platform one.
             DB::table('customers')->where('tenant_id', $tenantId)->delete();
+
+            // contractTicketTypeBearer()'s exercisers (stage-05a plan, task
+            // breakdown item 8) write ticket_types scoped to a fresh event
+            // under contractEventTenant(); ticket_types must be deleted
+            // ahead of events below since ticket_types.event_id references
+            // events.
+            DB::table('ticket_types')->where('tenant_id', $tenantId)->delete();
 
             // contractEventBearer()'s exercisers (stage-05a plan, task
             // breakdown item 5) write events scoped to a fresh
@@ -327,6 +335,48 @@ function contractEventCreatePayload(array $overrides = []): array
         'start_at' => '2026-09-01T18:00:00Z',
         'end_at' => '2026-09-01T21:00:00Z',
         'timezone' => 'UTC',
+        ...$overrides,
+    ];
+}
+
+/**
+ * A fresh tenant per call, mirroring contractEventTenant()'s own precedent
+ * (stage-05a plan, task breakdown item 8).
+ */
+function contractTicketTypeTenant(): Tenant
+{
+    return contractTenant();
+}
+
+/**
+ * @param  list<string>  $capabilities
+ */
+function contractTicketTypeBearer(Tenant $tenant, array $capabilities = ['events.view', 'events.manage']): string
+{
+    return contractVenueBearer($tenant, $capabilities);
+}
+
+/**
+ * @param  array<string, mixed>  $attributes
+ */
+function contractTicketType(Tenant $tenant, string $eventId, array $attributes = []): TicketType
+{
+    return app(TenantTransaction::class)->asTenant(
+        $tenant->id,
+        fn () => TicketType::factory()->create(['tenant_id' => $tenant->id, 'event_id' => $eventId, ...$attributes]),
+    );
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function contractTicketTypeCreatePayload(array $overrides = []): array
+{
+    return [
+        'name' => 'Contract General Admission',
+        'price' => ['amount' => 5000, 'currency' => 'USD'],
+        'sales_start' => null,
+        'sales_end' => null,
         ...$overrides,
     ];
 }
@@ -1257,6 +1307,187 @@ function documentedResponseExercisers(): array
                 '/v1/events/'.$event->id,
                 ['timezone' => 'Not/ARealZone'],
                 ['Authorization' => 'Bearer '.contractEventBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/events/{event}/ticket-types 201' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant);
+
+            return test()->postJson(
+                "/v1/events/{$event->id}/ticket-types",
+                contractTicketTypeCreatePayload(),
+                ['Authorization' => 'Bearer '.contractTicketTypeBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/events/{event}/ticket-types 401' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant);
+
+            return test()->postJson(
+                "/v1/events/{$event->id}/ticket-types",
+                contractTicketTypeCreatePayload(),
+                ['X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/events/{event}/ticket-types 403' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant);
+
+            return test()->postJson(
+                "/v1/events/{$event->id}/ticket-types",
+                contractTicketTypeCreatePayload(),
+                ['Authorization' => 'Bearer '.contractTicketTypeBearer($tenant, ['events.view']), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/events/{event}/ticket-types 409' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant, ['status' => EventStatus::Canceled]);
+
+            return test()->postJson(
+                "/v1/events/{$event->id}/ticket-types",
+                contractTicketTypeCreatePayload(),
+                ['Authorization' => 'Bearer '.contractTicketTypeBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/events/{event}/ticket-types 422' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant);
+
+            return test()->postJson(
+                "/v1/events/{$event->id}/ticket-types",
+                contractTicketTypeCreatePayload(['price' => ['amount' => -1, 'currency' => 'USD']]),
+                ['Authorization' => 'Bearer '.contractTicketTypeBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'get /v1/events/{event}/ticket-types 200' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant);
+
+            return test()->getJson("/v1/events/{$event->id}/ticket-types", [
+                'Authorization' => 'Bearer '.contractTicketTypeBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/events/{event}/ticket-types 401' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant);
+
+            return test()->getJson("/v1/events/{$event->id}/ticket-types", ['X-Tenant-Id' => $tenant->id]);
+        },
+        'get /v1/events/{event}/ticket-types 403' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant);
+
+            return test()->getJson("/v1/events/{$event->id}/ticket-types", [
+                'Authorization' => 'Bearer '.contractTicketTypeBearer($tenant, ['events.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/events/{event}/ticket-types 404' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+
+            return test()->getJson('/v1/events/'.Str::uuid7().'/ticket-types', [
+                'Authorization' => 'Bearer '.contractTicketTypeBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/ticket-types/{ticket_type} 200' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant);
+            $ticketType = contractTicketType($tenant, $event->id);
+
+            return test()->getJson('/v1/ticket-types/'.$ticketType->id, [
+                'Authorization' => 'Bearer '.contractTicketTypeBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/ticket-types/{ticket_type} 401' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant);
+            $ticketType = contractTicketType($tenant, $event->id);
+
+            return test()->getJson('/v1/ticket-types/'.$ticketType->id, ['X-Tenant-Id' => $tenant->id]);
+        },
+        'get /v1/ticket-types/{ticket_type} 403' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant);
+            $ticketType = contractTicketType($tenant, $event->id);
+
+            return test()->getJson('/v1/ticket-types/'.$ticketType->id, [
+                'Authorization' => 'Bearer '.contractTicketTypeBearer($tenant, ['events.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/ticket-types/{ticket_type} 404' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+
+            return test()->getJson('/v1/ticket-types/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.contractTicketTypeBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'patch /v1/ticket-types/{ticket_type} 200' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant);
+            $ticketType = contractTicketType($tenant, $event->id);
+
+            return test()->patchJson(
+                '/v1/ticket-types/'.$ticketType->id,
+                ['name' => 'Contract Renamed'],
+                ['Authorization' => 'Bearer '.contractTicketTypeBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/ticket-types/{ticket_type} 401' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant);
+            $ticketType = contractTicketType($tenant, $event->id);
+
+            return test()->patchJson(
+                '/v1/ticket-types/'.$ticketType->id,
+                ['name' => 'Contract Renamed'],
+                ['X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/ticket-types/{ticket_type} 403' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant);
+            $ticketType = contractTicketType($tenant, $event->id);
+
+            return test()->patchJson(
+                '/v1/ticket-types/'.$ticketType->id,
+                ['name' => 'Contract Renamed'],
+                ['Authorization' => 'Bearer '.contractTicketTypeBearer($tenant, ['events.view']), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/ticket-types/{ticket_type} 404' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+
+            return test()->patchJson(
+                '/v1/ticket-types/'.Str::uuid7(),
+                ['name' => 'Contract Renamed'],
+                ['Authorization' => 'Bearer '.contractTicketTypeBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/ticket-types/{ticket_type} 409' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant, ['status' => EventStatus::Canceled]);
+            $ticketType = contractTicketType($tenant, $event->id);
+
+            return test()->patchJson(
+                '/v1/ticket-types/'.$ticketType->id,
+                ['name' => 'Contract Renamed'],
+                ['Authorization' => 'Bearer '.contractTicketTypeBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/ticket-types/{ticket_type} 422' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant);
+            $ticketType = contractTicketType($tenant, $event->id);
+
+            return test()->patchJson(
+                '/v1/ticket-types/'.$ticketType->id,
+                ['price' => ['amount' => 5000, 'currency' => 'EUR']],
+                ['Authorization' => 'Bearer '.contractTicketTypeBearer($tenant), 'X-Tenant-Id' => $tenant->id],
             );
         },
         'get /v1/capabilities 200' => fn (): TestResponse => test()->getJson('/v1/capabilities', [

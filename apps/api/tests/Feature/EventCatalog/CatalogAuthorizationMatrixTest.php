@@ -60,8 +60,14 @@ use Tests\Support\TenantStaff;
  * landed with its own permanently mounted routes (task breakdown item 5),
  * so a probe at the same method and path is never reached. Coverage for
  * that boundary moved to tests/Feature/EventCatalog/EventEndpointsTest.php.
- * The publish/cancel and ticket-type rows below stay probes until task
- * breakdown items 7 through 9 land their own real routes.
+ *
+ * The four ticket-type rows this file carried through task-06 were removed
+ * here, in task-07 (plan task breakdown item 8), for the identical reason:
+ * TicketType landed with its own permanently mounted routes. Coverage for
+ * that boundary moved to
+ * tests/Feature/EventCatalog/TicketTypeEndpointsTest.php. The publish/cancel
+ * rows below stay probes until task breakdown item 9 lands its own real
+ * routes.
  */
 
 const CATALOG_AUTH_ID = '019797f3-0000-7000-8000-0000000000cc';
@@ -74,10 +80,6 @@ function catalogAdminRoutes(): array
     return [
         'publish event' => ['POST', '/events/{event}/publish', Capability::EventsPublish],
         'cancel event' => ['POST', '/events/{event}/cancel', Capability::EventsPublish],
-        'create ticket type' => ['POST', '/events/{event}/ticket-types', Capability::EventsManage],
-        'list ticket types' => ['GET', '/events/{event}/ticket-types', Capability::EventsView],
-        'show ticket type' => ['GET', '/ticket-types/{ticket_type}', Capability::EventsView],
-        'update ticket type' => ['PATCH', '/ticket-types/{ticket_type}', Capability::EventsManage],
     ];
 }
 

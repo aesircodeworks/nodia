@@ -2272,6 +2272,251 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ValidationProblem'
+  /v1/events/{event}/ticket-types:
+    parameters:
+      - name: event
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: createTicketType
+      summary: Create a ticket type under an event
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the events.manage capability (stage-05a plan,
+        task breakdown item 8). Ticket types nest under their owning event
+        for creation and listing only, per the api-conventions nesting
+        rule; detail and update are top-level. price is Money on the wire
+        ({amount, currency}); its currency must match the tenant's
+        settlement currency (code catalog.currency_mismatch). Rejected
+        with catalog.event_immutable when the parent event is canceled.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketTypeCreateRequest'
+      responses:
+        '201':
+          description: Ticket type created.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketType'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.manage (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TicketTypeForbiddenProblem'
+        '409':
+          description: The parent event is canceled and can no longer be modified.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EventImmutableProblem'
+        '422':
+          description: >-
+            Request validation failed (code request.validation_failed,
+            with the errors map): a negative price, a malformed currency
+            code, or sales_end at or before sales_start; or the price
+            currency does not match the tenant's settlement currency
+            (code catalog.currency_mismatch).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TicketTypeUnprocessableProblem'
+    get:
+      operationId: listTicketTypes
+      summary: List ticket types under an event
+      description: >-
+        Tenant admin surface: Passport staff bearer plus X-Tenant-Id
+        membership validation, plus the events.view capability. Page
+        pagination only; no filter, sort, or include allowlist (stage-05a
+        plan endpoint table).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: One page of ticket types under the event.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketTypePage'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.view (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TicketTypeForbiddenProblem'
+        '404':
+          description: No event is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+  /v1/ticket-types/{ticket_type}:
+    parameters:
+      - name: ticket_type
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getTicketType
+      summary: Fetch one ticket type
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the events.view capability. A well-formed but
+        nonexistent or foreign-tenant ticket type id renders the same
+        generic request.not_found problem a malformed id gets from
+        route-parameter matching: another tenant's ticket type is
+        invisible under tenant_isolation RLS, so existence never leaks.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The ticket type.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketType'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.view (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TicketTypeForbiddenProblem'
+        '404':
+          description: No ticket type is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+    patch:
+      operationId: updateTicketType
+      summary: Update a ticket type
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the events.manage capability. Every field is
+        optional; a field absent from the payload is left untouched.
+        sales_start and sales_end are each an all-or-nothing bundle:
+        supplying part of the pair renders request.validation_failed.
+        Rejected with catalog.event_immutable when the parent event is
+        canceled; rejected with catalog.currency_mismatch when an updated
+        price currency does not match the tenant's settlement currency.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketTypeUpdateRequest'
+      responses:
+        '200':
+          description: The updated ticket type.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketType'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.manage (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TicketTypeForbiddenProblem'
+        '404':
+          description: No ticket type is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '409':
+          description: The parent event is canceled and can no longer be modified.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EventImmutableProblem'
+        '422':
+          description: >-
+            Request validation failed (code request.validation_failed,
+            with the errors map): a negative price, a malformed currency
+            code, or the sales window given only in part; or the price
+            currency does not match the tenant's settlement currency
+            (code catalog.currency_mismatch).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TicketTypeUnprocessableProblem'
 components:
   securitySchemes:
     BearerAuth:
@@ -3203,6 +3448,112 @@ components:
         meta:
           $ref: '#/components/schemas/PageMeta'
       additionalProperties: false
+    TicketType:
+      type: object
+      description: >-
+        A purchasable line item on an event (stage-05a plan, Data model).
+        price is Money on the wire; price_amount never appears bare
+        (ADR 018). requires_seat ships now as a stable column Stage 6
+        reads; nothing here references seats or availability yet.
+      required:
+        - id
+        - tenant_id
+        - event_id
+        - name
+        - price
+        - sales_start
+        - sales_end
+        - requires_seat
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        price:
+          $ref: '#/components/schemas/Money'
+        sales_start:
+          type: [string, 'null']
+          format: date-time
+        sales_end:
+          type: [string, 'null']
+          format: date-time
+        requires_seat:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    TicketTypeCreateRequest:
+      type: object
+      required:
+        - name
+        - price
+        - sales_start
+        - sales_end
+      properties:
+        name:
+          type: string
+        price:
+          $ref: '#/components/schemas/Money'
+        sales_start:
+          type: [string, 'null']
+          format: date-time
+        sales_end:
+          type: [string, 'null']
+          format: date-time
+        requires_seat:
+          type: boolean
+          default: false
+      additionalProperties: false
+    TicketTypeUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        price:
+          $ref: '#/components/schemas/Money'
+        sales_start:
+          type: [string, 'null']
+          format: date-time
+        sales_end:
+          type: [string, 'null']
+          format: date-time
+        requires_seat:
+          type: boolean
+      additionalProperties: false
+    TicketTypePage:
+      type: object
+      description: >-
+        Laravel standard paginator envelope (data, links, meta) per
+        docs/api-conventions.md.
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TicketType'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageLink'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      additionalProperties: false
     Capability:
       type: object
       description: One entry in the Capability registry (GET /v1/capabilities).
@@ -3694,6 +4045,59 @@ components:
             code:
               type: string
               enum: [catalog.event_immutable]
+      unevaluatedProperties: false
+    TicketTypeForbiddenProblem:
+      description: >-
+        Problem document for a 403 on a ticket type endpoint, reading or
+        mutating alike (both require a capability, events.view or
+        events.manage respectively, stage-05a plan task breakdown item
+        8): either the caller has no membership in the asserted tenant
+        (code tenant_access_denied, raised by ResolveTenantFromHeader
+        before the handler is reached), the acting membership does not
+        hold the required capability (code missing_capability), or the
+        acting membership mandates confirmed MFA and has not confirmed it
+        (code mfa_enforcement_required).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [403]
+            code:
+              type: string
+              enum: [tenant_access_denied, missing_capability, mfa_enforcement_required]
+      unevaluatedProperties: false
+    TicketTypeUnprocessableProblem:
+      description: >-
+        Problem document for a ticket type create or update that cannot be
+        processed: either request validation failed (with the errors map,
+        code request.validation_failed), or the submitted price currency
+        does not match the tenant's settlement currency (code
+        catalog.currency_mismatch, stage-05a plan endpoint table),
+        mirroring RoleUnprocessableProblem's own precedent for combining
+        two distinct codes at the same status.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - oneOf:
+            - type: object
+              required:
+                - errors
+              properties:
+                code:
+                  type: string
+                  enum: [request.validation_failed]
+                errors:
+                  type: object
+                  additionalProperties:
+                    type: array
+                    items:
+                      type: string
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum: [catalog.currency_mismatch]
       unevaluatedProperties: false
     MembershipExistsProblem:
       description: >-

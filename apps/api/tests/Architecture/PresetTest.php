@@ -2,9 +2,11 @@
 
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\EventCatalogServiceProvider;
+use App\EventCatalog\Exceptions\CurrencyMismatchException as TicketTypeCurrencyMismatchException;
 use App\EventCatalog\Exceptions\EventImmutableException;
 use App\EventCatalog\Exceptions\EventNotFoundException;
 use App\EventCatalog\Exceptions\InvalidEventVenueConfigurationException;
+use App\EventCatalog\Exceptions\TicketTypeNotFoundException;
 use App\EventCatalog\Exceptions\VenueNotFoundException;
 use App\Identity\Capability;
 use App\Identity\Enums\MembershipAccessOutcome;
@@ -158,6 +160,8 @@ arch()->preset()->laravel()->ignoring([
     VenueNotFoundException::class,
     EventNotFoundException::class,
     EventImmutableException::class,
+    TicketTypeNotFoundException::class,
+    TicketTypeCurrencyMismatchException::class,
     MissingTenantHeaderException::class,
     InvalidTenantHeaderException::class,
     TenantAccessDeniedException::class,

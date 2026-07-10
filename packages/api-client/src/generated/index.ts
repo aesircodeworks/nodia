@@ -69,6 +69,13 @@ export type CreateTenantData = {
   enabled_gateways?: string[];
   payout_schedule?: Record<string, unknown> | null;
 };
+export type CreateTicketTypeData = {
+  name: string;
+  price: Money;
+  sales_start: string | null;
+  sales_end: string | null;
+  requires_seat?: boolean;
+};
 export type CreateVenueData = {
   name: string;
   address: string;
@@ -163,7 +170,8 @@ export type ErrorCode =
   | 'claim_token_expired'
   | 'reset_token_invalid'
   | 'reset_token_expired'
-  | 'catalog.event_immutable';
+  | 'catalog.event_immutable'
+  | 'catalog.currency_mismatch';
 export type EventData = {
   id: string;
   tenant_id: string;
@@ -308,6 +316,18 @@ export type TenantDomainData = {
   created_at: string;
   updated_at: string;
 };
+export type TicketTypeData = {
+  id: string;
+  tenant_id: string;
+  event_id: string;
+  name: string;
+  price: Money;
+  sales_start: string | null;
+  sales_end: string | null;
+  requires_seat: boolean;
+  created_at: string;
+  updated_at: string;
+};
 export type TokenPairData = {
   access_token: string;
   refresh_token: string;
@@ -339,6 +359,13 @@ export type UpdateTenantData = {
 };
 export type UpdateTenantDomainData = {
   is_primary?: boolean;
+};
+export type UpdateTicketTypeData = {
+  name?: string;
+  price?: Money;
+  sales_start?: string | null;
+  sales_end?: string | null;
+  requires_seat?: boolean;
 };
 export type UpdateVenueData = {
   name?: string;
