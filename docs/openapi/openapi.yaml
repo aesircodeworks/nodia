@@ -13,9 +13,12 @@ paths:
       operationId: createTenant
       summary: Create a tenant
       description: >-
-        Platform admin surface. Runs under the platform role posture; Stage 3
-        replaces the placeholder auth alias with Passport plus capability
-        policies.
+        Platform admin surface: Passport staff bearer plus the tenants.manage
+        capability, evaluated against the acting membership under the
+        sentinel platform tenant (stage-03 plan, task breakdown item 7,
+        closing the Stage 2 placeholder auth alias deferral).
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
@@ -32,6 +35,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Tenant'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: The acting membership does not hold tenants.manage.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
         '422':
           description: >-
             Request validation failed (code request.validation_failed, with
@@ -45,12 +60,16 @@ paths:
       operationId: listTenants
       summary: List tenants
       description: >-
-        Platform admin surface. Page pagination with the standard Laravel
-        paginator envelope. Allowed query-builder parameters are filter[name]
-        and sort in (name, created_at, -name, -created_at); unknown filters
-        or sorts are rejected with 400 invalid_query_parameter, never
-        ignored. The parameter schemas below stay loose on purpose: the
-        allowlist is enforced by the API, not by request-shape validation.
+        Platform admin surface: Passport staff bearer plus the tenants.manage
+        capability (task breakdown item 7). Page pagination with the standard
+        Laravel paginator envelope. Allowed query-builder parameters are
+        filter[name] and sort in (name, created_at, -name, -created_at);
+        unknown filters or sorts are rejected with 400
+        invalid_query_parameter, never ignored. The parameter schemas below
+        stay loose on purpose: the allowlist is enforced by the API, not by
+        request-shape validation.
+      security:
+        - BearerAuth: []
       parameters:
         - name: filter
           in: query
@@ -93,6 +112,18 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/InvalidQueryParameterProblem'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: The acting membership does not hold tenants.manage.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
   /v1/tenants/{tenant}:
     parameters:
       - name: tenant
@@ -104,7 +135,11 @@ paths:
     get:
       operationId: getTenant
       summary: Fetch one tenant
-      description: Platform admin surface.
+      description: >-
+        Platform admin surface: Passport staff bearer plus the tenants.manage
+        capability (task breakdown item 7).
+      security:
+        - BearerAuth: []
       responses:
         '200':
           description: The tenant.
@@ -115,6 +150,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Tenant'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: The acting membership does not hold tenants.manage.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
         '404':
           description: No tenant has this id.
           content:
@@ -125,9 +172,12 @@ paths:
       operationId: updateTenant
       summary: Update a tenant
       description: >-
-        Platform admin surface. All fields are optional; absent fields are
-        left untouched. Branding and locale fields route to the
+        Platform admin surface: Passport staff bearer plus the tenants.manage
+        capability (task breakdown item 7). All fields are optional; absent
+        fields are left untouched. Branding and locale fields route to the
         UpdateBranding action, gateway fields to ConfigureGateways.
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
@@ -144,6 +194,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Tenant'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: The acting membership does not hold tenants.manage.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
         '404':
           description: No tenant has this id.
           content:
@@ -172,9 +234,13 @@ paths:
       operationId: registerTenantDomain
       summary: Register a domain for a tenant
       description: >-
-        Platform admin surface. The domain is normalized to lowercase before
-        it is stored, so the response always carries the lowercase form. A
-        domain resolves to exactly one tenant platform-wide.
+        Platform admin surface: Passport staff bearer plus the tenants.manage
+        capability (task breakdown item 7). The domain is normalized to
+        lowercase before it is stored, so the response always carries the
+        lowercase form. A domain resolves to exactly one tenant
+        platform-wide.
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
@@ -191,6 +257,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TenantDomain'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: The acting membership does not hold tenants.manage.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
         '404':
           description: No tenant has this id.
           content:
@@ -218,8 +296,12 @@ paths:
       operationId: listTenantDomains
       summary: List a tenant's domains
       description: >-
-        Platform admin surface. Page pagination with the standard Laravel
-        paginator envelope, sorted by domain; no query-builder parameters.
+        Platform admin surface: Passport staff bearer plus the tenants.manage
+        capability (task breakdown item 7). Page pagination with the standard
+        Laravel paginator envelope, sorted by domain; no query-builder
+        parameters.
+      security:
+        - BearerAuth: []
       parameters:
         - name: page
           in: query
@@ -237,6 +319,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TenantDomainPage'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: The acting membership does not hold tenants.manage.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
         '404':
           description: No tenant has this id.
           content:
@@ -255,12 +349,15 @@ paths:
       operationId: updateTenantDomain
       summary: Make a domain the tenant's primary domain
       description: >-
-        Platform admin surface. Item operations live at this top-level
-        resource because nesting under /v1/tenants/{tenant}/domains would
-        exceed the one-level nesting rule. is_primary only accepts true; a
-        domain is demoted by promoting another domain, so a demotion request
-        is rejected as unprocessable. The promotion is idempotent: replaying
-        it returns the current state without writing.
+        Platform admin surface: Passport staff bearer plus the tenants.manage
+        capability (task breakdown item 7). Item operations live at this
+        top-level resource because nesting under /v1/tenants/{tenant}/domains
+        would exceed the one-level nesting rule. is_primary only accepts
+        true; a domain is demoted by promoting another domain, so a demotion
+        request is rejected as unprocessable. The promotion is idempotent:
+        replaying it returns the current state without writing.
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
@@ -277,6 +374,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TenantDomain'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: The acting membership does not hold tenants.manage.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
         '404':
           description: No tenant domain has this id.
           content:
@@ -293,14 +402,29 @@ paths:
       operationId: removeTenantDomain
       summary: Remove a domain
       description: >-
-        Platform admin surface. The tenant's primary domain cannot be
-        removed; promote another domain first.
+        Platform admin surface: Passport staff bearer plus the tenants.manage
+        capability (task breakdown item 7). The tenant's primary domain
+        cannot be removed; promote another domain first.
+      security:
+        - BearerAuth: []
       responses:
         '204':
           description: Domain removed.
           headers:
             X-Correlation-Id:
               $ref: '#/components/headers/XCorrelationId'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: The acting membership does not hold tenants.manage.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
         '404':
           description: No tenant domain has this id.
           content:
@@ -1044,6 +1168,23 @@ components:
             code:
               type: string
               enum: [auth.unauthenticated]
+      unevaluatedProperties: false
+    MissingCapabilityProblem:
+      description: >-
+        Problem document for an authenticated caller whose acting
+        membership's role does not hold the capability the endpoint
+        requires, evaluated as capability plus tenant context, never role
+        names (system-design 5.3, ADR 012).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [403]
+            code:
+              type: string
+              enum: [missing_capability]
       unevaluatedProperties: false
     InvalidQueryParameterProblem:
       description: >-

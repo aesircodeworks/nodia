@@ -1,5 +1,6 @@
 <?php
 
+use App\Identity\Capability;
 use App\Identity\Enums\MembershipScope;
 use App\Identity\Models\Membership;
 use App\Identity\Models\Role;
@@ -14,6 +15,7 @@ use Illuminate\Support\Str;
 use Monolog\Level;
 use Tests\Support\LogCapture;
 use Tests\Support\MigratedDatabase;
+use Tests\Support\PlatformStaff;
 use Tests\Support\PostgresTestDatabase;
 use Tests\Support\StaffTokens;
 
@@ -51,10 +53,19 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    app(TenantTransaction::class)->asPlatform(function (): void {
-        TenantDomain::query()->delete();
-        Tenant::query()->whereKeyNot(config()->string('tenancy.platform_tenant_id'))->delete();
+    $sentinel = config()->string('tenancy.platform_tenant_id');
+
+    app(TenantTransaction::class)->asTenant($sentinel, function (): void {
+        DB::table('memberships')->delete();
     });
+
+    app(TenantTransaction::class)->asPlatform(function () use ($sentinel): void {
+        DB::table('roles')->whereNotNull('tenant_id')->delete();
+        TenantDomain::query()->delete();
+        Tenant::query()->whereKeyNot($sentinel)->delete();
+    });
+
+    User::query()->delete();
 });
 
 dataset('platform crud requests', [
@@ -80,11 +91,15 @@ function auditPath(string $uri): string
 }
 
 it('emits exactly one audit entry carrying the correlation id for every platform CRUD request, error paths included', function (string $method, string $uri, array $body, int $status) {
+    $token = PlatformStaff::token();
     $handler = LogCapture::fake();
 
     $path = auditPath($uri);
 
-    $this->json($method, $path, $body, ['X-Correlation-Id' => 'audit-test-correlation-id'])
+    $this->json($method, $path, $body, [
+        'X-Correlation-Id' => 'audit-test-correlation-id',
+        'Authorization' => 'Bearer '.$token,
+    ])
         ->assertStatus($status);
 
     $entries = LogCapture::entriesNamed($handler, PlatformRoleAudit::MESSAGE);
@@ -102,9 +117,10 @@ it('emits exactly one audit entry carrying the correlation id for every platform
 })->with('platform crud requests');
 
 it('carries the generated correlation id when the request supplies none', function () {
+    $token = PlatformStaff::token();
     $handler = LogCapture::fake();
 
-    $response = $this->getJson('/v1/tenants')->assertOk();
+    $response = $this->getJson('/v1/tenants', ['Authorization' => 'Bearer '.$token])->assertOk();
 
     $correlationId = $response->headers->get('X-Correlation-Id');
 
@@ -121,9 +137,13 @@ it('still emits the audit entry when the platform handler fails and the transact
         throw new RuntimeException('handler failed');
     });
 
+    $token = PlatformStaff::token();
     $handler = LogCapture::fake();
 
-    $this->getJson('/v1/__probe/audit-throwing', ['X-Correlation-Id' => 'audit-rollback-correlation-id'])
+    $this->getJson('/v1/__probe/audit-throwing', [
+        'X-Correlation-Id' => 'audit-rollback-correlation-id',
+        'Authorization' => 'Bearer '.$token,
+    ])
         ->assertStatus(500);
 
     $entries = LogCapture::entriesNamed($handler, PlatformRoleAudit::MESSAGE);
@@ -132,14 +152,23 @@ it('still emits the audit entry when the platform handler fails and the transact
         ->and($entries[0]->context['correlation_id'])->toBe('audit-rollback-correlation-id');
 });
 
-it('emits no audit entry when platform auth denies the request before the role is assumed', function () {
-    app()->detectEnvironment(fn (): string => 'production');
-
+it('emits no audit entry when platform auth denies the request before the role is assumed (no bearer)', function () {
     $handler = LogCapture::fake();
 
     $this->getJson('/v1/tenants')->assertUnauthorized();
 
     expect(LogCapture::entriesNamed($handler, PlatformRoleAudit::MESSAGE))->toBeEmpty();
+});
+
+it('still emits the audit entry when the bearer lacks tenants.manage, since the platform role was already assumed', function () {
+    $token = PlatformStaff::token(Capability::EventsView);
+    $handler = LogCapture::fake();
+
+    $this->getJson('/v1/tenants', ['Authorization' => 'Bearer '.$token])->assertStatus(403);
+
+    $entries = LogCapture::entriesNamed($handler, PlatformRoleAudit::MESSAGE);
+
+    expect($entries)->toHaveCount(1);
 });
 
 it('emits no audit entry for requests that never assume the platform role', function (callable $request) {

@@ -1,22 +1,41 @@
 <?php
 
+use App\Models\User;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Support\MigratedDatabase;
+use Tests\Support\PlatformStaff;
 use Tests\Support\PostgresTestDatabase;
 
 beforeEach(function (): void {
     PostgresTestDatabase::use();
     MigratedDatabase::ensure();
+
+    // task breakdown item 7: the tenancy.platform group now requires a
+    // Passport bearer plus tenants.manage (see
+    // tests/Feature/Tenancy/PlatformCapabilityAuthorizationTest.php for the
+    // denial matrix); every request below needs a capable bearer to reach
+    // the handlers this file actually exercises.
+    $this->withHeaders(['Authorization' => 'Bearer '.PlatformStaff::token()]);
 });
 
 afterEach(function (): void {
-    app(TenantTransaction::class)->asPlatform(function (): void {
-        TenantDomain::query()->delete();
-        Tenant::query()->whereKeyNot(config()->string('tenancy.platform_tenant_id'))->delete();
+    $sentinel = config()->string('tenancy.platform_tenant_id');
+
+    app(TenantTransaction::class)->asTenant($sentinel, function (): void {
+        DB::table('memberships')->delete();
     });
+
+    app(TenantTransaction::class)->asPlatform(function () use ($sentinel): void {
+        DB::table('roles')->whereNotNull('tenant_id')->delete();
+        TenantDomain::query()->delete();
+        Tenant::query()->whereKeyNot($sentinel)->delete();
+    });
+
+    User::query()->delete();
 });
 
 function domainTenant(array $attributes = []): Tenant

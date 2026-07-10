@@ -1,7 +1,8 @@
 <?php
 
 // Routes here are registered under /v1 inside the tenancy.platform group:
-// auth.platform first, then the platform request transaction.
+// Passport staff bearer, then the platform request transaction, then the
+// tenants.manage capability check (stage-03 plan, task breakdown item 7).
 
 use App\Tenancy\Http\Controllers\TenantController;
 use App\Tenancy\Http\Controllers\TenantDomainController;

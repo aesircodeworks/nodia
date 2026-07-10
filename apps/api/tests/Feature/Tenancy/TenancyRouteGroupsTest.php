@@ -1,15 +1,18 @@
 <?php
 
+use App\Identity\Capability;
+use App\Models\User;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Tenancy\TenantTransaction;
-use App\Tenancy\Http\Middleware\PlatformAuthPlaceholder;
 use App\Tenancy\Http\Middleware\PlatformRequestTransaction;
+use App\Tenancy\Http\Middleware\RequireCapability;
 use App\Tenancy\Http\Middleware\ResolveTenantFromHeader;
 use App\Tenancy\Http\Middleware\ResolveTenantFromHost;
 use App\Tenancy\Models\Tenant;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Tests\Support\MigratedDatabase;
+use Tests\Support\PlatformStaff;
 use Tests\Support\PostgresTestDatabase;
 
 beforeEach(function (): void {
@@ -18,21 +21,33 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    app(TenantTransaction::class)->asPlatform(
-        fn () => Tenant::query()->whereKeyNot(config()->string('tenancy.platform_tenant_id'))->delete(),
-    );
+    $sentinel = config()->string('tenancy.platform_tenant_id');
+
+    app(TenantTransaction::class)->asTenant($sentinel, function (): void {
+        DB::table('memberships')->delete();
+    });
+
+    app(TenantTransaction::class)->asPlatform(function () use ($sentinel): void {
+        DB::table('roles')->whereNotNull('tenant_id')->delete();
+        Tenant::query()->whereKeyNot($sentinel)->delete();
+    });
+
+    User::query()->delete();
 });
 
-it('registers the three tenancy middleware groups and the platform auth alias', function () {
+it('registers the three tenancy middleware groups, the platform group rebound to Passport bearer plus tenants.manage', function () {
     $router = app('router');
 
     $groups = $router->getMiddlewareGroups();
 
     expect($groups)->toHaveKeys(['tenancy.platform', 'tenancy.admin', 'tenancy.storefront'])
-        ->and($groups['tenancy.platform'])->toBe(['auth.platform', PlatformRequestTransaction::class])
+        ->and($groups['tenancy.platform'])->toBe([
+            'auth:staff',
+            PlatformRequestTransaction::class,
+            RequireCapability::class.':'.Capability::TenantsManage->value,
+        ])
         ->and($groups['tenancy.admin'])->toBe(['auth:staff', ResolveTenantFromHeader::class])
-        ->and($groups['tenancy.storefront'])->toBe([ResolveTenantFromHost::class])
-        ->and($router->getMiddleware()['auth.platform'] ?? null)->toBe(PlatformAuthPlaceholder::class);
+        ->and($groups['tenancy.storefront'])->toBe([ResolveTenantFromHost::class]);
 });
 
 it('runs platform group requests under the platform role posture with the sentinel tenant id', function () {
@@ -47,8 +62,9 @@ it('runs platform group requests under the platform role posture with the sentin
     });
 
     $sentinel = config()->string('tenancy.platform_tenant_id');
+    $token = PlatformStaff::token();
 
-    $this->getJson('/v1/__probe/platform-posture')
+    $this->getJson('/v1/__probe/platform-posture', ['Authorization' => 'Bearer '.$token])
         ->assertOk()
         ->assertJson([
             'role' => 'nodia_platform',
@@ -62,10 +78,8 @@ it('runs platform group requests under the platform role posture with the sentin
         ->and(DB::transactionLevel())->toBe(0);
 });
 
-it('denies platform group requests with a 401 problem document outside the testing and local environments', function (string $environment) {
+it('denies platform group requests with a 401 problem document when no bearer is presented', function () {
     Route::middleware('tenancy.platform')->prefix('v1')->get('/__probe/platform-auth', fn () => response()->noContent());
-
-    app()->detectEnvironment(fn (): string => $environment);
 
     $this->getJson('/v1/__probe/platform-auth')
         ->assertStatus(401)
@@ -73,14 +87,27 @@ it('denies platform group requests with a 401 problem document outside the testi
         ->assertMatchesProblemSchema()
         ->assertJsonPath('code', 'auth.unauthenticated')
         ->assertJsonPath('status', 401);
-})->with(['production', 'staging']);
+});
 
-it('passes platform group requests through in the local environment', function () {
+it('denies platform group requests with a 403 problem document when the bearer lacks tenants.manage', function () {
     Route::middleware('tenancy.platform')->prefix('v1')->get('/__probe/platform-auth', fn () => response()->noContent());
 
-    app()->detectEnvironment(fn (): string => 'local');
+    $token = PlatformStaff::token(Capability::EventsView);
 
-    $this->getJson('/v1/__probe/platform-auth')->assertNoContent();
+    $this->getJson('/v1/__probe/platform-auth', ['Authorization' => 'Bearer '.$token])
+        ->assertStatus(403)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertMatchesProblemSchema()
+        ->assertJsonPath('code', 'missing_capability')
+        ->assertJsonPath('status', 403);
+});
+
+it('passes platform group requests through for a bearer holding tenants.manage', function () {
+    Route::middleware('tenancy.platform')->prefix('v1')->get('/__probe/platform-auth', fn () => response()->noContent());
+
+    $token = PlatformStaff::token();
+
+    $this->getJson('/v1/__probe/platform-auth', ['Authorization' => 'Bearer '.$token])->assertNoContent();
 });
 
 it('rolls back writes made inside the platform transaction when the handler fails', function () {
@@ -90,7 +117,9 @@ it('rolls back writes made inside the platform transaction when the handler fail
         throw new RuntimeException('handler failure after a write');
     });
 
-    $this->getJson('/v1/__probe/platform-throwing')
+    $token = PlatformStaff::token();
+
+    $this->getJson('/v1/__probe/platform-throwing', ['Authorization' => 'Bearer '.$token])
         ->assertStatus(500)
         ->assertHeader('Content-Type', 'application/problem+json')
         ->assertJsonPath('code', 'server.internal_error');

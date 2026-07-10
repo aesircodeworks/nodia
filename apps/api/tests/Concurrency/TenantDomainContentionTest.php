@@ -1,12 +1,15 @@
 <?php
 
+use App\Models\User;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Tests\Concurrency\Support\ParallelRunner;
 use Tests\Support\MigratedDatabase;
+use Tests\Support\PlatformStaff;
 
 /**
  * The domain-endpoint races of the stage-02 plan, Slice 5, driven through
@@ -21,21 +24,31 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    app(TenantTransaction::class)->asPlatform(function (): void {
-        TenantDomain::query()->delete();
-        Tenant::query()->whereKeyNot(config()->string('tenancy.platform_tenant_id'))->delete();
+    $sentinel = config()->string('tenancy.platform_tenant_id');
+
+    app(TenantTransaction::class)->asTenant($sentinel, function (): void {
+        DB::table('memberships')->delete();
     });
+
+    app(TenantTransaction::class)->asPlatform(function () use ($sentinel): void {
+        DB::table('roles')->whereNotNull('tenant_id')->delete();
+        TenantDomain::query()->delete();
+        Tenant::query()->whereKeyNot($sentinel)->delete();
+    });
+
+    User::query()->delete();
 });
 
 /**
  * @param  array<string, mixed>  $payload
  * @return array{status: int, code: string|null}
  */
-function handleDomainRequest(string $method, string $uri, array $payload = []): array
+function handleDomainRequest(string $method, string $uri, array $payload, string $bearer): array
 {
     $request = Request::create($uri, $method, [], [], [], [
         'CONTENT_TYPE' => 'application/json',
         'HTTP_ACCEPT' => 'application/json',
+        'HTTP_AUTHORIZATION' => 'Bearer '.$bearer,
     ], json_encode($payload, JSON_THROW_ON_ERROR));
 
     $response = app(Kernel::class)->handle($request);
@@ -53,10 +66,13 @@ it('resolves parallel registration of one domain for two tenants to exactly one 
         fn () => [Tenant::factory()->create(), Tenant::factory()->create()],
     );
 
+    $bearer = PlatformStaff::token();
+
     $register = fn (string $tenantId): Closure => fn (PDO $pdo): array => handleDomainRequest(
         'POST',
         '/v1/tenants/'.$tenantId.'/domains',
         ['domain' => 'Raced.Example.Com'],
+        $bearer,
     );
 
     $results = ParallelRunner::runEach($register($tenantA->id), $register($tenantB->id));
@@ -86,10 +102,13 @@ it('leaves exactly one is_primary row when two domains of one tenant race for pr
         ];
     });
 
+    $bearer = PlatformStaff::token();
+
     $promote = fn (string $domainId): Closure => fn (PDO $pdo): array => handleDomainRequest(
         'PATCH',
         '/v1/tenant-domains/'.$domainId,
         ['is_primary' => true],
+        $bearer,
     );
 
     $results = ParallelRunner::runEach($promote($target1->id), $promote($target2->id));
