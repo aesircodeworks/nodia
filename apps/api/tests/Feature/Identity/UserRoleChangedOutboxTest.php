@@ -136,6 +136,25 @@ it('persists exactly one UserRoleChanged outbox row on a successful role change 
         ->and($row->payload)->not->toHaveKey('name');
 });
 
+it('records nothing when the role_id is unchanged (same-role no-op PATCH)', function () {
+    $membership = userRoleChangedMembership($this->tenantId);
+    $sameRoleId = $membership->role_id;
+
+    $response = $this->patchJson('/v1/memberships/'.$membership->id, [
+        'role_id' => $sameRoleId,
+    ]);
+
+    $response->assertOk()
+        ->assertJsonPath('role_id', $sameRoleId);
+
+    $count = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => OutboxEvent::query()->where('type', 'UserRoleChanged')->count(),
+    );
+
+    expect($count)->toBe(0);
+});
+
 it('records nothing when the role change request fails validation', function () {
     $membership = userRoleChangedMembership($this->tenantId);
 

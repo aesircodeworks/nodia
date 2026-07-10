@@ -37,16 +37,16 @@ final class AssignRole
 
         if ($previousRoleId !== $role->id) {
             $this->assertNotLastOwner($membership);
+
+            $membership->update(['role_id' => $role->id]);
+
+            $this->outbox->record(UserRoleChanged::fromMembership(
+                $membership,
+                $previousRoleId,
+                $role->id,
+                $changedByUserId,
+            ));
         }
-
-        $membership->update(['role_id' => $role->id]);
-
-        $this->outbox->record(UserRoleChanged::fromMembership(
-            $membership,
-            $previousRoleId,
-            $role->id,
-            $changedByUserId,
-        ));
 
         return MembershipData::fromModel($membership->refresh()->load(['user', 'role']));
     }
