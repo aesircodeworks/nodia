@@ -119,6 +119,11 @@ arch()->preset()->security();
 // SeatMapConflictException (stage-05b task-04), and SeatMapInUseException
 // (stage-05b task-06) live in App\EventCatalog\Exceptions like every
 // other HasErrorCode exception in this context, not App\Exceptions.
+// App\Support\Media\Models\Media (stage-05c task-01) is the same story as
+// App\Support\Audit\Models\ActivityLogEntry and App\Support\Outbox\
+// Models: shared infrastructure with no single owning bounded context
+// (EventCatalog and Tenancy both attach collections to it here), so it
+// lives under App\Support rather than App\Models.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -199,4 +204,5 @@ arch()->preset()->laravel()->ignoring([
     'App\EventCatalog\Http\Controllers',
     'App\Support\Audit\Models',
     'App\Support\Outbox\Models',
+    'App\Support\Media\Models',
 ]);

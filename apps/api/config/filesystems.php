@@ -60,6 +60,31 @@ return [
             'report' => false,
         ],
 
+        // spatie/laravel-medialibrary's disk (config/media-library.php
+        // disk_name), same S3-compatible backend as the generic 's3' disk
+        // above (any S3-compatible store; MinIO for development and
+        // self-hosted deployments, system-design 15.3), addressed through
+        // the same bucket and partitioned per tenant by
+        // App\Support\Media\TenantPathGenerator's tenant_id/media_uuid/
+        // path prefix rather than a separate bucket. 'public' visibility
+        // is the stage-05c plan's own Risks recommendation (public-read
+        // bucket for marketing images: event covers, galleries, tenant
+        // logos; revisit when Stage 8a adds ticket PDFs, which must stay
+        // private and therefore must not reuse this disk).
+        'media' => [
+            'driver' => 's3',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION'),
+            'bucket' => env('AWS_BUCKET'),
+            'url' => env('AWS_URL'),
+            'endpoint' => env('AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'visibility' => 'public',
+            'throw' => false,
+            'report' => false,
+        ],
+
     ],
 
     /*
