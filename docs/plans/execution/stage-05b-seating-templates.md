@@ -21,7 +21,7 @@ Sequencing note: the stage plan requires the `events.seat_map_id` migration (its
 - [x] task-04: PUT full replace with seat identity preservation, concurrency atomicity test, `catalog.seat_map_conflict` mapping (plan task 4, slice 4)
 - [x] task-05: Additive `events.seat_map_id` migration with restricting FK, `UpdateEvent` extension with venue-match and virtual-event invariants, contract and type regeneration (plan task 6, slice 6)
 - [x] task-06: DELETE endpoint with cascade and the `catalog.seat_map_in_use` 409 path (plan task 5, slice 5; depends on task-05's migration)
-- [ ] task-07: Sweep: endpoint-level isolation entries, problem `code` registry documentation, master plan status flip to Done (plan task 7)
+- [x] task-07: Sweep: endpoint-level isolation entries, problem `code` registry documentation, master plan status flip to Done (plan task 7)
 
 ### Review rounds
 
@@ -222,3 +222,45 @@ Deviations from the plan:
 - The plan's task breakdown lists "DELETE route and controller action, FK-violation-to-problem mapping, OpenAPI fragment" as this task's deliverables, without naming a dedicated Action class. One shipped anyway (`DeleteSeatMap`), consistent with this codebase's own established convention: every other mutating seat-map endpoint (`create`, `replace`) and the FK-violation precedent it mirrors (`DeleteRole`) both go through a dedicated Action rather than inline controller logic.
 
 Committed as `3a1528d` `feat(catalog): seat map delete with cascade and in-use conflict`.
+
+#### task-07, 2026-07-10
+
+Stage sweep (plan task breakdown item 7): endpoint-level isolation completeness, problem code registry documentation, and the master plan status flip.
+
+What landed:
+
+- Isolation gap closed: `tests/Isolation/SeatMapEndpointsIsolationTest.php` gained a second `it()` covering the three mutating seat-map routes that tasks 02, 04, and 06 each explicitly deferred to this sweep (`POST /v1/venues/{venue}/seat-maps`, `PUT /v1/seat-maps/{seat_map}`, `DELETE /v1/seat-maps/{seat_map}`): a tenant B token holding a real `seat_maps.manage` capability gets `request.not_found` (never `missing_capability` or `tenant_access_denied`) for tenant A's venue id (POST) and seat map id (PUT, DELETE), mirroring `RoleEndpointsIsolationTest`'s combined-mutating-routes pattern and reusing task-01's `SeatMapFixture`/`VenueFixture`. Combined with the file's existing GET item/list coverage (task-03) and `EventSeatMapLinkageIsolationTest.php`'s PATCH-event coverage (task-05), every one of the six seat-map-touching endpoints (`POST`, `GET` item, `GET` list, `PUT`, `DELETE` on seat maps, plus `PATCH /v1/events/{event}`'s `seat_map_id` linkage) now has an endpoint-level isolation probe proving RLS makes cross-tenant rows genuinely invisible, satisfying system-design 18's "every endpoint under RLS" requirement for this stage's surface. No production code changed; the new assertions passed on first run (RLS from task-01's migration already enforces the behavior), so this is verification-and-documentation, not a red-then-green loop.
+- Problem code registry confirmed complete: the six codes (`catalog.seat_map_duplicate_seats`, `catalog.seat_map_name_taken`, `catalog.seat_map_conflict`, `catalog.seat_map_venue_mismatch`, `catalog.seat_map_virtual_event`, `catalog.seat_map_in_use`) were already fully documented, incrementally, by tasks 02, 04, and 05: each has a case in `App\Support\Problems\ErrorCode` with its own `status()`/`title()`/`type()` arms, a `ProblemRenderer::detailFor()` arm, an exact-registry row in `tests/Unit/Problems/ErrorCodeTest.php`, an OpenAPI `enum` entry on its documented response schema, and an `App\Exceptions\PresetTest` allowlist entry. Checked all five locations against all six codes; no gap found, so no new registry entries were needed this task.
+- Master plan status: `docs/api-implementation-plan.md`'s status table row for "Stage 5b: Seating Templates" flipped from "In progress" to "Done", mirroring Stage 5a's own closeout precedent (`99bbad3`: only the table row changes, no narrative prose edited).
+- Roadmap left untouched per the task instruction: `docs/roadmap.md` already lists reserved seating and seat-map management as post-MVP (line 46, line 227); nothing in this stage's scope belongs there.
+
+Test evidence:
+
+- `tests/Isolation/SeatMapEndpointsIsolationTest.php`: 2/2 green (35 assertions total), confirmed immediately after the new `it()` was added; both cases pass under RLS as already-correct behavior from task-01's migration.
+- `tests/Contract` (standalone run, no other test process concurrent): 220/220 passed, 1401 assertions.
+- Full `composer test` (Feature, Unit, Contract, Architecture, Isolation, Concurrency), run three times this task: first full run (immediately after the isolation-test addition, run back-to-back with a preceding standalone Contract-suite invocation against the same shared `nodia_test` database) showed 20 unrelated failures across `Contract`, `Isolation` (`PlatformDomainEndpointsIsolationTest`, `PlatformEndpointsIsolationTest`, `SeatMapsIsolationTest`, `SeatsIsolationTest`), and `Concurrency` (`CustomerRegistrationContentionTest`, `EventLifecycleContentionTest`, `OrderedOutboxConsumptionContentionTest`, `RecoveryCodeConsumptionContentionTest`, `TenantDomainContentionTest`) — diagnosed as a self-inflicted race from two full/partial test invocations running concurrently against one shared test database with fixed-UUID fixtures, not a regression (none of the failing tests touch this task's own change, and a standalone re-run of the Contract suite alone passed 220/220 clean). Second full run, with no other test process running: 1580/1581 passed, 1 failure (`Concurrency\EventLifecycleContentionTest::it reconciles a publish versus cancel race so outbox rows match the committed transitions`, 409 vs 200) — the same pre-existing timing-sensitive flake task-01's and task-04's journal entries already recorded against this identical test name, unrelated to seat maps (no seat map or seat table involved in that test). Re-ran that one test file alone twice: failed once more (409 vs 200), then passed 4/4 on the next attempt, consistent with the prior entries' description of it as a genuine timing flake rather than a deterministic regression. Third full run, clean: 1581/1581 passed, 6286 assertions, no flake.
+- `composer lint` (Pint): passed on every run this task. `composer analyse` (Larastan): passed, 0 errors, on every run this task.
+- `composer types:generate`: ran clean with no diff (no new Data objects, Actions, or `ErrorCode` cases this task; all six codes were already generated by earlier tasks); `git status` confirmed no changes under `packages/api-client/src/generated/`.
+
+Deviations from the plan:
+
+- None. This task's own scope (isolation-suite completeness, problem-code-registry documentation, status flip, journal close) matches the plan's task breakdown item 7 and exit criteria 6, 8, 9, 10 exactly; the registry and OpenAPI-completeness checks found the earlier tasks had already fully satisfied them, so this task's contribution is the missing isolation coverage plus the closing status/journal updates.
+
+Committed as `7ab1b7f` `test(catalog): endpoint-level isolation coverage for seat map mutating routes` and the journal-close commit that follows this entry.
+
+### Stage closed, 2026-07-10
+
+Exit criteria walk against the stage plan's ten checks:
+
+1. **Met.** `SeatMapEndpointsTest`'s POST case asserts the full snake_case wire shape for a several-hundred-seat-scale create is exercised at 3 seats in the feature test (the plan's "several hundred seats" is a scale statement covered by `UpsertSeatMapTest`'s chunked-bulk-insert unit coverage, not a distinct feature-test requirement) and reads back byte-identical, seats deterministically ordered by `section`/`row`/`number` (task-02, task-03).
+2. **Met.** `UpsertSeatMapTest`'s unit coverage compares seat ids across an upsert: a coordinate-only change on an unchanged natural key preserves the id; an omitted seat is deleted; an added seat gets a new id (task-04).
+3. **Met.** `catalog.seat_map_duplicate_seats`, `catalog.seat_map_name_taken`, `catalog.seat_map_venue_mismatch`, `catalog.seat_map_virtual_event` each have a dedicated feature-test assertion on their stable `code` (task-02, task-05).
+4. **Met.** `EventEndpointsTest`'s seat-map block sets `seat_map_id` on a physical event whose venue owns the map; `EventUpdatedOutboxTest` proves exactly one `EventUpdated` row through the Stage 5a `UpdateEvent` Action; no publish-path change shipped (task-05).
+5. **Met.** `SeatMapEndpointsTest`'s DELETE block: 409 `catalog.seat_map_in_use` for a referenced template, 204 plus cascade for an unreferenced one (task-06).
+6. **Met.** `SeatMapsIsolationTest`/`SeatsIsolationTest` prove table-level cross-tenant denial (task-01); `SeatMapEndpointsIsolationTest`/`EventSeatMapLinkageIsolationTest` prove endpoint-level denial for all six seat-map-touching routes (task-03, task-05, task-07 this entry).
+7. **Met.** `SeatMapReplaceContentionTest`: parallel `PUT`s against one seat map always land 200/200 with the final document matching exactly one payload in full, never interleaved (task-04).
+8. **Met.** Every seat-map and seat-map-linkage OpenAPI path/schema is merged; `tests/Contract` (`DocumentedResponseCoverageTest`, `OpenApiDocumentValidityTest`, `ResponseSchemaStrictnessTest`) passes 220/220 standalone; `composer types:generate` ran clean with zero drift this task.
+9. **Met.** Full `composer test` passed 1581/1581 clean on this task's third run; Larastan 0 errors; Pint clean.
+10. **Met.** `docs/api-implementation-plan.md`'s status table now reads "Stage 5b: Seating Templates | Done".
+
+All ten exit criteria met. Stage 5b is closed; Stage 6 (Inventory and Reserved Seating) owns `event_seats` materialization on publish, per-event seat blocking, and ticket-type zoning, as scoped by this stage's non-goals.
