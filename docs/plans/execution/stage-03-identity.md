@@ -28,8 +28,8 @@ Verified starting state: Stages 1 and 2 are done (status table plus commit histo
 - [x] task-13: Slice 6: customer endpoints, `RegisterCustomer` and `ClaimGuestAccount`, customer guard, tenant claim validation, guest-creation concurrency test (plan task 13)
 - [x] task-14: Adjusted activitylog install: uuid keys, non-null `tenant_id`, append-only RLS, isolation tests first (plan task 14)
 - [x] task-15: Slice 7: audit recording on logins, mutations, and platform-role use, data-driven route coverage (plan task 15)
-- [ ] task-16: Slice 8: staff password reset with single-use token consumption guard, concurrency test first, family revocation (plan task 16)
-- [ ] task-17: Closeout: OpenAPI review, types drift check, master plan status flip (plan task 17)
+- [x] task-16: Slice 8: staff password reset with single-use token consumption guard, concurrency test first, family revocation (plan task 16)
+- [x] task-17: Closeout: OpenAPI review, types drift check, master plan status flip (plan task 17)
 
 ### Review rounds
 
@@ -400,3 +400,66 @@ The two endpoints land unauthenticated in `auth.php`'s public group, mirroring t
 Test evidence: `composer -d apps/api run test` (all six suites) passed 936 tests, 3693 assertions, 0 failures on two consecutive full runs — up from task-15's 910/3593, a net 26 new tests and 100 new assertions: 21 across the six new password reset files (`tests/Feature/Identity/StaffPasswordResetTest.php`, `tests/Concurrency/PasswordResetTokenConsumptionContentionTest.php`, and unit files for `RequestPasswordReset`, `ConsumePasswordResetToken`, `RevokeAllUserTokens`, and `PasswordResetTokenHasher`, together 21 tests and 70 assertions when run as a group), 3 new Contract coverage exercisers for the documented responses with bodies (the no-content 202 and 204 have no coverage keys, per the established precedent; the feature test conformance-asserts both), and 2 new `ErrorCodeTest.php` rows. `composer -d apps/api run lint` (Pint) and `composer -d apps/api run analyse` (Larastan, level 5) both pass with 0 issues. `composer -d apps/api run types:generate` regenerated `packages/api-client/src/generated/{index.ts,typescript-transformer-manifest.json}` for the two new Data classes and the two new `ErrorCode` union members, committed with the feature.
 
 Commits: `233e749` (`feat(identity): staff password reset with single-use hashed tokens and full-family revocation`), `02731e4` (`test(support): stop the Isolation suite leaking connections that starve the Concurrency suite`), plus this journal entry.
+
+#### task-17: Stage closeout, OpenAPI review, drift check, status flip (2026-07-10)
+
+Timestamp: Fri Jul 10 03:07:42 -03 2026.
+
+Stage close per plan task breakdown item 17 and Exit criteria 1-13. No application code changed this task: the stage's surface was already complete at task-16, and this task only reviews, gates, flips status, and records the settled risks.
+
+**OpenAPI surface review (whole stage).** Compared every registered `/v1` route (`php artisan route:list --path=v1`, 36 methods) against `docs/openapi/openapi.yaml` (27 paths, 36 operations). Exact match on method and path for every Stage 2 and Stage 3 endpoint: staff auth (token, refresh, logout, invitation accept, password reset request and confirm), MFA (enrollment, confirm, disable), `GET /v1/me`, customer auth (token, refresh, logout), `POST /v1/customers`, claim request and confirm, roles CRUD, `GET /v1/capabilities`, memberships list/invite/change/remove, plus Stage 2 tenants/domains/domain-verification and health. Consistency checks:
+
+- All 36 `operationId` values unique.
+- Every `$ref` under `#/components/schemas/` resolves; only unused top-level schema is `Money` (Stage 1, no Identity consumer yet).
+- Single security scheme `BearerAuth` (JWT) applied uniformly to every authenticated operation; unauthenticated flow endpoints correctly omit `security`. Scheme description documents `identity_type` and customer-only `tenant_id` claims.
+- Every Stage 3 error code from the stage plan's registry is present in the document (problem schemas and/or operation descriptions): `invalid_credentials`, `auth.unauthenticated`, `tenant_access_denied`, `tenant_mismatch`, `missing_capability`, all six MFA codes, both refresh codes, both invitation codes, both reset codes, the four customer/claim codes, the four role codes, `unknown_capability`, `membership_exists`, `last_owner_removal`.
+- Wire shapes for request/response Data objects remain snake_case on the wire and match the laravel-data sources (`TokenPair`, `CurrentUser`, `Role`, `Membership`, `Customer`, MFA enrollment/recovery, password-reset request/confirm, and so on). No shape inconsistency requiring a YAML edit.
+
+**Drift check.** `composer -d apps/api run types:generate` completed with `packages/api-client/src/generated` unchanged in git (confirmed empty `git status --short packages/api-client/src/generated` after generation). Zero drift.
+
+**Roadmap.** `docs/roadmap.md` Implementation Status left untouched: Phase 1 "Tenant and Identity Slice" remains "Not started". This is the API plan's Stage 3, not a roadmap phase.
+
+**Exit criteria walk (all 13 from the stage plan, each mapped to passing test evidence in the gate run below):**
+
+1. Met. Staff token pair with 15-minute JWT, `identity_type: staff`, no tenant claim: `tests/Feature/Identity/StaffAuthenticationTest.php` (issues pair, asserts `expires_in` from config, claims, expired-JWT rejection via reconstructed past-exp JWT under the Stage 1 fake-clock limit on Passport/league clocks).
+2. Met. Customer token against host-resolved tenant carries `identity_type: customer` and `tenant_id`; foreign host is `tenant_mismatch`: `tests/Feature/Identity/CustomerAuthenticationTest.php`.
+3. Met. Same email can exist as a staff user and as customers under two tenants with independent credential sets; each authenticates only on its own endpoint: structural separation (`users` vs per-tenant `customers`) plus `tests/Feature/Identity/StaffAuthenticationTest.php`, `tests/Feature/Identity/CustomerRegistrationTest.php` ("registers the same email independently under two different tenants"), and `tests/Feature/Identity/CustomerAuthenticationTest.php` (guest null-password cannot log in; registered password authenticates only on the matching host).
+4. Met. Refresh rotation, reuse family revocation, parallel refresh exactly once: `tests/Feature/Identity/StaffRefreshTest.php`, `tests/Concurrency/StaffRefreshRotationContentionTest.php`.
+5. Met. `X-Tenant-Id` without membership is 403 `tenant_access_denied`; with membership proceeds under that tenant's RLS: `tests/Feature/Tenancy/TenantMembershipResolutionTest.php`, plus admin-route denials in `RoleEndpointsTest.php` and `MembershipEndpointsTest.php`.
+6. Met. Authorization matrix enumerates every `Capability::cases()` value against every seeded template role plus a custom role, in-tenant and cross-tenant: `tests/Feature/Identity/AuthorizationMatrixTest.php`. Mutating Stage 2/3 endpoints require a named capability (platform group via `RequireCapability:tenants.manage`, role/membership mutations via `roles.manage`/`memberships.manage`, proven by feature denial paths and the matrix harness).
+7. Met. MFA enrollment challenge, enforcement for platform-scope and financially privileged roles, single-use recovery under parallel presentation: `tests/Feature/Identity/StaffMfaTokenChallengeTest.php`, `tests/Feature/Identity/MfaEnrollmentTest.php`, `tests/Feature/Identity/MfaDisableTest.php`, `tests/Feature/Identity/MfaEnforcementTest.php`, `tests/Concurrency/RecoveryCodeConsumptionContentionTest.php`.
+8. Met. Guest creation, cannot log in, claim via emailed token, expiry and reuse rejection: `tests/Feature/Identity/CustomerRegistrationTest.php`, `tests/Feature/Identity/CustomerClaimTest.php`, `tests/Unit/Identity/ClaimGuestAccountTest.php`, `tests/Unit/Identity/ClaimTokenTest.php`.
+9. Met. Isolation suite covers `memberships`, `roles`, `customers`, `activity_log` with cross-tenant read/write denial: `tests/Isolation/MembershipsIsolationTest.php`, `RolesIsolationTest.php` (templates readable from every tenant context; `nodia_app` cannot mutate templates; `nodia_platform` alone can write templates, matching the stage plan's Data model rather than the slightly tighter "writable nowhere" wording of exit line 9), `CustomersIsolationTest.php`, `ActivityLogIsolationTest.php` (UPDATE and DELETE denied even for the owning tenant).
+10. Met. Staff logins, Stage 2/3 mutations, and platform-role cross-tenant use appear in `activity_log` with correct tenant attribution: `tests/Feature/Identity/StaffLoginAuditTest.php`, `tests/Feature/Identity/ActivityLogCoverageTest.php` (data-driven mutating route list), `tests/Feature/Identity/PlatformScopeMutationAuditTest.php`, `tests/Feature/Tenancy/PlatformRoleAuditTest.php`.
+11. Met. Every endpoint above has its OpenAPI path and Contract-suite conformance; generated TypeScript committed with no drift (this task's regenerate); Feature, Unit, Contract, Architecture, Isolation, and Concurrency all green; Larastan and Pint pass (gate below).
+12. Met. `InviteUser`, `AssignRole`, and `RegisterCustomer` exist as single-transaction units with explicit Stage 4 `Outbox::record(...)` attachment comments: `apps/api/app/Identity/Actions/{InviteUser,AssignRole,RegisterCustomer}.php` (covered by unit and feature tests from tasks 9 and 13).
+13. Met. Staff password reset: enumeration-safe 202, confirm sets password and revokes all live tokens, expired/reused codes, parallel confirm exactly once: `tests/Feature/Identity/StaffPasswordResetTest.php`, `tests/Concurrency/PasswordResetTokenConsumptionContentionTest.php`, unit files for `RequestPasswordReset`, `ConsumePasswordResetToken`, `RevokeAllUserTokens`, `PasswordResetTokenHasher`.
+
+**Settled risks (stage plan Risks and open questions, closed here for handoff):**
+
+1. **Passport approach.** Task-01 verified Passport 13.x against current docs and installed source: password grant is available (must be explicitly enabled), provider-bound clients support the two-population design, JWT claim customization goes through `Passport::useAccessTokenEntity()` with a custom `IdentityAccessToken`. No fallback to a pure first-party token controller outside Passport's grant machinery was needed. Task-02 wraps issuance behind `/v1/auth/*` controllers that drive `AuthorizationServer` directly with `grant_type=password` (Passport's own `/oauth/token` routes suppressed via `Passport::ignoreRoutes()`), so the wire contract stays problem-document shaped. Outcome: designed approach stands; the "largest unknown" is closed.
+
+2. **MFA challenge shape.** Task-11 kept the plan's preferred single-step form: optional `mfa_code` on `POST /v1/auth/staff/token`. Credentials are verified first (`Hash::check`), then `VerifyMfaChallenge` (TOTP or atomic recovery-code consumption), then Passport minting, so a wrong MFA code never mints a discarded pair and enrollment status is never leaked on bad credentials. The two-step `mfa_token` fallback was not needed; the `mfa_required` / `mfa_code_invalid` contract is frozen as documented in OpenAPI.
+
+3. **`roles.tenant_id` nullable exception.** Task-04 shipped the sanctioned exception exactly as data-conventions and the master plan describe: NULL `tenant_id` means a global template; SELECT policy is `tenant_id IS NULL OR tenant_id = current_setting(...)`; mutation policies require the current tenant; `roles_platform_write` plus the template seeder under `nodia_platform` maintain templates. Isolation suite special-cases prove templates readable everywhere, not mutable from `nodia_app`, writable only via the platform role. The alternative `role_templates` table was not needed; the template-aware policy held through the rest of the stage.
+
+Other risks from the plan that resolved along the way without changing the design: family-revocation reuse detection (task-03 custom `IdentityRefreshTokenRepository`), membership validation ordering under `SET LOCAL` (task-05), oauth tables without `tenant_id` (task-01 structural tests plus slice 6 `tenant_mismatch`), staff password reset delivered in slice 8 (task-16). Remaining deferred items stay deferred by design: outbox producers (Stage 4), transactional email/Resend (Stage 8a), activity-log read endpoints (reporting stages), admin idle-timeout semantics beyond refresh TTL, payout/refund endpoint enforcement (Stage 8).
+
+**What landed this task:**
+
+- `docs/api-implementation-plan.md`: Stage 3 status flipped from "In progress" to "Done".
+- This journal entry: checklist task-16 and task-17 marked done (task-16 code and journal entry already existed; checklist box was still open), exit-criteria walk, settled risks, gate evidence.
+- `docs/roadmap.md`: not modified.
+
+**Deviations from the plan this task:** none. OpenAPI needed no edits; generated types needed no commit; no code fix was required to go green.
+
+Test evidence (stage close gate, Fri Jul 10 03:07 local):
+
+- `composer -d apps/api run lint` (Pint): passed, 389 files.
+- `composer -d apps/api run analyse` (Larastan level 5): passed, 0 errors.
+- `composer -d apps/api run test` (all six suites against PostgreSQL): 936 passed, 3693 assertions, 0 failures, ~88s.
+- `composer -d apps/api run types:generate`: clean; no diff under `packages/api-client/src/generated`.
+
+### Run summary
+
+Stage 3 is done. Seventeen tasks landed Passport for both identity populations, staff and customer token lifecycle with refresh reuse detection, memberships and template-aware roles under RLS, capability Gates with the authorization matrix, Stage 2 platform-route rebinding, MFA enrollment and enforcement, customers with guest claim, activity-log audit coverage, and staff password reset. Final state: 936 tests passing with 3693 assertions across all six suites, Pint and Larastan clean, zero contract drift. Handoffs: Stage 4 attaches `UserInvited`, `UserRoleChanged`, and `CustomerRegistered` (and the deferred Tenancy producers) at the Action comments already marked; Stage 5 onward authorizes admin endpoints through the capability layer built here.
