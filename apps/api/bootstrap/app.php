@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\CorrelationId;
 use App\Support\Problems\ProblemRenderer;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -16,6 +17,11 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(CorrelationId::class);
+    })
+    ->withSchedule(function (Schedule $schedule): void {
+        // Stage-04 plan task 8: reconciliation sweeper every minute
+        // against config/outbox.php grace and stability windows.
+        $schedule->command('outbox:sweep')->everyMinute();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
