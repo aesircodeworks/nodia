@@ -2,8 +2,10 @@
 
 use App\Identity\Capability;
 use App\Identity\Enums\MembershipScope;
+use App\Identity\Models\Customer;
 use App\Identity\Models\Membership;
 use App\Identity\Models\Role;
+use App\Identity\Support\ClaimToken;
 use App\Models\User;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
@@ -57,6 +59,14 @@ afterEach(function (): void {
     foreach ($tenantIds as $tenantId) {
         app(TenantTransaction::class)->asTenant($tenantId, function () use ($tenantId): void {
             DB::table('memberships')->where('tenant_id', $tenantId)->delete();
+
+            // The customer token/registration/claim exercisers (task
+            // breakdown item 13) create customers rows scoped to a fresh
+            // contractCustomerTenant() each; customers carries no
+            // platform write policy either, the same reason memberships
+            // needs this per-tenant nodia_app delete above rather than a
+            // blanket nodia_platform one.
+            DB::table('customers')->where('tenant_id', $tenantId)->delete();
         });
     }
 
@@ -308,6 +318,35 @@ function contractMfaConfirmedBearer(string $email): array
     test()->postJson('/v1/auth/mfa/enrollment/confirm', ['code' => TotpCodes::current($secret)], $headers);
 
     return [$token, $secret];
+}
+
+/**
+ * A fresh tenant plus a resolvable tenant_domains row per call (task
+ * breakdown item 13): the customer surface is host-resolved
+ * (tenancy.storefront), never X-Tenant-Id, so every customer exerciser
+ * below needs a real Host to hit rather than a bearer.
+ *
+ * @return array{0: Tenant, 1: string} tenant, host
+ */
+function contractCustomerTenant(): array
+{
+    return app(TenantTransaction::class)->asPlatform(function (): array {
+        $tenant = Tenant::factory()->create();
+        $domain = TenantDomain::factory()->create(['tenant_id' => $tenant->id]);
+
+        return [$tenant, $domain->domain];
+    });
+}
+
+/**
+ * @param  array<string, mixed>  $attributes
+ */
+function contractCustomer(Tenant $tenant, array $attributes = []): Customer
+{
+    return app(TenantTransaction::class)->asTenant(
+        $tenant->id,
+        fn () => Customer::factory()->create(['tenant_id' => $tenant->id, ...$attributes]),
+    );
 }
 
 /**
@@ -1027,6 +1066,112 @@ function documentedResponseExercisers(): array
             'token' => '',
             'password' => 'short',
         ]),
+        // Task breakdown item 13: the customer authentication and
+        // lifecycle surface. Every case below hits the real Host-resolved
+        // endpoint rather than X-Tenant-Id.
+        'post /v1/auth/customer/token 200' => function (): TestResponse {
+            [$tenant, $host] = contractCustomerTenant();
+            contractCustomer($tenant, ['email' => 'contract-customer-token@example.com', 'password' => 'password']);
+
+            return test()->postJson('http://'.$host.'/v1/auth/customer/token', [
+                'email' => 'contract-customer-token@example.com',
+                'password' => 'password',
+            ]);
+        },
+        'post /v1/auth/customer/token 401' => function (): TestResponse {
+            [, $host] = contractCustomerTenant();
+
+            return test()->postJson('http://'.$host.'/v1/auth/customer/token', [
+                'email' => 'unknown@example.com',
+                'password' => 'password',
+            ]);
+        },
+        'post /v1/auth/customer/token 422' => function (): TestResponse {
+            [, $host] = contractCustomerTenant();
+
+            return test()->postJson('http://'.$host.'/v1/auth/customer/token', ['email' => 'not-an-email', 'password' => 'x']);
+        },
+        'post /v1/auth/customer/refresh 200' => function (): TestResponse {
+            [$tenant, $host] = contractCustomerTenant();
+            contractCustomer($tenant, ['email' => 'contract-customer-refresh@example.com', 'password' => 'password']);
+
+            $pair = test()->postJson('http://'.$host.'/v1/auth/customer/token', [
+                'email' => 'contract-customer-refresh@example.com',
+                'password' => 'password',
+            ])->json();
+
+            return test()->postJson('http://'.$host.'/v1/auth/customer/refresh', ['refresh_token' => $pair['refresh_token']]);
+        },
+        'post /v1/auth/customer/refresh 401' => function (): TestResponse {
+            [, $host] = contractCustomerTenant();
+
+            return test()->postJson('http://'.$host.'/v1/auth/customer/refresh', ['refresh_token' => 'not-a-real-token']);
+        },
+        'post /v1/auth/customer/refresh 422' => function (): TestResponse {
+            [, $host] = contractCustomerTenant();
+
+            return test()->postJson('http://'.$host.'/v1/auth/customer/refresh', ['refresh_token' => '']);
+        },
+        // The 204 documents no content, so it has no coverage key here
+        // (mirroring the precedent above at 'post
+        // /v1/auth/staff/invitation/accept 204'); the feature test
+        // (tests/Feature/Identity/CustomerAuthenticationTest.php)
+        // conformance-asserts it.
+        'post /v1/auth/customer/logout 401' => function (): TestResponse {
+            [, $host] = contractCustomerTenant();
+
+            return test()->postJson('http://'.$host.'/v1/auth/customer/logout');
+        },
+        'post /v1/customers 201' => function (): TestResponse {
+            [, $host] = contractCustomerTenant();
+
+            return test()->postJson('http://'.$host.'/v1/customers', [
+                'email' => 'contract-new-customer@example.com',
+                'name' => 'Contract Customer',
+            ]);
+        },
+        'post /v1/customers 409' => function (): TestResponse {
+            [$tenant, $host] = contractCustomerTenant();
+            contractCustomer($tenant, ['email' => 'contract-taken@example.com']);
+
+            return test()->postJson('http://'.$host.'/v1/customers', [
+                'email' => 'contract-taken@example.com',
+                'name' => 'Contract Customer',
+            ]);
+        },
+        'post /v1/customers 422' => function (): TestResponse {
+            [, $host] = contractCustomerTenant();
+
+            return test()->postJson('http://'.$host.'/v1/customers', ['email' => 'not-an-email', 'name' => 'x']);
+        },
+        'post /v1/auth/customer/claim 422' => function (): TestResponse {
+            [, $host] = contractCustomerTenant();
+
+            return test()->postJson('http://'.$host.'/v1/auth/customer/claim', ['email' => 'not-an-email']);
+        },
+        'post /v1/auth/customer/claim/confirm 401' => function (): TestResponse {
+            [, $host] = contractCustomerTenant();
+
+            return test()->postJson('http://'.$host.'/v1/auth/customer/claim/confirm', [
+                'token' => 'not-a-real-token',
+                'password' => 'a-real-password',
+            ]);
+        },
+        'post /v1/auth/customer/claim/confirm 409' => function (): TestResponse {
+            [$tenant, $host] = contractCustomerTenant();
+            $customer = contractCustomer($tenant, ['password' => 'already-claimed-password']);
+            $token = ClaimToken::issue($customer->id);
+
+            return test()->postJson('http://'.$host.'/v1/auth/customer/claim/confirm', [
+                'token' => $token,
+                'password' => 'a-real-password',
+            ]);
+        },
+        'post /v1/auth/customer/claim/confirm 422' => function (): TestResponse {
+            [, $host] = contractCustomerTenant();
+
+            return test()->postJson('http://'.$host.'/v1/auth/customer/claim/confirm', ['token' => '', 'password' => '']);
+        },
     ];
 }
 

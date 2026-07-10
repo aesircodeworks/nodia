@@ -2,6 +2,8 @@
 
 namespace App\Identity\OAuth;
 
+use App\Identity\Exceptions\TenantMismatchException;
+use App\Identity\Models\Customer;
 use Laravel\Passport\Bridge\AccessToken;
 use Laravel\Passport\Bridge\Client as PassportClient;
 use League\OAuth2\Server\Entities\Traits\AccessTokenTrait;
@@ -29,6 +31,12 @@ class IdentityAccessToken extends AccessToken
     {
         $this->initJwtConfiguration();
 
+        $provider = $this->providerName();
+
+        $claims = $provider === IdentityClaims::CustomerProvider
+            ? IdentityClaims::for($provider, $this->customerTenantId())
+            : IdentityClaims::for($provider);
+
         $builder = $this->jwtConfiguration->builder()
             ->permittedFor($this->getClient()->getIdentifier())
             ->identifiedBy($this->getIdentifier())
@@ -38,7 +46,7 @@ class IdentityAccessToken extends AccessToken
             ->relatedTo($this->getSubjectIdentifier())
             ->withClaim('scopes', $this->getScopes());
 
-        foreach (IdentityClaims::for($this->providerName()) as $claim => $value) {
+        foreach ($claims as $claim => $value) {
             $builder = $builder->withClaim($claim, $value);
         }
 
@@ -56,5 +64,29 @@ class IdentityAccessToken extends AccessToken
         }
 
         return $client->provider;
+    }
+
+    /**
+     * customers carries RLS FORCE-enabled (stage-03 task breakdown item
+     * 12), so this lookup only ever resolves a row when it runs inside a
+     * tenant transaction asserting that very row's own tenant. A
+     * customer refresh presented against a different tenant's host (the
+     * only way this could come up: token issuance and rotation both run
+     * inside App\Tenancy\Http\Middleware\ResolveTenantFromHost's
+     * transaction) finds nothing here and is rejected as tenant_mismatch
+     * rather than leaking a raw 500 or minting a token with no tenant
+     * claim; the enclosing request transaction then rolls back the
+     * rotation that was about to complete, undoing it cleanly (stage-03
+     * plan, Customer authentication and lifecycle).
+     */
+    private function customerTenantId(): string
+    {
+        $customer = Customer::query()->find($this->getSubjectIdentifier());
+
+        if ($customer === null) {
+            throw TenantMismatchException::make();
+        }
+
+        return $customer->tenant_id;
     }
 }

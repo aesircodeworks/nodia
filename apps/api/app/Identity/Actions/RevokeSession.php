@@ -10,9 +10,12 @@ use Laravel\Passport\RefreshToken as PassportRefreshToken;
  * live refresh token, never the wider family (stage-03 plan, Slice 2):
  * family-wide revocation is reserved for detected reuse
  * (RevokeRefreshTokenFamily), so a legitimate logout never cascades into
- * revoking sessions it never touched.
+ * revoking sessions it never touched. Guard-agnostic (an AccessToken row
+ * carries no identity_type of its own), so both StaffLogoutController and
+ * CustomerLogoutController (stage-03 plan, task breakdown item 13) share
+ * this one Action rather than duplicating identical logic per population.
  */
-final class RevokeStaffSession
+final class RevokeSession
 {
     public function __invoke(AccessToken $accessToken): void
     {

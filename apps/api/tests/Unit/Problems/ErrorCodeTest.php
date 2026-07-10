@@ -41,6 +41,11 @@ test('the registry holds exactly the known codes', function () {
         'mfa_not_enrolled',
         'mfa_enforced_for_role',
         'mfa_enforcement_required',
+        'tenant_mismatch',
+        'customer_email_taken',
+        'customer_already_claimed',
+        'claim_token_invalid',
+        'claim_token_expired',
     ]);
 });
 
@@ -86,6 +91,11 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'mfa_not_enrolled' => [ErrorCode::MfaNotEnrolled, 409, 'MFA not enrolled', '/problems/mfa-not-enrolled'],
     'mfa_enforced_for_role' => [ErrorCode::MfaEnforcedForRole, 403, 'MFA enforced for role', '/problems/mfa-enforced-for-role'],
     'mfa_enforcement_required' => [ErrorCode::MfaEnforcementRequired, 403, 'MFA enforcement required', '/problems/mfa-enforcement-required'],
+    'tenant_mismatch' => [ErrorCode::TenantMismatch, 401, 'Tenant mismatch', '/problems/tenant-mismatch'],
+    'customer_email_taken' => [ErrorCode::CustomerEmailTaken, 409, 'Customer email taken', '/problems/customer-email-taken'],
+    'customer_already_claimed' => [ErrorCode::CustomerAlreadyClaimed, 409, 'Customer already claimed', '/problems/customer-already-claimed'],
+    'claim_token_invalid' => [ErrorCode::ClaimTokenInvalid, 401, 'Claim token invalid', '/problems/claim-token-invalid'],
+    'claim_token_expired' => [ErrorCode::ClaimTokenExpired, 401, 'Claim token expired', '/problems/claim-token-expired'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

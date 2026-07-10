@@ -44,6 +44,11 @@ enum ErrorCode: string
     case MfaNotEnrolled = 'mfa_not_enrolled';
     case MfaEnforcedForRole = 'mfa_enforced_for_role';
     case MfaEnforcementRequired = 'mfa_enforcement_required';
+    case TenantMismatch = 'tenant_mismatch';
+    case CustomerEmailTaken = 'customer_email_taken';
+    case CustomerAlreadyClaimed = 'customer_already_claimed';
+    case ClaimTokenInvalid = 'claim_token_invalid';
+    case ClaimTokenExpired = 'claim_token_expired';
 
     public function status(): int
     {
@@ -85,6 +90,11 @@ enum ErrorCode: string
             self::MfaNotEnrolled => 409,
             self::MfaEnforcedForRole => 403,
             self::MfaEnforcementRequired => 403,
+            self::TenantMismatch => 401,
+            self::CustomerEmailTaken => 409,
+            self::CustomerAlreadyClaimed => 409,
+            self::ClaimTokenInvalid => 401,
+            self::ClaimTokenExpired => 401,
         };
     }
 
@@ -128,6 +138,11 @@ enum ErrorCode: string
             self::MfaNotEnrolled => 'MFA not enrolled',
             self::MfaEnforcedForRole => 'MFA enforced for role',
             self::MfaEnforcementRequired => 'MFA enforcement required',
+            self::TenantMismatch => 'Tenant mismatch',
+            self::CustomerEmailTaken => 'Customer email taken',
+            self::CustomerAlreadyClaimed => 'Customer already claimed',
+            self::ClaimTokenInvalid => 'Claim token invalid',
+            self::ClaimTokenExpired => 'Claim token expired',
         };
     }
 

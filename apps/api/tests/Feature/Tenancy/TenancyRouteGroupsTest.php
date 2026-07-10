@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnforceCustomerTenantClaim;
 use App\Http\Middleware\EnforceMfaCompliance;
 use App\Http\Middleware\RequireCapability;
 use App\Identity\Capability;
@@ -36,7 +37,7 @@ afterEach(function (): void {
     User::query()->delete();
 });
 
-it('registers the three tenancy middleware groups, the platform group rebound to Passport bearer plus tenants.manage, both admin-facing groups now MFA-enforced', function () {
+it('registers the three tenancy middleware groups, the platform group rebound to Passport bearer plus tenants.manage, both admin-facing groups now MFA-enforced, storefront now tenant-claim-enforced', function () {
     $router = app('router');
 
     $groups = $router->getMiddlewareGroups();
@@ -49,7 +50,7 @@ it('registers the three tenancy middleware groups, the platform group rebound to
             RequireCapability::class.':'.Capability::TenantsManage->value,
         ])
         ->and($groups['tenancy.admin'])->toBe(['auth:staff', ResolveTenantFromHeader::class, EnforceMfaCompliance::class])
-        ->and($groups['tenancy.storefront'])->toBe([ResolveTenantFromHost::class]);
+        ->and($groups['tenancy.storefront'])->toBe([ResolveTenantFromHost::class, EnforceCustomerTenantClaim::class]);
 });
 
 it('runs platform group requests under the platform role posture with the sentinel tenant id', function () {

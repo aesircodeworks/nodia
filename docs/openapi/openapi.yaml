@@ -767,6 +767,242 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/UnauthenticatedProblem'
+  /v1/auth/customer/token:
+    post:
+      operationId: issueCustomerToken
+      summary: Exchange customer credentials for a token pair
+      description: >-
+        Unauthenticated; tenant is resolved from the Host header
+        (docs/api-conventions.md; stage-03 plan, task breakdown item 13).
+        An unknown email, a wrong password, and a guest account with no
+        password (docs/decisions/007) all fail identically with
+        invalid_credentials, so the response never reveals which case
+        applies. The access token is a JWT carrying identity_type
+        customer and tenant_id, valid only for the tenant it was issued
+        under (system-design 5.4).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerTokenRequest'
+      responses:
+        '200':
+          description: A new access and refresh token pair.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          description: >-
+            The email is unknown, the password is wrong, or the account
+            is an unclaimed guest with no password (code
+            invalid_credentials in every case).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/CustomerInvalidCredentialsProblem'
+        '422':
+          description: Request validation failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+  /v1/auth/customer/refresh:
+    post:
+      operationId: refreshCustomerToken
+      summary: Rotate a customer refresh token for a new token pair
+      description: >-
+        Unauthenticated (the refresh token itself is the credential),
+        tenant resolved from the Host header. Rotation, reuse detection,
+        and family revocation are identical to POST
+        /v1/auth/staff/refresh (docs/decisions/011, stage-03 plan Slice
+        2): single-use, guarded by a conditional UPDATE checked by
+        affected-row count, and presenting an already-rotated token
+        revokes every live token issued from the same login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: A new access and refresh token pair.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          description: >-
+            The refresh token is expired, malformed, or unknown (code
+            invalid_refresh_token), or it was already rotated away from
+            and is being presented again (code refresh_token_reused).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/RefreshTokenProblem'
+        '422':
+          description: Request validation failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+  /v1/auth/customer/logout:
+    post:
+      operationId: logoutCustomer
+      summary: Revoke the current customer session
+      description: >-
+        Customer bearer, tenant resolved from the Host header. Revokes
+        the presented access token and its live refresh token, mirroring
+        POST /v1/auth/staff/logout (stage-03 plan, Slice 2). A bearer
+        whose tenant_id claim does not match the host-resolved tenant is
+        rejected before Passport's own token validation runs
+        (App\Http\Middleware\EnforceCustomerTenantClaim).
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: The session's access and refresh token are revoked.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+        '401':
+          description: >-
+            Missing, invalid, or expired bearer token (code
+            auth.unauthenticated), or a bearer whose tenant_id claim does
+            not match the host-resolved tenant (code tenant_mismatch).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/CustomerLogoutProblem'
+  /v1/customers:
+    post:
+      operationId: registerCustomer
+      summary: Create a guest or fully registered customer
+      description: >-
+        Unauthenticated; tenant resolved from the Host header. Omitting
+        password (or sending null) creates an unclaimed guest usable for
+        checkout but not login (docs/decisions/007); sending a password
+        registers the customer outright. locale falls back to the
+        tenant's own default_locale when omitted (system-design 12). The
+        same email address independently registers under every other
+        tenant (unique per tenant, system-design 5.2).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterCustomerRequest'
+      responses:
+        '201':
+          description: The created customer.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '409':
+          description: This tenant already has a customer with this email.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/CustomerEmailTakenProblem'
+        '422':
+          description: Request validation failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+  /v1/auth/customer/claim:
+    post:
+      operationId: requestCustomerClaim
+      summary: Request a guest account claim email
+      description: >-
+        Unauthenticated; tenant resolved from the Host header. Always
+        renders 202 regardless of whether the email exists, already has
+        a password, or is a genuine unclaimed guest (enumeration-safe,
+        mirroring the staff password reset request endpoint's own
+        design, stage-03 plan Slice 8); a claim token is mailed only for
+        a genuine unclaimed guest (App\Identity\Mail\CustomerClaimMail).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimRequest'
+      responses:
+        '202':
+          description: >-
+            The request was accepted; a claim email is sent if and only
+            if the address resolves to an unclaimed guest, which this
+            response never reveals.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+        '422':
+          description: Request validation failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+  /v1/auth/customer/claim/confirm:
+    post:
+      operationId: confirmCustomerClaim
+      summary: Confirm a guest account claim and set a password
+      description: >-
+        Unauthenticated: the token itself is the credential (stage-03
+        plan, task breakdown item 13). Redeems the stateless, time-limited
+        claim token POST /v1/auth/customer/claim mails to a guest
+        customer's own address and sets their password, after which POST
+        /v1/auth/customer/token authenticates them. The token is stateless
+        (App\Identity\Support\ClaimToken): tampering with it, or
+        presenting one whose embedded expiry has passed, fail with
+        distinct codes; a customer who already holds a password is
+        rejected with customer_already_claimed, which is also what makes
+        replaying a still-valid token after its first use harmless.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmClaimRequest'
+      responses:
+        '204':
+          description: The password is set; the account can now authenticate.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+        '401':
+          description: >-
+            The token is malformed, tampered with, or names a customer
+            that no longer resolves under this tenant (code
+            claim_token_invalid), or its embedded expiry has passed (code
+            claim_token_expired).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ClaimTokenProblem'
+        '409':
+          description: This customer already holds a password.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/CustomerAlreadyClaimedProblem'
+        '422':
+          description: Request validation failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
   /v1/roles:
     get:
       operationId: listRoles
@@ -1508,6 +1744,81 @@ components:
         refresh_token:
           type: string
       additionalProperties: false
+    CustomerTokenRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      additionalProperties: false
+    RegisterCustomerRequest:
+      type: object
+      required:
+        - email
+        - name
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        password:
+          type: [string, 'null']
+          description: >-
+            Omitted or null creates an unclaimed guest (docs/decisions/007).
+        locale:
+          type: [string, 'null']
+          description: Falls back to the tenant's default_locale when omitted.
+      additionalProperties: false
+    Customer:
+      type: object
+      required:
+        - id
+        - email
+        - name
+        - locale
+        - is_claimed
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        locale:
+          type: string
+        is_claimed:
+          type: boolean
+          description: True once the customer holds a password (registered or claimed).
+      additionalProperties: false
+    ClaimRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+      additionalProperties: false
+    ConfirmClaimRequest:
+      type: object
+      required:
+        - token
+        - password
+      properties:
+        token:
+          type: string
+        password:
+          type: string
+          minLength: 8
+      additionalProperties: false
     Membership:
       type: object
       description: >-
@@ -2118,6 +2429,24 @@ components:
               type: string
               enum: [invalid_credentials, mfa_required, mfa_code_invalid]
       unevaluatedProperties: false
+    CustomerInvalidCredentialsProblem:
+      description: >-
+        Problem document for a customer token request that fails: an
+        unknown email, a wrong password, or a guest account with no
+        password (code invalid_credentials in every case, so the response
+        never reveals which applies). Customers carry no MFA challenge,
+        unlike the staff token endpoint's InvalidCredentialsProblem.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [401]
+            code:
+              type: string
+              enum: [invalid_credentials]
+      unevaluatedProperties: false
     RefreshTokenProblem:
       description: >-
         Problem document for a rejected refresh token: it is expired,
@@ -2136,6 +2465,72 @@ components:
             code:
               type: string
               enum: [invalid_refresh_token, refresh_token_reused]
+      unevaluatedProperties: false
+    CustomerLogoutProblem:
+      description: >-
+        Problem document for a 401 on POST /v1/auth/customer/logout:
+        either a missing, invalid, or expired bearer token (code
+        auth.unauthenticated), or a bearer whose tenant_id claim does not
+        match the host-resolved tenant (code tenant_mismatch, raised by
+        App\Http\Middleware\EnforceCustomerTenantClaim ahead of Passport's
+        own token validation).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [401]
+            code:
+              type: string
+              enum: [auth.unauthenticated, tenant_mismatch]
+      unevaluatedProperties: false
+    CustomerEmailTakenProblem:
+      description: >-
+        Problem document for a customer create whose email already has a
+        row in this tenant (unique per tenant_id, email).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [customer_email_taken]
+      unevaluatedProperties: false
+    ClaimTokenProblem:
+      description: >-
+        Problem document for a rejected customer claim token: it is
+        malformed, tampered with, or names a customer that no longer
+        resolves under this tenant (code claim_token_invalid), or its
+        embedded expiry has passed (code claim_token_expired).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [401]
+            code:
+              type: string
+              enum: [claim_token_invalid, claim_token_expired]
+      unevaluatedProperties: false
+    CustomerAlreadyClaimedProblem:
+      description: >-
+        Problem document for a claim confirmation presented for a
+        customer who already holds a password.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [customer_already_claimed]
       unevaluatedProperties: false
     UnauthenticatedProblem:
       description: >-

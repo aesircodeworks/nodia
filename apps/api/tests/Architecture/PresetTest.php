@@ -3,6 +3,10 @@
 use App\Identity\Capability;
 use App\Identity\Enums\MembershipAccessOutcome;
 use App\Identity\Enums\MembershipScope;
+use App\Identity\Exceptions\ClaimTokenExpiredException;
+use App\Identity\Exceptions\ClaimTokenInvalidException;
+use App\Identity\Exceptions\CustomerAlreadyClaimedException;
+use App\Identity\Exceptions\CustomerEmailTakenException;
 use App\Identity\Exceptions\InvalidCredentialsException;
 use App\Identity\Exceptions\InvalidMembershipScopeException;
 use App\Identity\Exceptions\InvalidRefreshTokenException;
@@ -23,8 +27,10 @@ use App\Identity\Exceptions\RoleInUseException;
 use App\Identity\Exceptions\RoleNameTakenException;
 use App\Identity\Exceptions\RoleNotEditableException;
 use App\Identity\Exceptions\RoleNotFoundException;
+use App\Identity\Exceptions\TenantMismatchException;
 use App\Identity\Exceptions\UnknownCapabilityException;
 use App\Identity\IdentityServiceProvider;
+use App\Identity\Mail\CustomerClaimMail;
 use App\Identity\Mail\StaffInvitationMail;
 use App\Support\Money\CurrencyMismatchException;
 use App\Support\Problems\ErrorCode;
@@ -97,7 +103,13 @@ arch()->preset()->laravel()->ignoring([
     MfaNotEnrolledException::class,
     MfaEnforcedForRoleException::class,
     MfaEnforcementRequiredException::class,
+    TenantMismatchException::class,
+    CustomerEmailTakenException::class,
+    CustomerAlreadyClaimedException::class,
+    ClaimTokenInvalidException::class,
+    ClaimTokenExpiredException::class,
     StaffInvitationMail::class,
+    CustomerClaimMail::class,
     DefaultLocaleNotSupportedException::class,
     DomainAlreadyRegisteredException::class,
     InvalidDomainNameException::class,

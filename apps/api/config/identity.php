@@ -57,4 +57,24 @@ return [
 
     'mfa_recovery_code_count' => (int) env('MFA_RECOVERY_CODE_COUNT', 8),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Customer Claim Token Lifetime
+    |--------------------------------------------------------------------------
+    |
+    | POST /v1/auth/customer/claim issues this token, mailed to a guest
+    | customer's own address (stage-03 plan, task breakdown item 13);
+    | POST /v1/auth/customer/claim/confirm redeems it. The plan mandates a
+    | time-limited token but no specific duration, the same open point
+    | the invitation token TTL above already resolved by picking an
+    | explicit, config-driven, testable value; a day gives a real
+    | attendee enough time to check their inbox without the token
+    | becoming a long-lived secret, shorter than the week-long staff
+    | invitation window since claiming an existing guest account is a
+    | lighter-weight action than onboarding a new staff member.
+    |
+    */
+
+    'claim_token_ttl_minutes' => (int) env('CUSTOMER_CLAIM_TOKEN_TTL_MINUTES', 1_440),
+
 ];

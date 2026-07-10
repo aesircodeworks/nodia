@@ -28,6 +28,13 @@ export type ChangeMembershipRoleData = {
   role_id: string;
 };
 export type CheckResult = 'ok' | 'failed';
+export type ClaimRequestData = {
+  email: string;
+};
+export type ConfirmClaimData = {
+  token: string;
+  password: string;
+};
 export type ConfirmMfaData = {
   code: string;
 };
@@ -68,6 +75,17 @@ export type CursorPaginator<TKey, TValue> = {
   };
 };
 export type CursorPaginatorInterface<TKey, TValue> = CursorPaginator<TKey, TValue>;
+export type CustomerData = {
+  id: string;
+  email: string;
+  name: string;
+  locale: string;
+  is_claimed: boolean;
+};
+export type CustomerTokenRequestData = {
+  email: string;
+  password: string;
+};
 export type DisableMfaData = {
   code: string;
 };
@@ -116,7 +134,12 @@ export type ErrorCode =
   | 'mfa_already_enrolled'
   | 'mfa_not_enrolled'
   | 'mfa_enforced_for_role'
-  | 'mfa_enforcement_required';
+  | 'mfa_enforcement_required'
+  | 'tenant_mismatch'
+  | 'customer_email_taken'
+  | 'customer_already_claimed'
+  | 'claim_token_invalid'
+  | 'claim_token_expired';
 export type HealthChecksData = {
   database: CheckResult;
   redis: CheckResult;
@@ -198,6 +221,12 @@ export type ProblemData = {
 };
 export type RefreshTokenRequestData = {
   refresh_token: string;
+};
+export type RegisterCustomerData = {
+  email: string;
+  name: string;
+  password?: string | null;
+  locale?: string | null;
 };
 export type RegisterTenantDomainData = {
   domain: string;

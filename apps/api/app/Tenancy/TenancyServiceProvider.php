@@ -2,6 +2,7 @@
 
 namespace App\Tenancy;
 
+use App\Http\Middleware\EnforceCustomerTenantClaim;
 use App\Http\Middleware\EnforceMfaCompliance;
 use App\Http\Middleware\RequireCapability;
 use App\Identity\Capability;
@@ -45,6 +46,15 @@ use Illuminate\Support\ServiceProvider;
  * denial fires uniformly across every route in both groups (including
  * capability-free reads like GET /v1/roles), never conditioned on which
  * capability a particular route happens to require.
+ *
+ * Stage 3 task breakdown item 13 adds App\Http\Middleware\
+ * EnforceCustomerTenantClaim to the storefront group, after
+ * ResolveTenantFromHost opens the tenant transaction: a customer bearer
+ * whose tenant_id claim does not match the host-resolved tenant is
+ * denied tenant_mismatch before Passport's own auth:customer guard ever
+ * runs, which would otherwise be unable to distinguish that case from a
+ * plain invalid token (customers carries RLS FORCE-enabled, so a
+ * cross-tenant customer row is invisible under the wrong tenant context).
  */
 class TenancyServiceProvider extends ServiceProvider
 {
@@ -58,7 +68,7 @@ class TenancyServiceProvider extends ServiceProvider
         ]);
 
         $router->middlewareGroup('tenancy.admin', ['auth:staff', ResolveTenantFromHeader::class, EnforceMfaCompliance::class]);
-        $router->middlewareGroup('tenancy.storefront', [ResolveTenantFromHost::class]);
+        $router->middlewareGroup('tenancy.storefront', [ResolveTenantFromHost::class, EnforceCustomerTenantClaim::class]);
 
         Route::middleware('tenancy.platform')
             ->prefix('v1')

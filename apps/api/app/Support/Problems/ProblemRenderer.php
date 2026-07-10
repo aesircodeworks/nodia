@@ -127,6 +127,11 @@ class ProblemRenderer
             ErrorCode::MfaNotEnrolled => 'MFA enrollment has not been started for this account.',
             ErrorCode::MfaEnforcedForRole => 'MFA cannot be disabled while the acting membership requires it.',
             ErrorCode::MfaEnforcementRequired => 'This membership requires confirmed MFA before it can perform this action.',
+            ErrorCode::TenantMismatch => 'This token belongs to a different tenant than the one resolved for this request.',
+            ErrorCode::CustomerEmailTaken => 'This email is already registered in this tenant.',
+            ErrorCode::CustomerAlreadyClaimed => 'This account has already been claimed.',
+            ErrorCode::ClaimTokenInvalid => 'The claim token is malformed, tampered with, or unknown.',
+            ErrorCode::ClaimTokenExpired => 'The claim token has expired.',
         };
     }
 }
