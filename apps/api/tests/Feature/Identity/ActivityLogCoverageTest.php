@@ -1,5 +1,6 @@
 <?php
 
+use App\EventCatalog\Models\Event;
 use App\EventCatalog\Models\Venue;
 use App\Identity\Enums\MembershipScope;
 use App\Identity\Models\Customer;
@@ -58,6 +59,7 @@ afterEach(function (): void {
             DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
             DB::table('memberships')->where('tenant_id', $tenantId)->delete();
             DB::table('customers')->where('tenant_id', $tenantId)->delete();
+            DB::table('events')->where('tenant_id', $tenantId)->delete();
             DB::table('venues')->where('tenant_id', $tenantId)->delete();
         });
     }
@@ -301,6 +303,39 @@ it('increases the acting tenant\'s activity_log count by exactly one for every m
 
         $test->patchJson('/v1/venues/'.$venueId, [
             'name' => 'Renamed Coverage Venue',
+        ], ['Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => $tenantId])->assertOk();
+
+        expect(activityLogCountForCoverageTenant($tenantId))->toBe($before + 1);
+    }],
+    'Stage 5a: create an event' => [function (TestCase $test): void {
+        $tenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);
+        $token = coverageAdminBearer($tenantId, ['events.manage']);
+        $before = activityLogCountForCoverageTenant($tenantId);
+
+        $test->postJson('/v1/events', [
+            'name' => ['en' => 'Coverage Gala'],
+            'description' => ['en' => 'Coverage description.'],
+            'venue_id' => null,
+            'is_virtual' => true,
+            'virtual_event_url' => 'https://example.test/coverage',
+            'start_at' => '2026-09-01T18:00:00Z',
+            'end_at' => '2026-09-01T21:00:00Z',
+            'timezone' => 'UTC',
+        ], ['Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => $tenantId])->assertCreated();
+
+        expect(activityLogCountForCoverageTenant($tenantId))->toBe($before + 1);
+    }],
+    'Stage 5a: update an event' => [function (TestCase $test): void {
+        $tenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);
+        $token = coverageAdminBearer($tenantId, ['events.manage']);
+        $eventId = app(TenantTransaction::class)->asTenant(
+            $tenantId,
+            fn () => Event::factory()->create(['tenant_id' => $tenantId])->id,
+        );
+        $before = activityLogCountForCoverageTenant($tenantId);
+
+        $test->patchJson('/v1/events/'.$eventId, [
+            'timezone' => 'America/Chicago',
         ], ['Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => $tenantId])->assertOk();
 
         expect(activityLogCountForCoverageTenant($tenantId))->toBe($before + 1);

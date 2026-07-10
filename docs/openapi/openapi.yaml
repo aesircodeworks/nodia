@@ -1997,6 +1997,281 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ValidationProblem'
+  /v1/events:
+    post:
+      operationId: createEvent
+      summary: Create an event in the acting tenant
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the events.manage capability (stage-05a plan, task
+        breakdown item 5). is_virtual, venue_id, and virtual_event_url are
+        all required keys (venue_id and virtual_event_url may be null):
+        exactly one of venue_id or virtual_event_url must be set, matching
+        is_virtual, checked ahead of the events_venue_or_url database
+        CHECK. name and description must include the tenant's default
+        locale and no locale outside the tenant's supported_locales.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventCreateRequest'
+      responses:
+        '201':
+          description: Event created.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.manage (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EventForbiddenProblem'
+        '422':
+          description: >-
+            Request validation failed (code request.validation_failed, with
+            the errors map): an invalid is_virtual/venue_id/
+            virtual_event_url combination, a translatable field missing the
+            tenant default locale or carrying an unsupported locale, an
+            invalid IANA timezone, or end_at at or before start_at.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+    get:
+      operationId: listEvents
+      summary: List events in the acting tenant
+      description: >-
+        Tenant admin surface: Passport staff bearer plus X-Tenant-Id
+        membership validation, plus the events.view capability. Allowed
+        query-builder parameters are filter[status], filter[venue_id],
+        filter[is_virtual] (all exact match), sort in (start_at, -start_at,
+        created_at, -created_at), and include=venue; unknown filters,
+        sorts, or includes are rejected with 400 invalid_query_parameter,
+        never ignored.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          style: deepObject
+          explode: true
+          description: >-
+            Allowed filters: filter[status], filter[venue_id],
+            filter[is_virtual] (all exact match).
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              venue_id:
+                type: string
+              is_virtual:
+                type: string
+            additionalProperties:
+              type: string
+        - name: sort
+          in: query
+          required: false
+          description: 'Allowed sorts: start_at, -start_at, created_at, -created_at.'
+          schema:
+            type: string
+        - name: include
+          in: query
+          required: false
+          description: 'Allowed includes: venue.'
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: One page of events in the acting tenant.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventPage'
+        '400':
+          description: Unknown filter, sort, or include parameter.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/InvalidQueryParameterProblem'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.view (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EventForbiddenProblem'
+  /v1/events/{event}:
+    parameters:
+      - name: event
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getEvent
+      summary: Fetch one event
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the events.view capability. A well-formed but
+        nonexistent or foreign-tenant event id renders the same generic
+        request.not_found problem a malformed id gets from route-parameter
+        matching: another tenant's event is invisible under
+        tenant_isolation RLS, so existence never leaks. include=venue is
+        allowed, matching the list endpoint.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: include
+          in: query
+          required: false
+          description: 'Allowed includes: venue.'
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The event.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.view (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EventForbiddenProblem'
+        '404':
+          description: No event is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+    patch:
+      operationId: updateEvent
+      summary: Update an event in the acting tenant
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the events.manage capability. Every field is
+        optional; a field absent from the payload is left untouched. The
+        is_virtual/venue_id/virtual_event_url trio and the start_at/end_at
+        pair are each an all-or-nothing bundle: supplying part of either
+        renders request.validation_failed. A canceled event cannot be
+        updated (code catalog.event_immutable); editing a published event
+        is allowed.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventUpdateRequest'
+      responses:
+        '200':
+          description: The updated event.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.manage (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EventForbiddenProblem'
+        '404':
+          description: No event is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '409':
+          description: The event is canceled and can no longer be modified.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EventImmutableProblem'
+        '422':
+          description: >-
+            Request validation failed (code request.validation_failed, with
+            the errors map): an invalid is_virtual/venue_id/
+            virtual_event_url combination or start_at/end_at pair (given
+            only in part, or end_at at or before start_at), a translatable
+            field carrying an unsupported locale, or an invalid IANA
+            timezone.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
 components:
   securitySchemes:
     BearerAuth:
@@ -2745,6 +3020,189 @@ components:
         meta:
           $ref: '#/components/schemas/PageMeta'
       additionalProperties: false
+    AsyncPaymentPolicy:
+      type: object
+      description: >-
+        Minimal per-event shape Stage 8a reads to decide whether
+        slow-confirming payment methods stay offered as an event's
+        remaining inventory runs low (stage-05a plan, Data model).
+        Evolution is additive only.
+      properties:
+        slow_methods_enabled:
+          type: boolean
+          default: true
+        low_inventory_cutoff:
+          type: [integer, 'null']
+          minimum: 0
+      additionalProperties: false
+    Event:
+      type: object
+      description: >-
+        The publishable catalog entity (stage-05a plan, Data model). name
+        and description carry the full locale-keyed map (the editing
+        surface); venue is present only when include=venue was requested,
+        null when the event has no venue.
+      required:
+        - id
+        - tenant_id
+        - venue_id
+        - status
+        - name
+        - description
+        - start_at
+        - end_at
+        - timezone
+        - is_virtual
+        - virtual_event_url
+        - async_payment_policy
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        venue_id:
+          type: [string, 'null']
+          format: uuid
+        venue:
+          oneOf:
+            - $ref: '#/components/schemas/Venue'
+            - type: 'null'
+          description: Present only when include=venue is requested.
+        status:
+          type: string
+          enum: [draft, published, canceled]
+        name:
+          type: object
+          minProperties: 1
+          additionalProperties:
+            type: string
+          description: Locale-keyed translations.
+        description:
+          type: object
+          minProperties: 1
+          additionalProperties:
+            type: string
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+          description: IANA timezone identifier.
+        is_virtual:
+          type: boolean
+        virtual_event_url:
+          type: [string, 'null']
+          format: uri
+        async_payment_policy:
+          $ref: '#/components/schemas/AsyncPaymentPolicy'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    EventCreateRequest:
+      type: object
+      required:
+        - name
+        - description
+        - venue_id
+        - is_virtual
+        - virtual_event_url
+        - start_at
+        - end_at
+        - timezone
+      properties:
+        name:
+          type: object
+          minProperties: 1
+          additionalProperties:
+            type: string
+        description:
+          type: object
+          minProperties: 1
+          additionalProperties:
+            type: string
+        venue_id:
+          type: [string, 'null']
+          format: uuid
+        is_virtual:
+          type: boolean
+        virtual_event_url:
+          type: [string, 'null']
+          format: uri
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+        async_payment_policy:
+          $ref: '#/components/schemas/AsyncPaymentPolicy'
+      additionalProperties: false
+    EventUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: object
+          minProperties: 1
+          additionalProperties:
+            type: string
+        description:
+          type: object
+          minProperties: 1
+          additionalProperties:
+            type: string
+        venue_id:
+          type: [string, 'null']
+          format: uuid
+        is_virtual:
+          type: boolean
+        virtual_event_url:
+          type: [string, 'null']
+          format: uri
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+        async_payment_policy:
+          $ref: '#/components/schemas/AsyncPaymentPolicy'
+      additionalProperties: false
+    EventPage:
+      type: object
+      description: >-
+        Laravel standard paginator envelope (data, links, meta) per
+        docs/api-conventions.md.
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Event'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageLink'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      additionalProperties: false
     Capability:
       type: object
       description: One entry in the Capability registry (GET /v1/capabilities).
@@ -3197,6 +3655,45 @@ components:
             code:
               type: string
               enum: [tenant_access_denied, missing_capability, mfa_enforcement_required]
+      unevaluatedProperties: false
+    EventForbiddenProblem:
+      description: >-
+        Problem document for a 403 on an event endpoint, reading or
+        mutating alike (both require a capability, events.view or
+        events.manage respectively, stage-05a plan task breakdown item
+        5): either the caller has no membership in the asserted tenant
+        (code tenant_access_denied, raised by ResolveTenantFromHeader
+        before the handler is reached), the acting membership does not
+        hold the required capability (code missing_capability), or the
+        acting membership mandates confirmed MFA and has not confirmed it
+        (code mfa_enforcement_required).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [403]
+            code:
+              type: string
+              enum: [tenant_access_denied, missing_capability, mfa_enforcement_required]
+      unevaluatedProperties: false
+    EventImmutableProblem:
+      description: >-
+        Problem document for a PATCH on a canceled event (stage-05a plan,
+        endpoint table: "catalog.event_immutable (409, event is
+        canceled)"). Editing a published event is allowed; only canceled
+        is terminal.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [catalog.event_immutable]
       unevaluatedProperties: false
     MembershipExistsProblem:
       description: >-

@@ -134,6 +134,7 @@ class ProblemRenderer
             ErrorCode::ClaimTokenExpired => 'The claim token has expired.',
             ErrorCode::PasswordResetTokenInvalid => 'The password reset token is unknown, malformed, or already used.',
             ErrorCode::PasswordResetTokenExpired => 'The password reset token has expired.',
+            ErrorCode::CatalogEventImmutable => 'This event is canceled and can no longer be modified.',
         };
     }
 }

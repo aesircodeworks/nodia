@@ -54,6 +54,14 @@ use Tests\Support\TenantStaff;
  * probe's closure with a real controller ... without touching the
  * capability or the path" plan named above: the capability and path
  * proven here carry over unchanged to the real test.
+ *
+ * The four "create/list/show/update event" rows this file carried through
+ * task-03 were removed here, in task-04, for the identical reason: Event
+ * landed with its own permanently mounted routes (task breakdown item 5),
+ * so a probe at the same method and path is never reached. Coverage for
+ * that boundary moved to tests/Feature/EventCatalog/EventEndpointsTest.php.
+ * The publish/cancel and ticket-type rows below stay probes until task
+ * breakdown items 7 through 9 land their own real routes.
  */
 
 const CATALOG_AUTH_ID = '019797f3-0000-7000-8000-0000000000cc';
@@ -64,10 +72,6 @@ const CATALOG_AUTH_ID = '019797f3-0000-7000-8000-0000000000cc';
 function catalogAdminRoutes(): array
 {
     return [
-        'create event' => ['POST', '/events', Capability::EventsManage],
-        'list events' => ['GET', '/events', Capability::EventsView],
-        'show event' => ['GET', '/events/{event}', Capability::EventsView],
-        'update event' => ['PATCH', '/events/{event}', Capability::EventsManage],
         'publish event' => ['POST', '/events/{event}/publish', Capability::EventsPublish],
         'cancel event' => ['POST', '/events/{event}/cancel', Capability::EventsPublish],
         'create ticket type' => ['POST', '/events/{event}/ticket-types', Capability::EventsManage],

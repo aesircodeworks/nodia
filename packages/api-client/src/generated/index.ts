@@ -46,6 +46,17 @@ export type ConfirmPasswordResetData = {
   token: string;
   password: string;
 };
+export type CreateEventData = {
+  name: Record<string, string>;
+  description: Record<string, string>;
+  venue_id: string | null;
+  is_virtual: boolean;
+  virtual_event_url: string | null;
+  start_at: string;
+  end_at: string;
+  timezone: string;
+  async_payment_policy?: AsyncPaymentPolicyData;
+};
 export type CreateRoleData = {
   name: string;
   capabilities: string[];
@@ -151,7 +162,25 @@ export type ErrorCode =
   | 'claim_token_invalid'
   | 'claim_token_expired'
   | 'reset_token_invalid'
-  | 'reset_token_expired';
+  | 'reset_token_expired'
+  | 'catalog.event_immutable';
+export type EventData = {
+  id: string;
+  tenant_id: string;
+  venue_id: string | null;
+  venue?: VenueData | null;
+  status: string;
+  name: Record<string, string>;
+  description: Record<string, string>;
+  start_at: string;
+  end_at: string;
+  timezone: string;
+  is_virtual: boolean;
+  virtual_event_url: string | null;
+  async_payment_policy: AsyncPaymentPolicyData;
+  created_at: string;
+  updated_at: string;
+};
 export type EventStatus = 'draft' | 'published' | 'canceled';
 export type HealthChecksData = {
   database: CheckResult;
@@ -284,6 +313,17 @@ export type TokenPairData = {
   refresh_token: string;
   token_type: string;
   expires_in: number;
+};
+export type UpdateEventData = {
+  name?: Record<string, string>;
+  description?: Record<string, string>;
+  venue_id?: string | null;
+  is_virtual?: boolean;
+  virtual_event_url?: string | null;
+  start_at?: string;
+  end_at?: string;
+  timezone?: string;
+  async_payment_policy?: AsyncPaymentPolicyData;
 };
 export type UpdateRoleData = {
   name?: string;

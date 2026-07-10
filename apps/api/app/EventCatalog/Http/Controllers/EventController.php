@@ -1,0 +1,84 @@
+<?php
+
+namespace App\EventCatalog\Http\Controllers;
+
+use App\EventCatalog\Actions\CreateEvent;
+use App\EventCatalog\Actions\UpdateEvent;
+use App\EventCatalog\Data\CreateEventData;
+use App\EventCatalog\Data\EventData;
+use App\EventCatalog\Data\UpdateEventData;
+use App\EventCatalog\Enums\EventStatus;
+use App\EventCatalog\Exceptions\EventImmutableException;
+use App\EventCatalog\Exceptions\EventNotFoundException;
+use App\EventCatalog\Models\Event;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Spatie\LaravelData\PaginatedDataCollection;
+use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\QueryBuilder;
+
+class EventController
+{
+    public function store(CreateEventData $data, CreateEvent $createEvent): JsonResponse
+    {
+        return response()->json($createEvent($data), 201);
+    }
+
+    /**
+     * @return PaginatedDataCollection<int, EventData>
+     */
+    public function index(Request $request): PaginatedDataCollection
+    {
+        // tenant_isolation RLS already scopes the result to the acting
+        // tenant's own events; allowed query-builder parameters are
+        // filter[status], filter[venue_id], filter[is_virtual] (all exact
+        // match), sort in (start_at, -start_at, created_at, -created_at),
+        // and include=venue (ticket_types activates once
+        // App\EventCatalog\Models\TicketType exists, stage-05a plan task
+        // breakdown item 7); unknown ones rejected with 400
+        // invalid_query_parameter rather than ignored.
+        $events = QueryBuilder::for(Event::class)
+            ->allowedFilters(
+                AllowedFilter::exact('status'),
+                AllowedFilter::exact('venue_id'),
+                AllowedFilter::exact('is_virtual'),
+            )
+            ->allowedSorts('start_at', 'created_at')
+            ->allowedIncludes('venue')
+            ->defaultSort('-start_at')
+            ->paginate()
+            ->appends($request->query());
+
+        return EventData::collect($events, PaginatedDataCollection::class);
+    }
+
+    public function show(string $event): EventData
+    {
+        $model = QueryBuilder::for(Event::query()->whereKey($event))
+            ->allowedIncludes('venue')
+            ->first();
+
+        return EventData::fromModel($model ?? throw EventNotFoundException::forId($event));
+    }
+
+    public function update(string $event, UpdateEventData $data, UpdateEvent $updateEvent): EventData
+    {
+        $model = $this->eventOrFail($event);
+
+        if ($model->status === EventStatus::Canceled) {
+            throw EventImmutableException::forId($model->id);
+        }
+
+        return $updateEvent($model, $data);
+    }
+
+    /**
+     * A well-formed but nonexistent or foreign-tenant event id renders the
+     * same generic request.not_found problem a malformed id gets from
+     * route-parameter matching, mirroring VenueController::venueOrFail.
+     */
+    private function eventOrFail(string $eventId): Event
+    {
+        return Event::query()->find($eventId) ?? throw EventNotFoundException::forId($eventId);
+    }
+}

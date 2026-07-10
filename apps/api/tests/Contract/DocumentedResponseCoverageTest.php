@@ -1,5 +1,7 @@
 <?php
 
+use App\EventCatalog\Enums\EventStatus;
+use App\EventCatalog\Models\Event;
 use App\EventCatalog\Models\Venue;
 use App\Identity\Capability;
 use App\Identity\Enums\MembershipScope;
@@ -72,6 +74,12 @@ afterEach(function (): void {
             // needs this per-tenant nodia_app delete above rather than a
             // blanket nodia_platform one.
             DB::table('customers')->where('tenant_id', $tenantId)->delete();
+
+            // contractEventBearer()'s exercisers (stage-05a plan, task
+            // breakdown item 5) write events scoped to a fresh
+            // contractEventTenant() each; events must be deleted ahead of
+            // venues below since events.venue_id references venues.
+            DB::table('events')->where('tenant_id', $tenantId)->delete();
 
             // contractVenueBearer()'s exercisers (stage-05a plan, task
             // breakdown item 3) write venues scoped to a fresh
@@ -275,6 +283,52 @@ function contractVenue(Tenant $tenant, array $attributes = []): Venue
         $tenant->id,
         fn () => Venue::factory()->create(['tenant_id' => $tenant->id, ...$attributes]),
     );
+}
+
+/**
+ * A fresh tenant per call, mirroring contractVenueTenant()'s own precedent
+ * (stage-05a plan, task breakdown item 5).
+ */
+function contractEventTenant(): Tenant
+{
+    return contractTenant();
+}
+
+/**
+ * @param  list<string>  $capabilities
+ */
+function contractEventBearer(Tenant $tenant, array $capabilities = ['events.view', 'events.manage']): string
+{
+    return contractVenueBearer($tenant, $capabilities);
+}
+
+/**
+ * @param  array<string, mixed>  $attributes
+ */
+function contractEvent(Tenant $tenant, array $attributes = []): Event
+{
+    return app(TenantTransaction::class)->asTenant(
+        $tenant->id,
+        fn () => Event::factory()->create(['tenant_id' => $tenant->id, ...$attributes]),
+    );
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function contractEventCreatePayload(array $overrides = []): array
+{
+    return [
+        'name' => ['en' => 'Contract Gala'],
+        'description' => ['en' => 'Contract description.'],
+        'venue_id' => null,
+        'is_virtual' => true,
+        'virtual_event_url' => 'https://example.test/contract',
+        'start_at' => '2026-09-01T18:00:00Z',
+        'end_at' => '2026-09-01T21:00:00Z',
+        'timezone' => 'UTC',
+        ...$overrides,
+    ];
 }
 
 /**
@@ -1051,6 +1105,158 @@ function documentedResponseExercisers(): array
                 '/v1/venues/'.$venue->id,
                 ['capacity' => 0],
                 ['Authorization' => 'Bearer '.contractVenueBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/events 201' => function (): TestResponse {
+            $tenant = contractEventTenant();
+
+            return test()->postJson(
+                '/v1/events',
+                contractEventCreatePayload(),
+                ['Authorization' => 'Bearer '.contractEventBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/events 401' => function (): TestResponse {
+            $tenant = contractEventTenant();
+
+            return test()->postJson('/v1/events', contractEventCreatePayload(), ['X-Tenant-Id' => $tenant->id]);
+        },
+        'post /v1/events 403' => function (): TestResponse {
+            $tenant = contractEventTenant();
+
+            return test()->postJson(
+                '/v1/events',
+                contractEventCreatePayload(),
+                ['Authorization' => 'Bearer '.contractEventBearer($tenant, ['events.view']), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/events 422' => function (): TestResponse {
+            $tenant = contractEventTenant();
+
+            return test()->postJson(
+                '/v1/events',
+                contractEventCreatePayload(['name' => []]),
+                ['Authorization' => 'Bearer '.contractEventBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'get /v1/events 200' => function (): TestResponse {
+            $tenant = contractEventTenant();
+
+            return test()->getJson('/v1/events', [
+                'Authorization' => 'Bearer '.contractEventBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/events 400' => function (): TestResponse {
+            $tenant = contractEventTenant();
+
+            return test()->getJson('/v1/events?sort=venue_id', [
+                'Authorization' => 'Bearer '.contractEventBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/events 401' => function (): TestResponse {
+            $tenant = contractEventTenant();
+
+            return test()->getJson('/v1/events', ['X-Tenant-Id' => $tenant->id]);
+        },
+        'get /v1/events 403' => function (): TestResponse {
+            $tenant = contractEventTenant();
+
+            return test()->getJson('/v1/events', [
+                'Authorization' => 'Bearer '.contractEventBearer($tenant, ['events.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/events/{event} 200' => function (): TestResponse {
+            $tenant = contractEventTenant();
+            $event = contractEvent($tenant);
+
+            return test()->getJson('/v1/events/'.$event->id, [
+                'Authorization' => 'Bearer '.contractEventBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/events/{event} 401' => function (): TestResponse {
+            $tenant = contractEventTenant();
+            $event = contractEvent($tenant);
+
+            return test()->getJson('/v1/events/'.$event->id, ['X-Tenant-Id' => $tenant->id]);
+        },
+        'get /v1/events/{event} 403' => function (): TestResponse {
+            $tenant = contractEventTenant();
+            $event = contractEvent($tenant);
+
+            return test()->getJson('/v1/events/'.$event->id, [
+                'Authorization' => 'Bearer '.contractEventBearer($tenant, ['events.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/events/{event} 404' => function (): TestResponse {
+            $tenant = contractEventTenant();
+
+            return test()->getJson('/v1/events/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.contractEventBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'patch /v1/events/{event} 200' => function (): TestResponse {
+            $tenant = contractEventTenant();
+            $event = contractEvent($tenant);
+
+            return test()->patchJson(
+                '/v1/events/'.$event->id,
+                ['timezone' => 'America/Chicago'],
+                ['Authorization' => 'Bearer '.contractEventBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/events/{event} 401' => function (): TestResponse {
+            $tenant = contractEventTenant();
+            $event = contractEvent($tenant);
+
+            return test()->patchJson(
+                '/v1/events/'.$event->id,
+                ['timezone' => 'America/Chicago'],
+                ['X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/events/{event} 403' => function (): TestResponse {
+            $tenant = contractEventTenant();
+            $event = contractEvent($tenant);
+
+            return test()->patchJson(
+                '/v1/events/'.$event->id,
+                ['timezone' => 'America/Chicago'],
+                ['Authorization' => 'Bearer '.contractEventBearer($tenant, ['events.view']), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/events/{event} 404' => function (): TestResponse {
+            $tenant = contractEventTenant();
+
+            return test()->patchJson(
+                '/v1/events/'.Str::uuid7(),
+                ['timezone' => 'UTC'],
+                ['Authorization' => 'Bearer '.contractEventBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/events/{event} 409' => function (): TestResponse {
+            $tenant = contractEventTenant();
+            $event = contractEvent($tenant, ['status' => EventStatus::Canceled]);
+
+            return test()->patchJson(
+                '/v1/events/'.$event->id,
+                ['timezone' => 'UTC'],
+                ['Authorization' => 'Bearer '.contractEventBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/events/{event} 422' => function (): TestResponse {
+            $tenant = contractEventTenant();
+            $event = contractEvent($tenant);
+
+            return test()->patchJson(
+                '/v1/events/'.$event->id,
+                ['timezone' => 'Not/ARealZone'],
+                ['Authorization' => 'Bearer '.contractEventBearer($tenant), 'X-Tenant-Id' => $tenant->id],
             );
         },
         'get /v1/capabilities 200' => fn (): TestResponse => test()->getJson('/v1/capabilities', [

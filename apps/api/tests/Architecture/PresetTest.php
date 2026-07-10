@@ -2,6 +2,8 @@
 
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\EventCatalogServiceProvider;
+use App\EventCatalog\Exceptions\EventImmutableException;
+use App\EventCatalog\Exceptions\EventNotFoundException;
 use App\EventCatalog\Exceptions\InvalidEventVenueConfigurationException;
 use App\EventCatalog\Exceptions\VenueNotFoundException;
 use App\Identity\Capability;
@@ -154,6 +156,8 @@ arch()->preset()->laravel()->ignoring([
     UnknownDomainException::class,
     UnknownHostException::class,
     VenueNotFoundException::class,
+    EventNotFoundException::class,
+    EventImmutableException::class,
     MissingTenantHeaderException::class,
     InvalidTenantHeaderException::class,
     TenantAccessDeniedException::class,

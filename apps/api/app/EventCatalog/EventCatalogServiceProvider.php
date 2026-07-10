@@ -2,6 +2,7 @@
 
 namespace App\EventCatalog;
 
+use App\Support\Outbox\EventTypeRegistry;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
@@ -29,21 +30,22 @@ use Illuminate\Support\ServiceProvider;
  * way Tenancy and Identity's own admin routes already do, rather than
  * introducing a second capability-resolution path.
  *
- * No event type registrations yet (event-conventions, stage-04
+ * EventCreated and EventUpdated are registered below alongside this
+ * task's CreateEvent/UpdateEvent producers (event-conventions, stage-04
  * precedent: a type is registered in the same task that ships its first
- * producer, e.g. App\Tenancy\TenancyServiceProvider registering
- * TenantCreated alongside CreateTenant): CreateEvent, UpdateEvent,
- * PublishEvent, and CancelEvent do not exist until later tasks, so
- * EventCreated, EventUpdated, EventPublished, and EventCanceled are not
- * registered here despite already being reserved in the system-design
- * 9.3 registry (stage-05a plan, Domain events: "no registry change
- * needed"). Task breakdown items 5 and 9 add the registration calls
- * alongside their producing Actions.
+ * producer). PublishEvent and CancelEvent do not exist yet, so
+ * EventPublished and EventCanceled are not registered here despite
+ * already being reserved in the system-design 9.3 registry (stage-05a
+ * plan, Domain events: "no registry change needed"); task breakdown item
+ * 9 adds those two registration calls alongside its own producers.
  */
 class EventCatalogServiceProvider extends ServiceProvider
 {
-    public function boot(): void
+    public function boot(EventTypeRegistry $registry): void
     {
+        $registry->register('EventCreated');
+        $registry->register('EventUpdated');
+
         Route::middleware('tenancy.admin')
             ->prefix('v1')
             ->group(__DIR__.'/Http/routes/admin.php');

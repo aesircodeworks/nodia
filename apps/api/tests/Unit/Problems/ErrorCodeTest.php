@@ -48,6 +48,7 @@ test('the registry holds exactly the known codes', function () {
         'claim_token_expired',
         'reset_token_invalid',
         'reset_token_expired',
+        'catalog.event_immutable',
     ]);
 });
 
@@ -100,6 +101,7 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'claim_token_expired' => [ErrorCode::ClaimTokenExpired, 401, 'Claim token expired', '/problems/claim-token-expired'],
     'reset_token_invalid' => [ErrorCode::PasswordResetTokenInvalid, 401, 'Password reset token invalid', '/problems/reset-token-invalid'],
     'reset_token_expired' => [ErrorCode::PasswordResetTokenExpired, 401, 'Password reset token expired', '/problems/reset-token-expired'],
+    'catalog.event_immutable' => [ErrorCode::CatalogEventImmutable, 409, 'Event immutable', '/problems/catalog-event-immutable'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {
