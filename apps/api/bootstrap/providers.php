@@ -1,5 +1,6 @@
 <?php
 
+use App\EventCatalog\EventCatalogServiceProvider;
 use App\Identity\IdentityServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\HorizonServiceProvider;
@@ -12,4 +13,5 @@ return [
     TypeScriptTransformerServiceProvider::class,
     TenancyServiceProvider::class,
     IdentityServiceProvider::class,
+    EventCatalogServiceProvider::class,
 ];

@@ -1,5 +1,6 @@
 <?php
 
+use App\EventCatalog\EventCatalogServiceProvider;
 use App\Identity\Capability;
 use App\Identity\Enums\MembershipAccessOutcome;
 use App\Identity\Enums\MembershipScope;
@@ -146,6 +147,7 @@ arch()->preset()->laravel()->ignoring([
     RenderedErrorRollback::class,
     TenancyServiceProvider::class,
     IdentityServiceProvider::class,
+    EventCatalogServiceProvider::class,
     'App\Tenancy\Models',
     'App\Tenancy\Http\Controllers',
     'App\Identity\Models',
