@@ -19,7 +19,7 @@ Verified starting state: Stages 1-3 are Done. Stage 4 is Not started. No `app/Su
 - [x] task-05: Horizon and queue plumbing, failed_jobs UUID PK (plan task 5)
 - [x] task-06: `outbox_deliveries` migration, model, conditional processed transition (plan task 6)
 - [x] task-07: Subscriber registry, after-commit dispatcher, delivery job, test fixtures (plan task 7)
-- [ ] task-08: Reconciliation sweeper, config windows, scheduler (plan task 8)
+- [x] task-08: Reconciliation sweeper, config windows, scheduler (plan task 8)
 - [ ] task-09: Ordered-consumption helper (plan task 9)
 - [ ] task-10: Replay primitive and artisan command (plan task 10)
 - [ ] task-11: `UserInvited` producer in InviteUser (plan task 11)
@@ -150,3 +150,21 @@ Decisions:
 3. E2E processing uses `QUEUE_CONNECTION=sync` (phpunit default) so after-commit dispatch runs the job inline against real PostgreSQL. Job payload and fan-out are asserted with `Queue::fake`. Full Horizon worker process is the same handle path; redis-backed worker is not spun in CI (matches task-05's phpunit sync choice).
 
 Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff. Focused Slice 2 outbox tests passed 12 tests, 34 assertions. `composer -d apps/api run test` (all six suites) passed 1014 tests, 3916 assertions, 0 failures.
+
+#### task-08: Reconciliation sweeper (2026-07-10 04:30 -03)
+
+Commit: `ae78ce6` (`feat(support): outbox reconciliation sweeper with config windows`), plus this journal entry.
+
+Landed plan task 8 / Slice 3: config-driven stability and grace windows, the `outbox:sweep` artisan command that re-enqueues stranded pending deliveries, every-minute schedule registration, and the Slice 3 feature/unit suite.
+
+What landed:
+
+- `config/outbox.php`: `stability_window_seconds` default 5, `sweeper_grace_seconds` default 60 (env-overridable, no migration).
+- `App\Support\Outbox\OutboxSweeper`: platform-role SELECT of pending deliveries where `coalesce(last_enqueued_at, created_at)` is past grace and the joined event's `occurred_at` is past the stability window; per row, tenant-scoped conditional update of `last_enqueued_at` then `ProcessOutboxDelivery` dispatch. Processed rows never match the pending filter; a concurrent process that marks processed between scan and update yields zero affected rows and no enqueue.
+- `App\Console\Commands\SweepOutboxCommand` (`outbox:sweep`): thin artisan wrapper reporting re-enqueue count.
+- `bootstrap/app.php` `withSchedule`: `outbox:sweep` every minute.
+- Slice 3 tests: pending with null `last_enqueued_at` re-enqueued after grace from `created_at`; inside grace not re-enqueued; processed never re-enqueued; events younger than stability not treated as final (grace < stability clock probe); grace measured from `last_enqueued_at` when set; unit config defaults/overrides, fake-clock cutoffs, schedule expression `* * * * *`.
+
+Deviations: none material. Stability age uses `outbox_events.occurred_at` (set from `now()` at record time in the same transaction as insert); that is the domain timestamp already on the envelope and matches the fake-clock path the recorder uses. Command lives under `App\Console\Commands` (Laravel discovery path) rather than next to Support/Outbox Jobs, so the architecture preset needs no new ignore.
+
+Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff. Focused Slice 3 outbox tests passed 9 tests, 28 assertions. `composer -d apps/api run test` (all six suites) passed 1023 tests, 3944 assertions, 0 failures.
