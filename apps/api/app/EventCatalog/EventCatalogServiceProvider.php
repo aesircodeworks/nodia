@@ -13,9 +13,8 @@ use Illuminate\Support\ServiceProvider;
  * route groups, the tenant admin surface (staff bearer, X-Tenant-Id,
  * events.view/events.manage/events.publish per
  * App\Http\Middleware\RequireCapability, task breakdown item 1) and the
- * storefront surface (Host resolution, no auth). Both route files are
- * empty until their owning task lands (Http/routes/admin.php's own
- * docblock).
+ * storefront surface (Host resolution, no auth, the published read
+ * endpoints of task breakdown item 10).
  *
  * No standalone Policy classes ship in this task, mirroring the stage-03
  * plan's own precedent for the same situation (task-06 journal,

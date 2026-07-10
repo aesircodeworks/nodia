@@ -48,7 +48,9 @@ class UpdateEventData extends Data
             'name.*' => ['string', 'filled'],
             'description' => ['sometimes', 'array', 'min:1'],
             'description.*' => ['string', 'filled'],
-            'venue_id' => ['sometimes', 'nullable', 'uuid'],
+            // exists runs under the acting tenant's RLS context, rejecting
+            // a venue belonging to another tenant (see CreateEventData).
+            'venue_id' => ['sometimes', 'nullable', 'uuid', 'exists:venues,id'],
             'is_virtual' => ['sometimes', 'boolean'],
             'virtual_event_url' => ['sometimes', 'nullable', 'url'],
             'start_at' => ['sometimes', 'date'],

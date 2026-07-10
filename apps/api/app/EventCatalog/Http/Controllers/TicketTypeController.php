@@ -7,8 +7,6 @@ use App\EventCatalog\Actions\UpdateTicketType;
 use App\EventCatalog\Data\CreateTicketTypeData;
 use App\EventCatalog\Data\TicketTypeData;
 use App\EventCatalog\Data\UpdateTicketTypeData;
-use App\EventCatalog\Enums\EventStatus;
-use App\EventCatalog\Exceptions\EventImmutableException;
 use App\EventCatalog\Exceptions\EventNotFoundException;
 use App\EventCatalog\Exceptions\TicketTypeNotFoundException;
 use App\EventCatalog\Models\Event;
@@ -22,9 +20,10 @@ class TicketTypeController
 {
     public function store(string $event, CreateTicketTypeData $data, CreateTicketType $createTicketType): JsonResponse
     {
-        $model = $this->assertMutable($this->eventOrFail($event));
-
-        return response()->json($createTicketType($model, $data), 201);
+        // The canceled-event immutability guard lives in CreateTicketType as
+        // a locking recheck on the parent event, not here (UpdateEvent
+        // docblock: conditional write, never a controller read-then-write).
+        return response()->json($createTicketType($this->eventOrFail($event), $data), 201);
     }
 
     /**
@@ -50,10 +49,7 @@ class TicketTypeController
 
     public function update(string $ticket_type, UpdateTicketTypeData $data, UpdateTicketType $updateTicketType): TicketTypeData
     {
-        $ticketType = $this->ticketTypeOrFail($ticket_type);
-        $this->assertMutable($ticketType->event);
-
-        return $updateTicketType($ticketType, $data);
+        return $updateTicketType($this->ticketTypeOrFail($ticket_type), $data);
     }
 
     /**
@@ -73,21 +69,5 @@ class TicketTypeController
     private function ticketTypeOrFail(string $ticketTypeId): TicketType
     {
         return TicketType::query()->find($ticketTypeId) ?? throw TicketTypeNotFoundException::forId($ticketTypeId);
-    }
-
-    /**
-     * Ticket type mutations are gated on the parent event's own
-     * immutability (stage-05a plan, endpoint table: "catalog.event_immutable
-     * (409, event is canceled)"); the registry has no ticket-type status of
-     * its own. Returns the event so store() can reuse it without a second
-     * query.
-     */
-    private function assertMutable(Event $event): Event
-    {
-        if ($event->status === EventStatus::Canceled) {
-            throw EventImmutableException::forId($event->id);
-        }
-
-        return $event;
     }
 }

@@ -9,14 +9,13 @@ use App\EventCatalog\Actions\UpdateEvent;
 use App\EventCatalog\Data\CreateEventData;
 use App\EventCatalog\Data\EventData;
 use App\EventCatalog\Data\UpdateEventData;
-use App\EventCatalog\Enums\EventStatus;
-use App\EventCatalog\Exceptions\EventImmutableException;
 use App\EventCatalog\Exceptions\EventNotFoundException;
 use App\EventCatalog\Models\Event;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Spatie\LaravelData\PaginatedDataCollection;
 use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\AllowedInclude;
 use Spatie\QueryBuilder\QueryBuilder;
 
 class EventController
@@ -35,9 +34,8 @@ class EventController
         // tenant's own events; allowed query-builder parameters are
         // filter[status], filter[venue_id], filter[is_virtual] (all exact
         // match), sort in (start_at, -start_at, created_at, -created_at),
-        // and include=venue (ticket_types activates once
-        // App\EventCatalog\Models\TicketType exists, stage-05a plan task
-        // breakdown item 7); unknown ones rejected with 400
+        // and include=venue,ticket_types (the snake_case include name maps
+        // to the ticketTypes relation); unknown ones rejected with 400
         // invalid_query_parameter rather than ignored.
         $events = QueryBuilder::for(Event::class)
             ->allowedFilters(
@@ -46,7 +44,7 @@ class EventController
                 AllowedFilter::exact('is_virtual'),
             )
             ->allowedSorts('start_at', 'created_at')
-            ->allowedIncludes('venue')
+            ->allowedIncludes('venue', AllowedInclude::relationship('ticket_types', 'ticketTypes'))
             ->defaultSort('-start_at')
             ->paginate()
             ->appends($request->query());
@@ -57,7 +55,7 @@ class EventController
     public function show(string $event): EventData
     {
         $model = QueryBuilder::for(Event::query()->whereKey($event))
-            ->allowedIncludes('venue')
+            ->allowedIncludes('venue', AllowedInclude::relationship('ticket_types', 'ticketTypes'))
             ->first();
 
         return EventData::fromModel($model ?? throw EventNotFoundException::forId($event));
@@ -65,13 +63,10 @@ class EventController
 
     public function update(string $event, UpdateEventData $data, UpdateEvent $updateEvent): EventData
     {
-        $model = $this->eventOrFail($event);
-
-        if ($model->status === EventStatus::Canceled) {
-            throw EventImmutableException::forId($model->id);
-        }
-
-        return $updateEvent($model, $data);
+        // The canceled-event immutability guard lives in UpdateEvent as a
+        // locking recheck, not here: a controller pre-check would be a
+        // read-then-write racing a concurrent cancel (UpdateEvent docblock).
+        return $updateEvent($this->eventOrFail($event), $data);
     }
 
     /**

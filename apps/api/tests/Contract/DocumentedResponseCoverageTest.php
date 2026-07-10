@@ -1490,6 +1490,24 @@ function documentedResponseExercisers(): array
                 ['Authorization' => 'Bearer '.contractTicketTypeBearer($tenant), 'X-Tenant-Id' => $tenant->id],
             );
         },
+        'get /v1/storefront/events 200' => function (): TestResponse {
+            [$tenant, $host] = contractCustomerTenant();
+            contractEvent($tenant, ['status' => EventStatus::Published]);
+
+            return test()->getJson('http://'.$host.'/v1/storefront/events');
+        },
+        'get /v1/storefront/events/{event} 200' => function (): TestResponse {
+            [$tenant, $host] = contractCustomerTenant();
+            $event = contractEvent($tenant, ['status' => EventStatus::Published]);
+
+            return test()->getJson('http://'.$host.'/v1/storefront/events/'.$event->id);
+        },
+        'get /v1/storefront/events/{event} 404' => function (): TestResponse {
+            [$tenant, $host] = contractCustomerTenant();
+            $event = contractEvent($tenant, ['status' => EventStatus::Draft]);
+
+            return test()->getJson('http://'.$host.'/v1/storefront/events/'.$event->id);
+        },
         'post /v1/events/{event}/publish 200' => function (): TestResponse {
             $tenant = contractEventTenant();
             $event = contractEvent($tenant, ['status' => EventStatus::Draft]);

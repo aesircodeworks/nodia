@@ -50,7 +50,11 @@ class CreateEventData extends Data
             'name.*' => ['string', 'filled'],
             'description' => ['required', 'array', 'min:1'],
             'description.*' => ['string', 'filled'],
-            'venue_id' => ['present', 'nullable', 'uuid'],
+            // exists runs under the acting tenant's RLS context, so it
+            // rejects a venue belonging to another tenant (the FK alone
+            // cannot: it is evaluated with RLS bypassed) as well as an
+            // unknown id, both as request.validation_failed on venue_id.
+            'venue_id' => ['present', 'nullable', 'uuid', 'exists:venues,id'],
             'is_virtual' => ['required', 'boolean'],
             'virtual_event_url' => ['present', 'nullable', 'url'],
             'start_at' => ['required', 'date'],

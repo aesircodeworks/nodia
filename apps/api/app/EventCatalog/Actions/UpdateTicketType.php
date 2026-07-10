@@ -4,8 +4,12 @@ namespace App\EventCatalog\Actions;
 
 use App\EventCatalog\Data\TicketTypeData;
 use App\EventCatalog\Data\UpdateTicketTypeData;
+use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Events\EventUpdated;
 use App\EventCatalog\Exceptions\CurrencyMismatchException;
+use App\EventCatalog\Exceptions\EventImmutableException;
+use App\EventCatalog\Exceptions\EventNotFoundException;
+use App\EventCatalog\Models\Event;
 use App\EventCatalog\Models\TicketType;
 use App\Support\Outbox\OutboxRecorder;
 use App\Tenancy\Actions\ResolveTenantSettlementCurrency;
@@ -27,6 +31,17 @@ final class UpdateTicketType
 
     public function __invoke(TicketType $ticketType, UpdateTicketTypeData $data): TicketTypeData
     {
+        // Lock the parent event and re-read its status before writing, so a
+        // cancel committing concurrently cannot modify a ticket type on a
+        // now-canceled event (UpdateEvent docblock: the immutability guard is
+        // a conditional write, not a controller read-then-write).
+        $event = Event::query()->whereKey($ticketType->event_id)->lockForUpdate()->first()
+            ?? throw EventNotFoundException::forId($ticketType->event_id);
+
+        if ($event->status === EventStatus::Canceled) {
+            throw EventImmutableException::forId($event->id);
+        }
+
         $attributes = [];
 
         if (! $data->name instanceof Optional) {
@@ -52,7 +67,7 @@ final class UpdateTicketType
 
         $ticketType->update($attributes);
 
-        $this->outbox->record(EventUpdated::fromEvent($ticketType->event));
+        $this->outbox->record(EventUpdated::fromEvent($event));
 
         return TicketTypeData::fromModel($ticketType->refresh());
     }

@@ -2,6 +2,7 @@
 
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Models\Event;
+use App\EventCatalog\Models\TicketType;
 use App\EventCatalog\Models\Venue;
 use App\Identity\Capability;
 use App\Models\User;
@@ -38,6 +39,7 @@ afterEach(function (): void {
             DB::table('outbox_deliveries')->where('tenant_id', $tenantId)->delete();
             DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
             DB::table('memberships')->where('tenant_id', $tenantId)->delete();
+            DB::table('ticket_types')->where('tenant_id', $tenantId)->delete();
             DB::table('events')->where('tenant_id', $tenantId)->delete();
             DB::table('venues')->where('tenant_id', $tenantId)->delete();
         });
@@ -70,6 +72,17 @@ function makeEventRow(string $tenantId, array $attributes = []): Event
     return app(TenantTransaction::class)->asTenant(
         $tenantId,
         fn () => Event::factory()->create(['tenant_id' => $tenantId, ...$attributes]),
+    );
+}
+
+/**
+ * @param  array<string, mixed>  $attributes
+ */
+function makeEventTicketType(string $tenantId, string $eventId, array $attributes = []): TicketType
+{
+    return app(TenantTransaction::class)->asTenant(
+        $tenantId,
+        fn () => TicketType::factory()->create(['tenant_id' => $tenantId, 'event_id' => $eventId, ...$attributes]),
     );
 }
 
@@ -170,6 +183,28 @@ describe('POST /v1/events', function () {
         'physical event missing its venue_id' => [['venue_id' => null]],
         'physical event that also carries a virtual_event_url' => [['virtual_event_url' => 'https://example.test/stream']],
     ]);
+
+    it('rejects a venue_id belonging to another tenant', function () {
+        $foreignVenue = makeEventVenue($this->otherTenantId);
+
+        $response = $this->postJson('/v1/events', gaEventPayload($foreignVenue->id));
+
+        $response->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.validation_failed');
+
+        expect($response->json('errors'))->toHaveKey('venue_id');
+    });
+
+    it('rejects an unknown venue_id', function () {
+        $response = $this->postJson('/v1/events', gaEventPayload(Str::uuid7()->toString()));
+
+        $response->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.validation_failed');
+
+        expect($response->json('errors'))->toHaveKey('venue_id');
+    });
 
     it('requires the tenant default locale in a translatable payload', function () {
         $venue = makeEventVenue($this->tenantId);
@@ -357,6 +392,25 @@ describe('GET /v1/events', function () {
         expect($response->json('data.0'))->not->toHaveKey('venue');
     });
 
+    it('embeds ticket_types when include=ticket_types is requested', function () {
+        $event = makeEventRow($this->tenantId, ['name' => ['en' => 'Ticketed Event']]);
+        makeEventTicketType($this->tenantId, $event->id, ['name' => 'General Admission']);
+
+        $response = $this->getJson('/v1/events?include=ticket_types')->assertOk()->assertConformsToOpenApi();
+
+        expect($response->json('data.0.ticket_types'))->toHaveCount(1)
+            ->and($response->json('data.0.ticket_types.0.name'))->toBe('General Admission')
+            ->and($response->json('data.0.ticket_types.0.price'))->toHaveKeys(['amount', 'currency']);
+    });
+
+    it('omits ticket_types from the wire shape when include is not requested', function () {
+        makeEventRow($this->tenantId);
+
+        $response = $this->getJson('/v1/events')->assertOk();
+
+        expect($response->json('data.0'))->not->toHaveKey('ticket_types');
+    });
+
     it('rejects an unknown filter with an invalid_query_parameter problem', function () {
         $this->getJson('/v1/events?filter[unknown]=x')
             ->assertBadRequest()
@@ -406,6 +460,17 @@ describe('GET /v1/events/{event}', function () {
         $response = $this->getJson('/v1/events/'.$event->id.'?include=venue')->assertOk()->assertConformsToOpenApi();
 
         expect($response->json('venue.id'))->toBe($venue->id);
+    });
+
+    it('embeds ticket_types when include=ticket_types is requested', function () {
+        $event = makeEventRow($this->tenantId);
+        makeEventTicketType($this->tenantId, $event->id, ['name' => 'VIP']);
+
+        $response = $this->getJson('/v1/events/'.$event->id.'?include=ticket_types')->assertOk()->assertConformsToOpenApi();
+
+        expect($response->json('ticket_types'))->toHaveCount(1)
+            ->and($response->json('ticket_types.0.name'))->toBe('VIP')
+            ->and($response->json('ticket_types.0.price'))->toHaveKeys(['amount', 'currency']);
     });
 
     it('returns a request.not_found problem for a foreign tenant\'s event', function () {
@@ -518,6 +583,23 @@ describe('PATCH /v1/events/{event}', function () {
             ->assertOk()
             ->assertConformsToOpenApi()
             ->assertJsonPath('status', 'published');
+    });
+
+    it('rejects updating to a venue_id belonging to another tenant', function () {
+        $event = makeEventRow($this->tenantId);
+        $foreignVenue = makeEventVenue($this->otherTenantId);
+
+        $response = $this->patchJson('/v1/events/'.$event->id, [
+            'is_virtual' => false,
+            'venue_id' => $foreignVenue->id,
+            'virtual_event_url' => null,
+        ]);
+
+        $response->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.validation_failed');
+
+        expect($response->json('errors'))->toHaveKey('venue_id');
     });
 
     it('returns a request.not_found problem for a foreign tenant\'s event', function () {

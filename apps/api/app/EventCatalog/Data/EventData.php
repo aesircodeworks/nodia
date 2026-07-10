@@ -4,8 +4,10 @@ namespace App\EventCatalog\Data;
 
 use App\EventCatalog\Models\Event;
 use Carbon\CarbonImmutable;
+use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Data;
+use Spatie\LaravelData\DataCollection;
 use Spatie\LaravelData\Mappers\SnakeCaseMapper;
 use Spatie\LaravelData\Optional;
 
@@ -13,8 +15,8 @@ use Spatie\LaravelData\Optional;
  * Admin surface response shape (stage-05a plan, Endpoints: "EventData
  * carries name and description as full locale-keyed maps ... and money
  * nowhere"). venue is Optional when the venue relation was not requested
- * via include=venue (task breakdown item 5); ticket_types is not part of
- * this shape until task breakdown item 8 lands TicketType.
+ * via include=venue, and ticket_types is Optional when the ticketTypes
+ * relation was not requested via include=ticket_types (endpoint table).
  */
 #[MapName(SnakeCaseMapper::class)]
 class EventData extends Data
@@ -22,6 +24,7 @@ class EventData extends Data
     /**
      * @param  array<string, string>  $name
      * @param  array<string, string>  $description
+     * @param  DataCollection<int, TicketTypeData>|Optional  $ticketTypes
      */
     public function __construct(
         public string $id,
@@ -39,6 +42,8 @@ class EventData extends Data
         public AsyncPaymentPolicyData $asyncPaymentPolicy,
         public string $createdAt,
         public string $updatedAt,
+        #[DataCollectionOf(TicketTypeData::class)]
+        public DataCollection|Optional $ticketTypes,
     ) {}
 
     public static function fromModel(Event $event): self
@@ -59,6 +64,7 @@ class EventData extends Data
             $event->async_payment_policy,
             CarbonImmutable::instance($event->created_at)->utc()->format('Y-m-d\TH:i:s\Z'),
             CarbonImmutable::instance($event->updated_at)->utc()->format('Y-m-d\TH:i:s\Z'),
+            self::ticketTypesFromModel($event),
         );
     }
 
@@ -69,5 +75,17 @@ class EventData extends Data
         }
 
         return $event->venue === null ? null : VenueData::fromModel($event->venue);
+    }
+
+    /**
+     * @return DataCollection<int, TicketTypeData>|Optional
+     */
+    private static function ticketTypesFromModel(Event $event): DataCollection|Optional
+    {
+        if (! $event->relationLoaded('ticketTypes')) {
+            return Optional::create();
+        }
+
+        return TicketTypeData::collect($event->ticketTypes, DataCollection::class);
     }
 }

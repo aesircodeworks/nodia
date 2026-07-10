@@ -190,6 +190,7 @@ export type EventData = {
   async_payment_policy: AsyncPaymentPolicyData;
   created_at: string;
   updated_at: string;
+  ticket_types?: TicketTypeData[];
 };
 export type EventStatus = 'draft' | 'published' | 'canceled';
 export type HealthChecksData = {
@@ -298,6 +299,25 @@ export type StaffTokenRequestData = {
   email: string;
   password: string;
   mfa_code: string | null;
+};
+export type StorefrontEventData = {
+  id: string;
+  name: string;
+  description: string;
+  locale: string;
+  start_at: string;
+  end_at: string;
+  timezone: string;
+  is_virtual: boolean;
+  virtual_event_url: string | null;
+  ticket_types: StorefrontTicketTypeData[];
+};
+export type StorefrontTicketTypeData = {
+  id: string;
+  name: string;
+  price: Money;
+  sales_start: string | null;
+  sales_end: string | null;
 };
 export type TenantData = {
   id: string;

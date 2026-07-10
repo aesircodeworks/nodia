@@ -4,7 +4,10 @@ namespace App\EventCatalog\Actions;
 
 use App\EventCatalog\Data\EventData;
 use App\EventCatalog\Data\UpdateEventData;
+use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Events\EventUpdated;
+use App\EventCatalog\Exceptions\EventImmutableException;
+use App\EventCatalog\Exceptions\EventNotFoundException;
 use App\EventCatalog\Models\Event;
 use App\Support\Outbox\OutboxRecorder;
 use Spatie\LaravelData\Optional;
@@ -22,6 +25,15 @@ use Spatie\LaravelData\Optional;
  * (stage-05a plan, Domain events), unlike
  * App\Identity\Actions\AssignRole's same-value no-op skip: this stage's
  * plan names no such exception for events.
+ *
+ * The canceled-event immutability guard (endpoint table: catalog.event_
+ * immutable) is a locking recheck inside the request transaction, never
+ * a controller read-then-write: the row is taken FOR UPDATE and its
+ * status re-read before the write, so a cancel committing concurrently is
+ * either seen here (this call blocks on the row lock, then observes
+ * canceled and rejects) or blocked until this transaction commits, closing
+ * the race where a canceled event could still be modified (CLAUDE.md:
+ * invariant-guarding writes are conditional, never read-then-write).
  */
 final class UpdateEvent
 {
@@ -29,6 +41,13 @@ final class UpdateEvent
 
     public function __invoke(Event $event, UpdateEventData $data): EventData
     {
+        $event = Event::query()->whereKey($event->getKey())->lockForUpdate()->first()
+            ?? throw EventNotFoundException::forId((string) $event->getKey());
+
+        if ($event->status === EventStatus::Canceled) {
+            throw EventImmutableException::forId($event->id);
+        }
+
         $attributes = [];
 
         if (! $data->name instanceof Optional) {

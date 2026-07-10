@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Date;
  * (master plan test-first rule 2; CLAUDE.md): two parallel publish
  * attempts against one draft can only ever see the row transition from
  * draft to published once, proven by
- * tests/Concurrency/EventPublishConcurrencyTest.php. EventPublished is
+ * tests/Concurrency/EventLifecycleContentionTest.php. EventPublished is
  * recorded only when the affected-row count is 1, in the same
  * transaction as the UPDATE (the whole admin request already runs
  * inside one, App\Tenancy\Http\Middleware\ResolveTenantFromHeader).

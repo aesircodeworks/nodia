@@ -2098,7 +2098,7 @@ paths:
         - name: include
           in: query
           required: false
-          description: 'Allowed includes: venue.'
+          description: 'Allowed includes: venue, ticket_types.'
           schema:
             type: string
         - name: page
@@ -2157,15 +2157,15 @@ paths:
         nonexistent or foreign-tenant event id renders the same generic
         request.not_found problem a malformed id gets from route-parameter
         matching: another tenant's event is invisible under
-        tenant_isolation RLS, so existence never leaks. include=venue is
-        allowed, matching the list endpoint.
+        tenant_isolation RLS, so existence never leaks. include=venue and
+        include=ticket_types are allowed, matching the list endpoint.
       security:
         - BearerAuth: []
       parameters:
         - name: include
           in: query
           required: false
-          description: 'Allowed includes: venue.'
+          description: 'Allowed includes: venue, ticket_types.'
           schema:
             type: string
       responses:
@@ -2645,6 +2645,90 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/TicketTypeUnprocessableProblem'
+  /v1/storefront/events:
+    get:
+      operationId: listStorefrontEvents
+      summary: List a tenant's published events
+      description: >-
+        Storefront surface: unauthenticated, tenant resolved from the Host
+        header against tenant_domains (system-design 4.1). Returns only the
+        published events of the resolved tenant, ordered by start_at
+        ascending; drafts and canceled events are never visible. name and
+        description are resolved to single strings in the negotiated locale
+        (explicit locale query parameter, then Accept-Language, then the
+        tenant default; only tenant-supported locales are honored, and a
+        missing translation falls back to the tenant default) and the
+        response carries a Content-Language header.
+      parameters:
+        - name: locale
+          in: query
+          required: false
+          description: Preferred locale; honored only when the tenant supports it.
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: One page of published events for the resolved tenant.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StorefrontEventPage'
+  /v1/storefront/events/{event}:
+    parameters:
+      - name: event
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getStorefrontEvent
+      summary: Fetch one published event
+      description: >-
+        Storefront surface: unauthenticated, tenant resolved from the Host
+        header. A draft, canceled, foreign-tenant, or nonexistent event id
+        all render the same request.not_found problem, so unpublished
+        existence never leaks. name and description are resolved in the
+        negotiated locale (see the list endpoint) and ticket types are
+        embedded; the response carries a Content-Language header.
+      parameters:
+        - name: locale
+          in: query
+          required: false
+          description: Preferred locale; honored only when the tenant supports it.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The published event with its ticket types.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StorefrontEvent'
+        '404':
+          description: >-
+            No published event is visible with this id for the resolved
+            tenant (drafts, canceled, and foreign-tenant events included).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
 components:
   securitySchemes:
     BearerAuth:
@@ -2660,6 +2744,10 @@ components:
       schema:
         type: string
         format: uuid
+    ContentLanguage:
+      description: The negotiated locale the storefront response was resolved in.
+      schema:
+        type: string
   schemas:
     StaffTokenRequest:
       type: object
@@ -3414,7 +3502,8 @@ components:
         The publishable catalog entity (stage-05a plan, Data model). name
         and description carry the full locale-keyed map (the editing
         surface); venue is present only when include=venue was requested,
-        null when the event has no venue.
+        null when the event has no venue; ticket_types is present only when
+        include=ticket_types was requested.
       required:
         - id
         - tenant_id
@@ -3481,6 +3570,11 @@ components:
         updated_at:
           type: string
           format: date-time
+        ticket_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/TicketType'
+          description: Present only when include=ticket_types is requested.
       additionalProperties: false
     EventCreateRequest:
       type: object
@@ -3675,6 +3769,102 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TicketType'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageLink'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      additionalProperties: false
+    StorefrontTicketType:
+      type: object
+      description: >-
+        Storefront ticket-type shape (stage-05a plan, Endpoints). price is
+        the {amount, currency} money object; no requires_seat or
+        availability field is exposed until Stage 6.
+      required:
+        - id
+        - name
+        - price
+        - sales_start
+        - sales_end
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        price:
+          $ref: '#/components/schemas/Money'
+        sales_start:
+          type: [string, 'null']
+          format: date-time
+        sales_end:
+          type: [string, 'null']
+          format: date-time
+      additionalProperties: false
+    StorefrontEvent:
+      type: object
+      description: >-
+        Storefront event shape (stage-05a plan, Endpoints, Storefront
+        surface). name and description are single strings resolved in the
+        negotiated locale carried by locale; ticket_types is always
+        embedded. Internal state (status, async_payment_policy) is never
+        exposed.
+      required:
+        - id
+        - name
+        - description
+        - locale
+        - start_at
+        - end_at
+        - timezone
+        - is_virtual
+        - virtual_event_url
+        - ticket_types
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        locale:
+          type: string
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+          description: IANA timezone identifier.
+        is_virtual:
+          type: boolean
+        virtual_event_url:
+          type: [string, 'null']
+          format: uri
+        ticket_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/StorefrontTicketType'
+      additionalProperties: false
+    StorefrontEventPage:
+      type: object
+      description: >-
+        Laravel standard paginator envelope (data, links, meta) per
+        docs/api-conventions.md.
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/StorefrontEvent'
         links:
           type: array
           items:

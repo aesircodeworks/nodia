@@ -4,8 +4,11 @@ namespace App\EventCatalog\Actions;
 
 use App\EventCatalog\Data\CreateTicketTypeData;
 use App\EventCatalog\Data\TicketTypeData;
+use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Events\EventUpdated;
 use App\EventCatalog\Exceptions\CurrencyMismatchException;
+use App\EventCatalog\Exceptions\EventImmutableException;
+use App\EventCatalog\Exceptions\EventNotFoundException;
 use App\EventCatalog\Models\Event;
 use App\EventCatalog\Models\TicketType;
 use App\Support\Outbox\OutboxRecorder;
@@ -30,6 +33,17 @@ final class CreateTicketType
 
     public function __invoke(Event $event, CreateTicketTypeData $data): TicketTypeData
     {
+        // Lock the parent event and re-read its status before writing, so a
+        // cancel committing concurrently cannot slip a ticket type onto a
+        // canceled event (the immutability guard is a conditional write, not
+        // a controller read-then-write; UpdateEvent docblock).
+        $event = Event::query()->whereKey($event->getKey())->lockForUpdate()->first()
+            ?? throw EventNotFoundException::forId((string) $event->getKey());
+
+        if ($event->status === EventStatus::Canceled) {
+            throw EventImmutableException::forId($event->id);
+        }
+
         $this->assertCurrencyMatchesSettlement($event->tenant_id, $data->price->currency);
 
         $ticketType = TicketType::create([
