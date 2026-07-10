@@ -50,6 +50,8 @@ test('the registry holds exactly the known codes', function () {
         'reset_token_expired',
         'catalog.event_immutable',
         'catalog.currency_mismatch',
+        'catalog.event_not_publishable',
+        'catalog.event_not_cancelable',
     ]);
 });
 
@@ -104,6 +106,8 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'reset_token_expired' => [ErrorCode::PasswordResetTokenExpired, 401, 'Password reset token expired', '/problems/reset-token-expired'],
     'catalog.event_immutable' => [ErrorCode::CatalogEventImmutable, 409, 'Event immutable', '/problems/catalog-event-immutable'],
     'catalog.currency_mismatch' => [ErrorCode::CatalogCurrencyMismatch, 422, 'Currency mismatch', '/problems/catalog-currency-mismatch'],
+    'catalog.event_not_publishable' => [ErrorCode::CatalogEventNotPublishable, 409, 'Event not publishable', '/problems/catalog-event-not-publishable'],
+    'catalog.event_not_cancelable' => [ErrorCode::CatalogEventNotCancelable, 409, 'Event not cancelable', '/problems/catalog-event-not-cancelable'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

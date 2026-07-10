@@ -1490,6 +1490,88 @@ function documentedResponseExercisers(): array
                 ['Authorization' => 'Bearer '.contractTicketTypeBearer($tenant), 'X-Tenant-Id' => $tenant->id],
             );
         },
+        'post /v1/events/{event}/publish 200' => function (): TestResponse {
+            $tenant = contractEventTenant();
+            $event = contractEvent($tenant, ['status' => EventStatus::Draft]);
+
+            return test()->postJson('/v1/events/'.$event->id.'/publish', [], [
+                'Authorization' => 'Bearer '.contractEventBearer($tenant, ['events.view', 'events.manage', 'events.publish']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/events/{event}/publish 401' => function (): TestResponse {
+            $tenant = contractEventTenant();
+            $event = contractEvent($tenant, ['status' => EventStatus::Draft]);
+
+            return test()->postJson('/v1/events/'.$event->id.'/publish', [], ['X-Tenant-Id' => $tenant->id]);
+        },
+        'post /v1/events/{event}/publish 403' => function (): TestResponse {
+            $tenant = contractEventTenant();
+            $event = contractEvent($tenant, ['status' => EventStatus::Draft]);
+
+            return test()->postJson('/v1/events/'.$event->id.'/publish', [], [
+                'Authorization' => 'Bearer '.contractEventBearer($tenant, ['events.view', 'events.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/events/{event}/publish 404' => function (): TestResponse {
+            $tenant = contractEventTenant();
+
+            return test()->postJson('/v1/events/'.Str::uuid7().'/publish', [], [
+                'Authorization' => 'Bearer '.contractEventBearer($tenant, ['events.view', 'events.manage', 'events.publish']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/events/{event}/publish 409' => function (): TestResponse {
+            $tenant = contractEventTenant();
+            $event = contractEvent($tenant, ['status' => EventStatus::Published]);
+
+            return test()->postJson('/v1/events/'.$event->id.'/publish', [], [
+                'Authorization' => 'Bearer '.contractEventBearer($tenant, ['events.view', 'events.manage', 'events.publish']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/events/{event}/cancel 200' => function (): TestResponse {
+            $tenant = contractEventTenant();
+            $event = contractEvent($tenant, ['status' => EventStatus::Published]);
+
+            return test()->postJson('/v1/events/'.$event->id.'/cancel', [], [
+                'Authorization' => 'Bearer '.contractEventBearer($tenant, ['events.view', 'events.manage', 'events.publish']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/events/{event}/cancel 401' => function (): TestResponse {
+            $tenant = contractEventTenant();
+            $event = contractEvent($tenant, ['status' => EventStatus::Draft]);
+
+            return test()->postJson('/v1/events/'.$event->id.'/cancel', [], ['X-Tenant-Id' => $tenant->id]);
+        },
+        'post /v1/events/{event}/cancel 403' => function (): TestResponse {
+            $tenant = contractEventTenant();
+            $event = contractEvent($tenant, ['status' => EventStatus::Draft]);
+
+            return test()->postJson('/v1/events/'.$event->id.'/cancel', [], [
+                'Authorization' => 'Bearer '.contractEventBearer($tenant, ['events.view', 'events.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/events/{event}/cancel 404' => function (): TestResponse {
+            $tenant = contractEventTenant();
+
+            return test()->postJson('/v1/events/'.Str::uuid7().'/cancel', [], [
+                'Authorization' => 'Bearer '.contractEventBearer($tenant, ['events.view', 'events.manage', 'events.publish']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/events/{event}/cancel 409' => function (): TestResponse {
+            $tenant = contractEventTenant();
+            $event = contractEvent($tenant, ['status' => EventStatus::Canceled]);
+
+            return test()->postJson('/v1/events/'.$event->id.'/cancel', [], [
+                'Authorization' => 'Bearer '.contractEventBearer($tenant, ['events.view', 'events.manage', 'events.publish']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
         'get /v1/capabilities 200' => fn (): TestResponse => test()->getJson('/v1/capabilities', [
             'Authorization' => 'Bearer '.contractStaffBearer(),
         ]),

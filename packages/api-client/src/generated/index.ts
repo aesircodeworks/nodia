@@ -171,7 +171,9 @@ export type ErrorCode =
   | 'reset_token_invalid'
   | 'reset_token_expired'
   | 'catalog.event_immutable'
-  | 'catalog.currency_mismatch';
+  | 'catalog.currency_mismatch'
+  | 'catalog.event_not_publishable'
+  | 'catalog.event_not_cancelable';
 export type EventData = {
   id: string;
   tenant_id: string;

@@ -53,6 +53,8 @@ enum ErrorCode: string
     case PasswordResetTokenExpired = 'reset_token_expired';
     case CatalogEventImmutable = 'catalog.event_immutable';
     case CatalogCurrencyMismatch = 'catalog.currency_mismatch';
+    case CatalogEventNotPublishable = 'catalog.event_not_publishable';
+    case CatalogEventNotCancelable = 'catalog.event_not_cancelable';
 
     public function status(): int
     {
@@ -103,6 +105,8 @@ enum ErrorCode: string
             self::PasswordResetTokenExpired => 401,
             self::CatalogEventImmutable => 409,
             self::CatalogCurrencyMismatch => 422,
+            self::CatalogEventNotPublishable => 409,
+            self::CatalogEventNotCancelable => 409,
         };
     }
 
@@ -155,6 +159,8 @@ enum ErrorCode: string
             self::PasswordResetTokenExpired => 'Password reset token expired',
             self::CatalogEventImmutable => 'Event immutable',
             self::CatalogCurrencyMismatch => 'Currency mismatch',
+            self::CatalogEventNotPublishable => 'Event not publishable',
+            self::CatalogEventNotCancelable => 'Event not cancelable',
         };
     }
 

@@ -2,7 +2,9 @@
 
 namespace App\EventCatalog\Http\Controllers;
 
+use App\EventCatalog\Actions\CancelEvent;
 use App\EventCatalog\Actions\CreateEvent;
+use App\EventCatalog\Actions\PublishEvent;
 use App\EventCatalog\Actions\UpdateEvent;
 use App\EventCatalog\Data\CreateEventData;
 use App\EventCatalog\Data\EventData;
@@ -70,6 +72,31 @@ class EventController
         }
 
         return $updateEvent($model, $data);
+    }
+
+    /**
+     * No status pre-check here, unlike update(): the transition is
+     * decided entirely by PublishEvent's own conditional UPDATE and its
+     * affected-row count, never a read-then-write status check in the
+     * controller (stage-05a plan, TDD sequencing, Slice 4).
+     *
+     * laravel-data's Responsable defaults a POST response to 201; publish
+     * transitions an existing event, it does not create a resource, so the
+     * 200 status is set explicitly rather than relying on that default.
+     */
+    public function publish(string $event, PublishEvent $publishEvent): JsonResponse
+    {
+        return response()->json($publishEvent($this->eventOrFail($event)));
+    }
+
+    /**
+     * Same posture as publish(): CancelEvent's own conditional UPDATE
+     * alone decides whether the transition applies, and the same 201-default
+     * override applies since cancel transitions rather than creates.
+     */
+    public function cancel(string $event, CancelEvent $cancelEvent): JsonResponse
+    {
+        return response()->json($cancelEvent($this->eventOrFail($event)));
     }
 
     /**

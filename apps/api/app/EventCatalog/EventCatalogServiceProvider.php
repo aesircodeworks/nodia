@@ -33,11 +33,10 @@ use Illuminate\Support\ServiceProvider;
  * EventCreated and EventUpdated are registered below alongside this
  * task's CreateEvent/UpdateEvent producers (event-conventions, stage-04
  * precedent: a type is registered in the same task that ships its first
- * producer). PublishEvent and CancelEvent do not exist yet, so
- * EventPublished and EventCanceled are not registered here despite
- * already being reserved in the system-design 9.3 registry (stage-05a
- * plan, Domain events: "no registry change needed"); task breakdown item
- * 9 adds those two registration calls alongside its own producers.
+ * producer). EventPublished and EventCanceled are registered alongside
+ * task breakdown item 9's PublishEvent/CancelEvent producers, the same
+ * way, despite both already being reserved in the system-design 9.3
+ * registry (stage-05a plan, Domain events: "no registry change needed").
  */
 class EventCatalogServiceProvider extends ServiceProvider
 {
@@ -45,6 +44,8 @@ class EventCatalogServiceProvider extends ServiceProvider
     {
         $registry->register('EventCreated');
         $registry->register('EventUpdated');
+        $registry->register('EventPublished');
+        $registry->register('EventCanceled');
 
         Route::middleware('tenancy.admin')
             ->prefix('v1')

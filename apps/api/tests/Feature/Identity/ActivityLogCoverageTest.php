@@ -1,5 +1,6 @@
 <?php
 
+use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Models\Event;
 use App\EventCatalog\Models\TicketType;
 use App\EventCatalog\Models\Venue;
@@ -376,6 +377,36 @@ it('increases the acting tenant\'s activity_log count by exactly one for every m
         $test->patchJson('/v1/ticket-types/'.$ticketTypeId, [
             'name' => 'Renamed Coverage Ticket',
         ], ['Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => $tenantId])->assertOk();
+
+        expect(activityLogCountForCoverageTenant($tenantId))->toBe($before + 1);
+    }],
+    'Stage 5a: publish an event' => [function (TestCase $test): void {
+        $tenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);
+        $token = coverageAdminBearer($tenantId, ['events.publish']);
+        $eventId = app(TenantTransaction::class)->asTenant(
+            $tenantId,
+            fn () => Event::factory()->create(['tenant_id' => $tenantId, 'status' => EventStatus::Draft])->id,
+        );
+        $before = activityLogCountForCoverageTenant($tenantId);
+
+        $test->postJson('/v1/events/'.$eventId.'/publish', [], [
+            'Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => $tenantId,
+        ])->assertOk();
+
+        expect(activityLogCountForCoverageTenant($tenantId))->toBe($before + 1);
+    }],
+    'Stage 5a: cancel an event' => [function (TestCase $test): void {
+        $tenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);
+        $token = coverageAdminBearer($tenantId, ['events.publish']);
+        $eventId = app(TenantTransaction::class)->asTenant(
+            $tenantId,
+            fn () => Event::factory()->create(['tenant_id' => $tenantId, 'status' => EventStatus::Published])->id,
+        );
+        $before = activityLogCountForCoverageTenant($tenantId);
+
+        $test->postJson('/v1/events/'.$eventId.'/cancel', [], [
+            'Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => $tenantId,
+        ])->assertOk();
 
         expect(activityLogCountForCoverageTenant($tenantId))->toBe($before + 1);
     }],

@@ -136,6 +136,8 @@ class ProblemRenderer
             ErrorCode::PasswordResetTokenExpired => 'The password reset token has expired.',
             ErrorCode::CatalogEventImmutable => 'This event is canceled and can no longer be modified.',
             ErrorCode::CatalogCurrencyMismatch => "The ticket type's currency does not match the tenant's settlement currency.",
+            ErrorCode::CatalogEventNotPublishable => 'Only a draft event can be published.',
+            ErrorCode::CatalogEventNotCancelable => 'This event is already canceled.',
         };
     }
 }

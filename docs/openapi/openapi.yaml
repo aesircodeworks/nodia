@@ -2272,6 +2272,134 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ValidationProblem'
+  /v1/events/{event}/publish:
+    parameters:
+      - name: event
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: publishEvent
+      summary: Publish a draft event
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the events.publish capability (stage-05a plan,
+        task breakdown item 9), a dedicated capability distinct from
+        events.manage. Publish transitions a draft event to published
+        through a single conditional UPDATE guarded on the current status;
+        it does not create a resource, so a successful call returns 200,
+        not 201. Only a draft event is publishable: an already-published or
+        canceled event is rejected with catalog.event_not_publishable.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The published event.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.publish (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EventForbiddenProblem'
+        '404':
+          description: No event is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '409':
+          description: >-
+            The event is not in a publishable state (code
+            catalog.event_not_publishable): only a draft event can be
+            published.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EventNotPublishableProblem'
+  /v1/events/{event}/cancel:
+    parameters:
+      - name: event
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: cancelEvent
+      summary: Cancel a draft or published event
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the events.publish capability (stage-05a plan,
+        task breakdown item 9), the same capability that gates publish.
+        Cancel transitions a draft or published event to canceled through a
+        single conditional UPDATE guarded on the current status; it does
+        not create a resource, so a successful call returns 200, not 201.
+        An already-canceled event is rejected with
+        catalog.event_not_cancelable.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The canceled event.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.publish (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EventForbiddenProblem'
+        '404':
+          description: No event is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '409':
+          description: >-
+            The event is not in a cancelable state (code
+            catalog.event_not_cancelable): a canceled event cannot be
+            canceled again.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EventNotCancelableProblem'
   /v1/events/{event}/ticket-types:
     parameters:
       - name: event
@@ -4045,6 +4173,40 @@ components:
             code:
               type: string
               enum: [catalog.event_immutable]
+      unevaluatedProperties: false
+    EventNotPublishableProblem:
+      description: >-
+        Problem document for a publish on an event that is not in a
+        publishable state (stage-05a plan, endpoint table:
+        "catalog.event_not_publishable (409)"). Only a draft event can be
+        published; an already-published or canceled event is rejected.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [catalog.event_not_publishable]
+      unevaluatedProperties: false
+    EventNotCancelableProblem:
+      description: >-
+        Problem document for a cancel on an event that is not in a
+        cancelable state (stage-05a plan, endpoint table:
+        "catalog.event_not_cancelable (409)"). A draft or published event
+        can be canceled; an already-canceled event is rejected.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [catalog.event_not_cancelable]
       unevaluatedProperties: false
     TicketTypeForbiddenProblem:
       description: >-
