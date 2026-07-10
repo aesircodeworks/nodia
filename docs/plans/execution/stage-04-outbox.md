@@ -29,7 +29,22 @@ Verified starting state: Stages 1-3 are Done. Stage 4 is Not started. No `app/Su
 
 ### Review rounds
 
+#### Review round 1 (2026-07-10 05:11 -03)
+
+Applied Stage 4 code-review findings (blocking/important + one minor). Commits on `feat/api-implementation` after the gate at `956b2ab` / CI at `e71d00c` / journal CI IDs at `f91db35`.
+
+| # | Severity | Finding | Action |
+| --- | --- | --- | --- |
+| 1 | important | Missing Redis/Horizon end-to-end delivery proof (Slice 2 / exit criterion 2). Existing e2e used `QUEUE_CONNECTION=sync` only. | Added `tests/Feature/Support/Outbox/OutboxRedisDeliveryTest.php`: requires reachable Redis (fails hard with a clear message; CI always has `redis:8-alpine`), overrides only this suite to `queue.default=redis` on a dedicated queue `outbox-redis-e2e`, records via `OutboxRecorder` in a tenant transaction, asserts the job landed in Redis (`LLEN == 1`) with zero subscriber effects yet, runs `queue:work redis --once --sleep=0` to pop and handle, asserts exactly one subscriber effect and `OutboxDeliveryStatus::Processed`, then clears Redis keys and restores `sync`. No Horizon daemon; same Redis drivers Horizon uses. |
+| 2 | important | `OutboxDeliveryStatus` leaked into TypeScript client contracts. | Added `#[Hidden]` (`Spatie\TypeScriptTransformer\Attributes\Hidden`) on `App\Support\Outbox\Enums\OutboxDeliveryStatus` (same pattern as event payloads). Ran `composer -d apps/api run types:generate`; `OutboxDeliveryStatus` removed from `packages/api-client/src/generated/index.ts`. |
+| 3 | minor | `OutboxEvent` fillable missing `id` while `OutboxRecorder` mass-assigns a pre-generated UUIDv7. | Added `id` to the `Fillable` attribute on `OutboxEvent`. Unit test `persists an explicit id through mass assignment on create` asserts the supplied id is stored and readable by key. |
+
+Declined: none.
+
+Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) 0 errors. `composer -d apps/api run types:generate` removed `OutboxDeliveryStatus`. Focused Redis e2e + OutboxRecorder unit suite green. `composer -d apps/api run test` (all six suites) passed 1074 tests, 4213 assertions, 0 failures.
+
 ### Decisions and deviations
+
 
 #### task-02: Correlation ID container binding (2026-07-10 03:49 -03)
 
