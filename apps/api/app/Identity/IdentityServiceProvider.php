@@ -57,5 +57,9 @@ class IdentityServiceProvider extends ServiceProvider
         );
 
         Route::prefix('v1')->group(__DIR__.'/Http/routes/auth.php');
+
+        Route::middleware('tenancy.admin')
+            ->prefix('v1')
+            ->group(__DIR__.'/Http/routes/roles.php');
     }
 }

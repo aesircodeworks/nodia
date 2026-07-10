@@ -577,6 +577,322 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/UnauthenticatedProblem'
+  /v1/roles:
+    get:
+      operationId: listRoles
+      summary: List roles visible in the acting tenant
+      description: >-
+        Tenant admin surface: Passport staff bearer plus X-Tenant-Id
+        membership validation (tenancy.admin); no capability is required to
+        read (stage-03 plan, task breakdown item 8). Page pagination with
+        the standard Laravel paginator envelope.
+        roles_template_or_tenant_read RLS scopes the result to the global
+        template roles plus this tenant's own custom roles, so the
+        endpoint needs no filtering beyond the allowlist. Allowed
+        query-builder parameters are filter[name] and sort in (name,
+        -name); unknown filters or sorts are rejected with 400
+        invalid_query_parameter, never ignored.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          style: deepObject
+          explode: true
+          description: 'Allowed filters: filter[name] (partial match).'
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+            additionalProperties:
+              type: string
+        - name: sort
+          in: query
+          required: false
+          description: 'Allowed sorts: name, -name.'
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: One page of roles visible in the acting tenant.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RolePage'
+        '400':
+          description: Unknown filter or sort parameter.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/InvalidQueryParameterProblem'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: The caller has no membership in the asserted tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TenantAccessDeniedProblem'
+    post:
+      operationId: createRole
+      summary: Create a custom role in the acting tenant
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the roles.manage capability (stage-03 plan, task
+        breakdown item 8). Every capability in the request must be a real
+        entry in the Capability registry (code unknown_capability) and the
+        name must be unique within the tenant (code role_name_taken).
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleCreateRequest'
+      responses:
+        '201':
+          description: Role created.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Role'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), or the acting membership does not hold
+            roles.manage (code missing_capability).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/RoleForbiddenProblem'
+        '409':
+          description: A role with this name already exists in the tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/RoleNameTakenProblem'
+        '422':
+          description: >-
+            Request validation failed (code request.validation_failed, with
+            the errors map) or the capabilities list names a capability
+            outside the registry (code unknown_capability).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/RoleUnprocessableProblem'
+  /v1/roles/{role}:
+    parameters:
+      - name: role
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getRole
+      summary: Fetch one role
+      description: >-
+        Tenant admin surface: Passport staff bearer plus X-Tenant-Id
+        membership validation; no capability required to read (task
+        breakdown item 8). A well-formed but nonexistent or foreign-tenant
+        role id renders the same generic request.not_found problem a
+        malformed id gets from route-parameter matching: another tenant's
+        custom role is invisible under roles_template_or_tenant_read RLS,
+        so existence never leaks (stage-03 plan, Slice 4 isolation denial
+        probes).
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The role.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Role'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: The caller has no membership in the asserted tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TenantAccessDeniedProblem'
+        '404':
+          description: No role is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+    patch:
+      operationId: updateRole
+      summary: Update a tenant's custom role
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the roles.manage capability (task breakdown item
+        8). Both fields are optional; absent fields are left untouched. A
+        global template role can never be updated (code role_not_editable).
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleUpdateRequest'
+      responses:
+        '200':
+          description: The updated role.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Role'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), or the acting membership does not hold
+            roles.manage (code missing_capability).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/RoleForbiddenProblem'
+        '404':
+          description: No role is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '409':
+          description: >-
+            The role is a global template and cannot be modified (code
+            role_not_editable), or the new name is already taken in the
+            tenant (code role_name_taken).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/RoleUpdateConflictProblem'
+        '422':
+          description: >-
+            Request validation failed (code request.validation_failed, with
+            the errors map) or the capabilities list names a capability
+            outside the registry (code unknown_capability).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/RoleUnprocessableProblem'
+    delete:
+      operationId: deleteRole
+      summary: Delete a tenant's custom role
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the roles.manage capability (task breakdown item
+        8). A global template role can never be deleted (code
+        role_not_editable); a role still referenced by at least one
+        membership cannot be deleted either (code role_in_use).
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Role deleted.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), or the acting membership does not hold
+            roles.manage (code missing_capability).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/RoleForbiddenProblem'
+        '404':
+          description: No role is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '409':
+          description: >-
+            The role is a global template and cannot be deleted (code
+            role_not_editable), or at least one membership still references
+            it (code role_in_use).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/RoleDeleteConflictProblem'
+  /v1/capabilities:
+    get:
+      operationId: listCapabilities
+      summary: List the capability registry
+      description: >-
+        Staff bearer only; asserts no tenant. A static read of the
+        Capability enum (stage-03 plan, task breakdown item 8), not
+        tenant-scoped data, so no X-Tenant-Id or membership check applies.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Every capability in the registry.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapabilityList'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
   /v1/internal/domain-verification:
     get:
       operationId: verifyDomain
@@ -1047,6 +1363,110 @@ components:
         meta:
           $ref: '#/components/schemas/PageMeta'
       additionalProperties: false
+    Role:
+      type: object
+      description: >-
+        A global template role (tenant_id null) or a tenant's own custom
+        role (stage-03 plan, Data model). capabilities is a flat set of
+        Capability wire values.
+      required:
+        - id
+        - tenant_id
+        - name
+        - capabilities
+        - is_template
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: [string, 'null']
+          format: uuid
+        name:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        is_template:
+          type: boolean
+          description: True when tenant_id is null (a global template role).
+      additionalProperties: false
+    RoleCreateRequest:
+      type: object
+      required:
+        - name
+        - capabilities
+      properties:
+        name:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+      additionalProperties: false
+    RoleUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+      additionalProperties: false
+    RolePage:
+      type: object
+      description: >-
+        Laravel standard paginator envelope (data, links, meta) per
+        docs/api-conventions.md.
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageLink'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      additionalProperties: false
+    Capability:
+      type: object
+      description: One entry in the Capability registry (GET /v1/capabilities).
+      required:
+        - name
+        - is_financially_privileged
+      properties:
+        name:
+          type: string
+        is_financially_privileged:
+          type: boolean
+          description: >-
+            MFA is mandatory for a role whose capabilities intersect the
+            financially privileged set (system-design 5.1); the mechanism
+            arrives with a later Stage 3 task.
+      additionalProperties: false
+    CapabilityList:
+      type: object
+      description: >-
+        GET /v1/capabilities wraps the registry in an object rather than a
+        bare array so the response schema can declare
+        additionalProperties: false (ADR 019); there is no pagination
+        metadata to carry alongside data.
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Capability'
+      additionalProperties: false
     TenantDomainNotFoundProblem:
       description: Problem document for a tenant domain id that references no domain.
       allOf:
@@ -1185,6 +1605,133 @@ components:
             code:
               type: string
               enum: [missing_capability]
+      unevaluatedProperties: false
+    TenantAccessDeniedProblem:
+      description: >-
+        Problem document for a staff bearer with no membership in the
+        asserted tenant (X-Tenant-Id), raised by ResolveTenantFromHeader
+        ahead of any endpoint-specific capability check (stage-03 plan,
+        Slice 3).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [403]
+            code:
+              type: string
+              enum: [tenant_access_denied]
+      unevaluatedProperties: false
+    RoleForbiddenProblem:
+      description: >-
+        Problem document for a 403 on a role-mutating endpoint: either the
+        caller has no membership in the asserted tenant (code
+        tenant_access_denied, raised by ResolveTenantFromHeader before the
+        handler is reached), or the acting membership does not hold
+        roles.manage (code missing_capability).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [403]
+            code:
+              type: string
+              enum: [tenant_access_denied, missing_capability]
+      unevaluatedProperties: false
+    NotFoundProblem:
+      description: >-
+        Generic problem document for a well-formed identifier that
+        resolves to no visible row; reused instead of a resource-specific
+        code where the endpoint deliberately renders the same response for
+        "does not exist" and "not visible to this caller", so existence
+        never leaks (stage-03 plan, Slice 4 isolation denial probes).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [404]
+            code:
+              type: string
+              enum: [request.not_found]
+      unevaluatedProperties: false
+    RoleNameTakenProblem:
+      description: >-
+        Problem document for a role create or rename that collides with
+        another role's name in the same tenant.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [role_name_taken]
+      unevaluatedProperties: false
+    RoleUpdateConflictProblem:
+      description: >-
+        Problem document for a role update refused because the role is a
+        global template (code role_not_editable), or because the new name
+        is already taken in the tenant (code role_name_taken).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [role_not_editable, role_name_taken]
+      unevaluatedProperties: false
+    RoleDeleteConflictProblem:
+      description: >-
+        Problem document for a role delete refused because the role is a
+        global template (code role_not_editable), or because at least one
+        membership still references it (code role_in_use).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [role_not_editable, role_in_use]
+      unevaluatedProperties: false
+    RoleUnprocessableProblem:
+      description: >-
+        Problem document for a role create or update that cannot be
+        processed: either request validation failed (with the errors map)
+        or the capabilities list names a capability outside the registry.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - oneOf:
+            - type: object
+              required:
+                - errors
+              properties:
+                code:
+                  type: string
+                  enum: [request.validation_failed]
+                errors:
+                  type: object
+                  additionalProperties:
+                    type: array
+                    items:
+                      type: string
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum: [unknown_capability]
       unevaluatedProperties: false
     InvalidQueryParameterProblem:
       description: >-

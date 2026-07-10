@@ -1,6 +1,7 @@
 <?php
 
 use App\Identity\Capability;
+use App\Identity\Enums\MembershipScope;
 use App\Identity\Models\Membership;
 use App\Identity\Models\Role;
 use App\Models\User;
@@ -33,6 +34,20 @@ afterEach(function (): void {
     app(TenantTransaction::class)->asTenant($sentinel, function (): void {
         DB::table('memberships')->delete();
     });
+
+    // contractRoleTenantBearer() (task breakdown item 8) writes tenant-scope
+    // memberships into contractRoleTenant()'s own row, not the sentinel
+    // tenant, so those also need clearing before the tenant delete below can
+    // succeed: memberships.tenant_id carries no cascade.
+    $tenantIds = app(TenantTransaction::class)->asPlatform(
+        fn () => Tenant::query()->whereKeyNot($sentinel)->pluck('id')->all(),
+    );
+
+    foreach ($tenantIds as $tenantId) {
+        app(TenantTransaction::class)->asTenant($tenantId, function () use ($tenantId): void {
+            DB::table('memberships')->where('tenant_id', $tenantId)->delete();
+        });
+    }
 
     app(TenantTransaction::class)->asPlatform(function () use ($sentinel): void {
         DB::table('roles')->whereNotNull('tenant_id')->delete();
@@ -100,6 +115,62 @@ function contractDomain(array $attributes = []): TenantDomain
 {
     return app(TenantTransaction::class)->asPlatform(
         fn () => TenantDomain::factory()->create($attributes),
+    );
+}
+
+/**
+ * A fresh tenant per call for the roles endpoint exercisers (task
+ * breakdown item 8): unlike contractTenant()'s reuse-by-value callers,
+ * several role exercisers need a tenant with no pre-existing custom roles
+ * so role_name_taken and pagination assertions stay deterministic.
+ */
+function contractRoleTenant(): Tenant
+{
+    return contractTenant();
+}
+
+/**
+ * @param  list<string>  $capabilities
+ */
+function contractRoleBearer(Tenant $tenant, array $capabilities = ['roles.manage']): string
+{
+    $user = User::factory()->create();
+
+    $response = test()->postJson('/v1/auth/staff/token', [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    app(TenantTransaction::class)->asTenant($tenant->id, function () use ($user, $tenant, $capabilities): void {
+        Membership::factory()->create([
+            'user_id' => $user->id,
+            'tenant_id' => $tenant->id,
+            'role_id' => Role::factory()->create(['tenant_id' => $tenant->id, 'capabilities' => $capabilities])->id,
+            'scope' => MembershipScope::Tenant,
+        ]);
+    });
+
+    /** @var string $token */
+    $token = $response->json('access_token');
+
+    return $token;
+}
+
+/**
+ * @param  array<string, mixed>  $attributes
+ */
+function contractRole(Tenant $tenant, array $attributes = []): Role
+{
+    return app(TenantTransaction::class)->asTenant(
+        $tenant->id,
+        fn () => Role::factory()->create(['tenant_id' => $tenant->id, ...$attributes]),
+    );
+}
+
+function contractTemplateRoleId(): string
+{
+    return app(TenantTransaction::class)->asPlatform(
+        fn () => Role::query()->whereNull('tenant_id')->where('name', 'Owner')->firstOrFail()->id,
     );
 }
 
@@ -370,6 +441,218 @@ function documentedResponseExercisers(): array
             'Authorization' => 'Bearer '.contractStaffBearer(),
         ]),
         'get /v1/me 401' => fn (): TestResponse => test()->getJson('/v1/me'),
+        'get /v1/roles 200' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+
+            return test()->getJson('/v1/roles', [
+                'Authorization' => 'Bearer '.contractRoleBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/roles 400' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+
+            return test()->getJson('/v1/roles?sort=capabilities', [
+                'Authorization' => 'Bearer '.contractRoleBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/roles 401' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+
+            return test()->getJson('/v1/roles', ['X-Tenant-Id' => $tenant->id]);
+        },
+        'get /v1/roles 403' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+            $stranger = User::factory()->create();
+
+            $response = test()->postJson('/v1/auth/staff/token', [
+                'email' => $stranger->email,
+                'password' => 'password',
+            ]);
+
+            return test()->getJson('/v1/roles', [
+                'Authorization' => 'Bearer '.$response->json('access_token'),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/roles 201' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+
+            return test()->postJson(
+                '/v1/roles',
+                ['name' => 'Contract Role', 'capabilities' => ['events.view']],
+                ['Authorization' => 'Bearer '.contractRoleBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/roles 401' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+
+            return test()->postJson(
+                '/v1/roles',
+                ['name' => 'Contract Role', 'capabilities' => []],
+                ['X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/roles 403' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+
+            return test()->postJson(
+                '/v1/roles',
+                ['name' => 'Contract Role', 'capabilities' => []],
+                ['Authorization' => 'Bearer '.contractRoleBearer($tenant, ['events.view']), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/roles 409' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+            contractRole($tenant, ['name' => 'Duplicate Name']);
+
+            return test()->postJson(
+                '/v1/roles',
+                ['name' => 'Duplicate Name', 'capabilities' => []],
+                ['Authorization' => 'Bearer '.contractRoleBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/roles 422' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+
+            return test()->postJson(
+                '/v1/roles',
+                ['name' => 'Contract Role', 'capabilities' => ['not.a.capability']],
+                ['Authorization' => 'Bearer '.contractRoleBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'get /v1/roles/{role} 200' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+            $role = contractRole($tenant);
+
+            return test()->getJson('/v1/roles/'.$role->id, [
+                'Authorization' => 'Bearer '.contractRoleBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/roles/{role} 401' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+            $role = contractRole($tenant);
+
+            return test()->getJson('/v1/roles/'.$role->id, ['X-Tenant-Id' => $tenant->id]);
+        },
+        'get /v1/roles/{role} 403' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+            $role = contractRole($tenant);
+            $stranger = User::factory()->create();
+
+            $response = test()->postJson('/v1/auth/staff/token', [
+                'email' => $stranger->email,
+                'password' => 'password',
+            ]);
+
+            return test()->getJson('/v1/roles/'.$role->id, [
+                'Authorization' => 'Bearer '.$response->json('access_token'),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/roles/{role} 404' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+
+            return test()->getJson('/v1/roles/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.contractRoleBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'patch /v1/roles/{role} 200' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+            $role = contractRole($tenant);
+
+            return test()->patchJson(
+                '/v1/roles/'.$role->id,
+                ['name' => 'Renamed Contract Role'],
+                ['Authorization' => 'Bearer '.contractRoleBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/roles/{role} 401' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+            $role = contractRole($tenant);
+
+            return test()->patchJson(
+                '/v1/roles/'.$role->id,
+                ['name' => 'Renamed Contract Role'],
+                ['X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/roles/{role} 403' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+            $role = contractRole($tenant);
+
+            return test()->patchJson(
+                '/v1/roles/'.$role->id,
+                ['name' => 'Renamed Contract Role'],
+                ['Authorization' => 'Bearer '.contractRoleBearer($tenant, ['events.view']), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/roles/{role} 404' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+
+            return test()->patchJson(
+                '/v1/roles/'.Str::uuid7(),
+                ['name' => 'Ghost'],
+                ['Authorization' => 'Bearer '.contractRoleBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/roles/{role} 409' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+
+            return test()->patchJson(
+                '/v1/roles/'.contractTemplateRoleId(),
+                ['name' => 'Hijacked Template'],
+                ['Authorization' => 'Bearer '.contractRoleBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/roles/{role} 422' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+            $role = contractRole($tenant);
+
+            return test()->patchJson(
+                '/v1/roles/'.$role->id,
+                ['capabilities' => ['not.a.capability']],
+                ['Authorization' => 'Bearer '.contractRoleBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'delete /v1/roles/{role} 401' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+            $role = contractRole($tenant);
+
+            return test()->deleteJson('/v1/roles/'.$role->id, [], ['X-Tenant-Id' => $tenant->id]);
+        },
+        'delete /v1/roles/{role} 403' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+            $role = contractRole($tenant);
+
+            return test()->deleteJson('/v1/roles/'.$role->id, [], [
+                'Authorization' => 'Bearer '.contractRoleBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'delete /v1/roles/{role} 404' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+
+            return test()->deleteJson('/v1/roles/'.Str::uuid7(), [], [
+                'Authorization' => 'Bearer '.contractRoleBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'delete /v1/roles/{role} 409' => function (): TestResponse {
+            $tenant = contractRoleTenant();
+
+            return test()->deleteJson('/v1/roles/'.contractTemplateRoleId(), [], [
+                'Authorization' => 'Bearer '.contractRoleBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/capabilities 200' => fn (): TestResponse => test()->getJson('/v1/capabilities', [
+            'Authorization' => 'Bearer '.contractStaffBearer(),
+        ]),
+        'get /v1/capabilities 401' => fn (): TestResponse => test()->getJson('/v1/capabilities'),
     ];
 }
 

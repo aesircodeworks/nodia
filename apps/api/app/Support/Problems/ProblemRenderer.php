@@ -113,6 +113,10 @@ class ProblemRenderer
             ErrorCode::InvalidRefreshToken => 'The refresh token is invalid, expired, or unknown.',
             ErrorCode::RefreshTokenReused => 'This refresh token was already used; every token issued from its login has been revoked.',
             ErrorCode::MissingCapability => 'The acting membership does not hold the capability this action requires.',
+            ErrorCode::RoleNotEditable => 'Global template roles cannot be modified or deleted.',
+            ErrorCode::RoleInUse => 'This role is assigned to at least one membership and cannot be deleted.',
+            ErrorCode::RoleNameTaken => 'A role with this name already exists in the tenant.',
+            ErrorCode::UnknownCapability => 'The capabilities list includes a name that is not in the capability registry.',
         };
     }
 }

@@ -30,6 +30,10 @@ enum ErrorCode: string
     case InvalidRefreshToken = 'invalid_refresh_token';
     case RefreshTokenReused = 'refresh_token_reused';
     case MissingCapability = 'missing_capability';
+    case RoleNotEditable = 'role_not_editable';
+    case RoleInUse = 'role_in_use';
+    case RoleNameTaken = 'role_name_taken';
+    case UnknownCapability = 'unknown_capability';
 
     public function status(): int
     {
@@ -57,6 +61,10 @@ enum ErrorCode: string
             self::InvalidRefreshToken => 401,
             self::RefreshTokenReused => 401,
             self::MissingCapability => 403,
+            self::RoleNotEditable => 409,
+            self::RoleInUse => 409,
+            self::RoleNameTaken => 409,
+            self::UnknownCapability => 422,
         };
     }
 
@@ -86,6 +94,10 @@ enum ErrorCode: string
             self::InvalidRefreshToken => 'Invalid refresh token',
             self::RefreshTokenReused => 'Refresh token reused',
             self::MissingCapability => 'Missing capability',
+            self::RoleNotEditable => 'Role not editable',
+            self::RoleInUse => 'Role in use',
+            self::RoleNameTaken => 'Role name taken',
+            self::UnknownCapability => 'Unknown capability',
         };
     }
 

@@ -2,9 +2,9 @@
 
 namespace App\Tenancy;
 
+use App\Http\Middleware\RequireCapability;
 use App\Identity\Capability;
 use App\Tenancy\Http\Middleware\PlatformRequestTransaction;
-use App\Tenancy\Http\Middleware\RequireCapability;
 use App\Tenancy\Http\Middleware\ResolveTenantFromHeader;
 use App\Tenancy\Http\Middleware\ResolveTenantFromHost;
 use Illuminate\Routing\Router;

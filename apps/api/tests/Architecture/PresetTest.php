@@ -8,6 +8,11 @@ use App\Identity\Exceptions\InvalidMembershipScopeException;
 use App\Identity\Exceptions\InvalidRefreshTokenException;
 use App\Identity\Exceptions\MissingCapabilityException;
 use App\Identity\Exceptions\RefreshTokenReusedException;
+use App\Identity\Exceptions\RoleInUseException;
+use App\Identity\Exceptions\RoleNameTakenException;
+use App\Identity\Exceptions\RoleNotEditableException;
+use App\Identity\Exceptions\RoleNotFoundException;
+use App\Identity\Exceptions\UnknownCapabilityException;
 use App\Identity\IdentityServiceProvider;
 use App\Support\Money\CurrencyMismatchException;
 use App\Support\Problems\ErrorCode;
@@ -59,6 +64,11 @@ arch()->preset()->laravel()->ignoring([
     InvalidRefreshTokenException::class,
     RefreshTokenReusedException::class,
     MissingCapabilityException::class,
+    RoleNotEditableException::class,
+    RoleInUseException::class,
+    RoleNameTakenException::class,
+    RoleNotFoundException::class,
+    UnknownCapabilityException::class,
     DefaultLocaleNotSupportedException::class,
     DomainAlreadyRegisteredException::class,
     InvalidDomainNameException::class,

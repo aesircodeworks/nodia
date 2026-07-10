@@ -2,6 +2,8 @@
 
 namespace App\Identity\Models;
 
+use App\Identity\Capability;
+use App\Identity\Exceptions\UnknownCapabilityException;
 use Database\Factories\Identity\Models\RoleFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -23,6 +25,13 @@ class Role extends Model
     /** @use HasFactory<RoleFactory> */
     use HasFactory, HasUuids;
 
+    protected static function booted(): void
+    {
+        static::saving(function (self $role): void {
+            self::assertKnownCapabilities($role->capabilities);
+        });
+    }
+
     /**
      * A NULL tenant_id is the sanctioned exception marking a global
      * template role maintained by the platform (data-conventions Tenancy,
@@ -31,6 +40,26 @@ class Role extends Model
     public function isTemplate(): bool
     {
         return $this->tenant_id === null;
+    }
+
+    /**
+     * Every stored capability must be a real entry in the Capability
+     * registry (stage-03 plan, Roles and memberships endpoint table:
+     * unknown_capability). Pulled out as a pure, DB-free static so it is
+     * unit-testable on its own and so App\Identity\Actions\CreateRole and
+     * UpdateRole inherit the guarantee automatically by going through the
+     * model's saving hook, without repeating the check, mirroring
+     * Membership::assertScopeInvariant's precedent (task-04 journal).
+     *
+     * @param  list<string>  $capabilities
+     */
+    public static function assertKnownCapabilities(array $capabilities): void
+    {
+        foreach ($capabilities as $capability) {
+            if (Capability::tryFrom($capability) === null) {
+                throw UnknownCapabilityException::for($capability);
+            }
+        }
     }
 
     /**

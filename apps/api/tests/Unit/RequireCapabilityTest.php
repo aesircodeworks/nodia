@@ -1,12 +1,12 @@
 <?php
 
+use App\Http\Middleware\RequireCapability;
 use App\Identity\Capability;
 use App\Identity\Exceptions\MissingCapabilityException;
 use App\Identity\Models\Membership;
 use App\Identity\Models\Role;
 use App\Models\User;
 use App\Support\Tenancy\TenantTransaction;
-use App\Tenancy\Http\Middleware\RequireCapability;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;

@@ -27,6 +27,10 @@ test('the registry holds exactly the known codes', function () {
         'invalid_refresh_token',
         'refresh_token_reused',
         'missing_capability',
+        'role_not_editable',
+        'role_in_use',
+        'role_name_taken',
+        'unknown_capability',
     ]);
 });
 
@@ -58,6 +62,10 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'invalid_refresh_token' => [ErrorCode::InvalidRefreshToken, 401, 'Invalid refresh token', '/problems/invalid-refresh-token'],
     'refresh_token_reused' => [ErrorCode::RefreshTokenReused, 401, 'Refresh token reused', '/problems/refresh-token-reused'],
     'missing_capability' => [ErrorCode::MissingCapability, 403, 'Missing capability', '/problems/missing-capability'],
+    'role_not_editable' => [ErrorCode::RoleNotEditable, 409, 'Role not editable', '/problems/role-not-editable'],
+    'role_in_use' => [ErrorCode::RoleInUse, 409, 'Role in use', '/problems/role-in-use'],
+    'role_name_taken' => [ErrorCode::RoleNameTaken, 409, 'Role name taken', '/problems/role-name-taken'],
+    'unknown_capability' => [ErrorCode::UnknownCapability, 422, 'Unknown capability', '/problems/unknown-capability'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

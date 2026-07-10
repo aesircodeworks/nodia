@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Tenancy\Http\Middleware;
+namespace App\Http\Middleware;
 
 use App\Identity\Authorization\CapabilityGate;
 use App\Identity\Capability;
@@ -19,9 +19,16 @@ use Symfony\Component\HttpFoundation\Response;
  * CapabilityGate, the single place capability evaluation happens
  * (system-design 5.3, ADR 012), rather than duplicating any of its logic
  * here. Must run after the middleware that opens the tenant transaction
- * (PlatformRequestTransaction for the platform group) so TenantContext
- * already carries the tenant CapabilityGate resolves the membership
- * against.
+ * (PlatformRequestTransaction for the platform group, ResolveTenantFromHeader
+ * for the admin group) so TenantContext already carries the tenant
+ * CapabilityGate resolves the membership against. Lives under the
+ * app-global App\Http\Middleware, not a bounded context's own Http layer
+ * (originally App\Tenancy\Http\Middleware, task breakdown item 7): both
+ * Tenancy's platform group and Identity's role and membership endpoints
+ * (task breakdown item 8) need it, and ContextBoundariesTest forbids any
+ * context from using another context's Http classes, so a capability
+ * gate shared by two contexts cannot live in either one's Http namespace
+ * (relocated task breakdown item 8; stage-03 plan Data model).
  */
 class RequireCapability
 {

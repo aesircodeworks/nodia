@@ -13,7 +13,18 @@ export type Capability =
   | 'orders.refund'
   | 'payouts.view'
   | 'checkin.scan';
+export type CapabilityData = {
+  name: string;
+  is_financially_privileged: boolean;
+};
+export type CapabilityListData = {
+  data: CapabilityData[];
+};
 export type CheckResult = 'ok' | 'failed';
+export type CreateRoleData = {
+  name: string;
+  capabilities: string[];
+};
 export type CreateTenantData = {
   name: string;
   default_locale: string;
@@ -78,7 +89,11 @@ export type ErrorCode =
   | 'invalid_credentials'
   | 'invalid_refresh_token'
   | 'refresh_token_reused'
-  | 'missing_capability';
+  | 'missing_capability'
+  | 'role_not_editable'
+  | 'role_in_use'
+  | 'role_name_taken'
+  | 'unknown_capability';
 export type HealthChecksData = {
   database: CheckResult;
   redis: CheckResult;
@@ -153,6 +168,13 @@ export type RegisterTenantDomainData = {
   domain: string;
   is_primary?: boolean;
 };
+export type RoleData = {
+  id: string;
+  tenant_id: string | null;
+  name: string;
+  capabilities: string[];
+  is_template: boolean;
+};
 export type StaffTokenRequestData = {
   email: string;
   password: string;
@@ -186,6 +208,10 @@ export type TokenPairData = {
   refresh_token: string;
   token_type: string;
   expires_in: number;
+};
+export type UpdateRoleData = {
+  name?: string;
+  capabilities?: string[];
 };
 export type UpdateTenantData = {
   name?: string;

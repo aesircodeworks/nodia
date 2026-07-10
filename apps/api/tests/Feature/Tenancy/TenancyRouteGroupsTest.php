@@ -1,11 +1,11 @@
 <?php
 
+use App\Http\Middleware\RequireCapability;
 use App\Identity\Capability;
 use App\Models\User;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Http\Middleware\PlatformRequestTransaction;
-use App\Tenancy\Http\Middleware\RequireCapability;
 use App\Tenancy\Http\Middleware\ResolveTenantFromHeader;
 use App\Tenancy\Http\Middleware\ResolveTenantFromHost;
 use App\Tenancy\Models\Tenant;
