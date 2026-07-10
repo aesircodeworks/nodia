@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Support\Correlation\CorrelationId;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
@@ -14,6 +15,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->scoped(CorrelationId::class);
         $this->app->scoped(TenantContext::class);
     }
 

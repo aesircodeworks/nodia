@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\Correlation\CorrelationId as CurrentCorrelationId;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -12,6 +13,8 @@ class CorrelationId
 {
     public const HEADER = 'X-Correlation-Id';
 
+    public function __construct(private readonly CurrentCorrelationId $correlationId) {}
+
     public function handle(Request $request, Closure $next): Response
     {
         $startedAt = microtime(true);
@@ -19,6 +22,8 @@ class CorrelationId
         $correlationId = $request->headers->get(self::HEADER) ?: Str::uuid7()->toString();
 
         $request->headers->set(self::HEADER, $correlationId);
+
+        $this->correlationId->set($correlationId);
 
         // Octane flushes shared log context between requests via its FlushLogContext
         // listener (registered through prepareApplicationForNextOperation on
