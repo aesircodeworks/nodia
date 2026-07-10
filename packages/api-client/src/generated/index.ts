@@ -174,7 +174,9 @@ export type ErrorCode =
   | 'catalog.event_immutable'
   | 'catalog.currency_mismatch'
   | 'catalog.event_not_publishable'
-  | 'catalog.event_not_cancelable';
+  | 'catalog.event_not_cancelable'
+  | 'catalog.seat_map_duplicate_seats'
+  | 'catalog.seat_map_name_taken';
 export type EventData = {
   id: string;
   tenant_id: string;
@@ -296,6 +298,39 @@ export type RoleData = {
   capabilities: string[];
   is_template: boolean;
 };
+export type SeatData = {
+  id: string;
+  section: string;
+  row: string;
+  number: string;
+  position_x: number | null;
+  position_y: number | null;
+};
+export type SeatInputData = {
+  section: string;
+  row: string;
+  number: string;
+  position_x: number | null;
+  position_y: number | null;
+};
+export type SeatMapData = {
+  id: string;
+  tenant_id: string;
+  venue_id: string;
+  name: string;
+  layout: Record<string, any>;
+  seats: SeatData[];
+  created_at: string;
+  updated_at: string;
+};
+export type SeatMapSummaryData = {
+  id: string;
+  venue_id: string;
+  name: string;
+  seat_count: number;
+  created_at: string;
+  updated_at: string;
+};
 export type StaffTokenRequestData = {
   email: string;
   password: string;
@@ -396,6 +431,11 @@ export type UpdateVenueData = {
   city?: string;
   country?: string;
   capacity?: number;
+};
+export type UpsertSeatMapData = {
+  name: string;
+  layout: Record<string, any>;
+  seats: SeatInputData[];
 };
 export type ValidationProblemData = {
   errors: Record<string, string[]>;

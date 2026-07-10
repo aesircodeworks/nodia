@@ -89,6 +89,13 @@ afterEach(function (): void {
             // venues below since events.venue_id references venues.
             DB::table('events')->where('tenant_id', $tenantId)->delete();
 
+            // contractSeatMapBearer()'s exercisers (stage-05b plan, task
+            // breakdown item 2) write seat_maps (seats cascade) scoped to a
+            // fresh venue under contractSeatMapTenant(); seat_maps must be
+            // deleted ahead of venues below since seat_maps.venue_id
+            // references venues on delete restrict.
+            DB::table('seat_maps')->where('tenant_id', $tenantId)->delete();
+
             // contractVenueBearer()'s exercisers (stage-05a plan, task
             // breakdown item 3) write venues scoped to a fresh
             // contractVenueTenant() each; venues carries no platform
@@ -291,6 +298,38 @@ function contractVenue(Tenant $tenant, array $attributes = []): Venue
         $tenant->id,
         fn () => Venue::factory()->create(['tenant_id' => $tenant->id, ...$attributes]),
     );
+}
+
+/**
+ * A fresh tenant per call, mirroring contractVenueTenant()'s own precedent
+ * (stage-05b plan, task breakdown item 2).
+ */
+function contractSeatMapTenant(): Tenant
+{
+    return contractTenant();
+}
+
+/**
+ * @param  list<string>  $capabilities
+ */
+function contractSeatMapBearer(Tenant $tenant, array $capabilities = ['seat_maps.manage']): string
+{
+    return contractVenueBearer($tenant, $capabilities);
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function contractSeatMapCreatePayload(array $overrides = []): array
+{
+    return [
+        'name' => 'Contract Lower Bowl',
+        'layout' => ['stage' => 'north'],
+        'seats' => [
+            ['section' => 'A', 'row' => '1', 'number' => '1', 'position_x' => null, 'position_y' => null],
+        ],
+        ...$overrides,
+    ];
 }
 
 /**
@@ -1155,6 +1194,55 @@ function documentedResponseExercisers(): array
                 '/v1/venues/'.$venue->id,
                 ['capacity' => 0],
                 ['Authorization' => 'Bearer '.contractVenueBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/venues/{venue}/seat-maps 201' => function (): TestResponse {
+            $tenant = contractSeatMapTenant();
+            $venue = contractVenue($tenant);
+
+            return test()->postJson(
+                "/v1/venues/{$venue->id}/seat-maps",
+                contractSeatMapCreatePayload(),
+                ['Authorization' => 'Bearer '.contractSeatMapBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/venues/{venue}/seat-maps 401' => function (): TestResponse {
+            $tenant = contractSeatMapTenant();
+            $venue = contractVenue($tenant);
+
+            return test()->postJson(
+                "/v1/venues/{$venue->id}/seat-maps",
+                contractSeatMapCreatePayload(),
+                ['X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/venues/{venue}/seat-maps 403' => function (): TestResponse {
+            $tenant = contractSeatMapTenant();
+            $venue = contractVenue($tenant);
+
+            return test()->postJson(
+                "/v1/venues/{$venue->id}/seat-maps",
+                contractSeatMapCreatePayload(),
+                ['Authorization' => 'Bearer '.contractSeatMapBearer($tenant, ['events.view']), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/venues/{venue}/seat-maps 404' => function (): TestResponse {
+            $tenant = contractSeatMapTenant();
+
+            return test()->postJson(
+                '/v1/venues/'.Str::uuid7().'/seat-maps',
+                contractSeatMapCreatePayload(),
+                ['Authorization' => 'Bearer '.contractSeatMapBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/venues/{venue}/seat-maps 422' => function (): TestResponse {
+            $tenant = contractSeatMapTenant();
+            $venue = contractVenue($tenant);
+
+            return test()->postJson(
+                "/v1/venues/{$venue->id}/seat-maps",
+                contractSeatMapCreatePayload(['name' => '']),
+                ['Authorization' => 'Bearer '.contractSeatMapBearer($tenant), 'X-Tenant-Id' => $tenant->id],
             );
         },
         'post /v1/events 201' => function (): TestResponse {

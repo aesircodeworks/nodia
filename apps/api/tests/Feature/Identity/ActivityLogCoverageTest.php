@@ -63,6 +63,7 @@ afterEach(function (): void {
             DB::table('customers')->where('tenant_id', $tenantId)->delete();
             DB::table('ticket_types')->where('tenant_id', $tenantId)->delete();
             DB::table('events')->where('tenant_id', $tenantId)->delete();
+            DB::table('seat_maps')->where('tenant_id', $tenantId)->delete();
             DB::table('venues')->where('tenant_id', $tenantId)->delete();
         });
     }
@@ -407,6 +408,25 @@ it('increases the acting tenant\'s activity_log count by exactly one for every m
         $test->postJson('/v1/events/'.$eventId.'/cancel', [], [
             'Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => $tenantId,
         ])->assertOk();
+
+        expect(activityLogCountForCoverageTenant($tenantId))->toBe($before + 1);
+    }],
+    'Stage 5b: create a seat map' => [function (TestCase $test): void {
+        $tenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);
+        $token = coverageAdminBearer($tenantId, ['seat_maps.manage']);
+        $venueId = app(TenantTransaction::class)->asTenant(
+            $tenantId,
+            fn () => Venue::factory()->create(['tenant_id' => $tenantId])->id,
+        );
+        $before = activityLogCountForCoverageTenant($tenantId);
+
+        $test->postJson("/v1/venues/{$venueId}/seat-maps", [
+            'name' => 'Coverage Seat Map',
+            'layout' => [],
+            'seats' => [
+                ['section' => 'A', 'row' => '1', 'number' => '1', 'position_x' => null, 'position_y' => null],
+            ],
+        ], ['Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => $tenantId])->assertCreated();
 
         expect(activityLogCountForCoverageTenant($tenantId))->toBe($before + 1);
     }],

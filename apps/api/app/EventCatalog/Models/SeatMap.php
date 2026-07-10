@@ -39,11 +39,18 @@ class SeatMap extends Model
     }
 
     /**
+     * Ordered by the natural key (section, row, number), never insertion
+     * order, so every reader (create's echo, a later stage's show/list)
+     * gets the same deterministic sequence without repeating the
+     * ordering at every call site (stage-05b plan, TDD sequencing Slice
+     * 2: "returns the Data object with seats ordered by section, row,
+     * number").
+     *
      * @return HasMany<Seat, $this>
      */
     public function seats(): HasMany
     {
-        return $this->hasMany(Seat::class);
+        return $this->hasMany(Seat::class)->orderBy('section')->orderBy('row')->orderBy('number');
     }
 
     /**

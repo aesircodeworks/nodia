@@ -19,6 +19,7 @@
 // dedicated group so RequireCapability checks the right one.
 
 use App\EventCatalog\Http\Controllers\EventController;
+use App\EventCatalog\Http\Controllers\SeatMapController;
 use App\EventCatalog\Http\Controllers\TicketTypeController;
 use App\EventCatalog\Http\Controllers\VenueController;
 use App\Http\Middleware\RecordActivityAudit;
@@ -42,6 +43,15 @@ Route::middleware([RequireCapability::class.':'.Capability::EventsManage->value,
     Route::patch('/events/{event}', [EventController::class, 'update'])->whereUuid('event');
     Route::post('/events/{event}/ticket-types', [TicketTypeController::class, 'store'])->whereUuid('event');
     Route::patch('/ticket-types/{ticket_type}', [TicketTypeController::class, 'update'])->whereUuid('ticket_type');
+});
+
+// Task breakdown item 2 (TDD slice 2, stage-05b plan): the seat map
+// mutating surface is gated by its own seat_maps.manage capability, a
+// third, dedicated group so RequireCapability checks that one rather than
+// events.manage (mirroring the events.publish group's own precedent
+// above for why a distinct capability needs its own group).
+Route::middleware([RequireCapability::class.':'.Capability::SeatMapsManage->value, RecordActivityAudit::class])->group(function (): void {
+    Route::post('/venues/{venue}/seat-maps', [SeatMapController::class, 'store'])->whereUuid('venue');
 });
 
 Route::middleware([RequireCapability::class.':'.Capability::EventsPublish->value, RecordActivityAudit::class])->group(function (): void {

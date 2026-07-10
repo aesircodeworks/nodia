@@ -43,12 +43,13 @@ class ProblemRenderer
 
         if ($e instanceof HasErrorCode) {
             $code = $e->errorCode();
+            $detail = $e->getMessage() !== '' ? $e->getMessage() : $this->detailFor($code);
 
-            return ProblemData::fromErrorCode(
-                $code,
-                $e->getMessage() !== '' ? $e->getMessage() : $this->detailFor($code),
-                $correlationId,
-            )->toProblemResponse();
+            if ($e instanceof HasValidationErrors) {
+                return ValidationProblemData::fromErrors($e->errors(), $detail, $correlationId, $code)->toProblemResponse();
+            }
+
+            return ProblemData::fromErrorCode($code, $detail, $correlationId)->toProblemResponse();
         }
 
         // The query-builder allowlist exceptions are vendor classes, so they
@@ -138,6 +139,8 @@ class ProblemRenderer
             ErrorCode::CatalogCurrencyMismatch => "The ticket type's currency does not match the tenant's settlement currency.",
             ErrorCode::CatalogEventNotPublishable => 'Only a draft event can be published.',
             ErrorCode::CatalogEventNotCancelable => 'This event is already canceled.',
+            ErrorCode::CatalogSeatMapDuplicateSeats => 'The seats array contains two or more seats sharing the same section, row, and number.',
+            ErrorCode::CatalogSeatMapNameTaken => 'A seat map with this name already exists for the venue.',
         };
     }
 }

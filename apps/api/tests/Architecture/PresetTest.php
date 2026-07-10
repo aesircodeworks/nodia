@@ -8,6 +8,8 @@ use App\EventCatalog\Exceptions\EventNotCancelableException;
 use App\EventCatalog\Exceptions\EventNotFoundException;
 use App\EventCatalog\Exceptions\EventNotPublishableException;
 use App\EventCatalog\Exceptions\InvalidEventVenueConfigurationException;
+use App\EventCatalog\Exceptions\SeatMapDuplicateSeatsException;
+use App\EventCatalog\Exceptions\SeatMapNameTakenException;
 use App\EventCatalog\Exceptions\TicketTypeNotFoundException;
 use App\EventCatalog\Exceptions\VenueNotFoundException;
 use App\Identity\Capability;
@@ -107,7 +109,9 @@ arch()->preset()->security();
 // (stage-05a task-03) guards the exactly-one-of-venue-or-url application
 // invariant and is not meant to reach the HTTP boundary, mirroring
 // InvalidMembershipScopeException's own precedent for the identical
-// situation.
+// situation. SeatMapDuplicateSeatsException and SeatMapNameTakenException
+// (stage-05b task-02) live in App\EventCatalog\Exceptions like every other
+// HasErrorCode exception in this context, not App\Exceptions.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -166,6 +170,8 @@ arch()->preset()->laravel()->ignoring([
     EventNotCancelableException::class,
     TicketTypeNotFoundException::class,
     TicketTypeCurrencyMismatchException::class,
+    SeatMapDuplicateSeatsException::class,
+    SeatMapNameTakenException::class,
     MissingTenantHeaderException::class,
     InvalidTenantHeaderException::class,
     TenantAccessDeniedException::class,

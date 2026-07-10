@@ -1997,6 +1997,79 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ValidationProblem'
+  /v1/venues/{venue}/seat-maps:
+    parameters:
+      - name: venue
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: createSeatMap
+      summary: Create a seat map template under a venue
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the seat_maps.manage capability (stage-05b plan,
+        task breakdown item 2). Creates a template with its full seat list
+        in one document; seats are echoed back with generated ids, ordered
+        deterministically by section, row, then number regardless of
+        payload order. Renaming a seat's section, row, or number on a
+        later PUT changes its identity (stage-05b plan, Risks).
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeatMapUpsertRequest'
+      responses:
+        '201':
+          description: Seat map created.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeatMap'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            seat_maps.manage (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SeatMapForbiddenProblem'
+        '404':
+          description: No venue is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '422':
+          description: >-
+            Request validation failed (code request.validation_failed, with
+            the errors map); the seats array contains two or more seats
+            sharing the same section, row, and number (code
+            catalog.seat_map_duplicate_seats, with the errors map keyed by
+            the offending seats' positions, e.g. seats.0); or a seat map
+            with this name already exists on the venue (code
+            catalog.seat_map_name_taken).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SeatMapUnprocessableProblem'
   /v1/events:
     post:
       operationId: createEvent
@@ -3481,6 +3554,115 @@ components:
         meta:
           $ref: '#/components/schemas/PageMeta'
       additionalProperties: false
+    Seat:
+      type: object
+      description: >-
+        A single seat on a SeatMap template (stage-05b plan, Data model).
+        position_x and position_y are integer layout grid units, never
+        floats.
+      required:
+        - id
+        - section
+        - row
+        - number
+        - position_x
+        - position_y
+      properties:
+        id:
+          type: string
+          format: uuid
+        section:
+          type: string
+        row:
+          type: string
+        number:
+          type: string
+        position_x:
+          type: [integer, 'null']
+        position_y:
+          type: [integer, 'null']
+      additionalProperties: false
+    SeatInput:
+      type: object
+      description: >-
+        A seat in an UpsertSeatMap request body (stage-05b plan,
+        Endpoints). The (section, row, number) triple is the seat's
+        natural key: changing it on a later PUT deletes the old seat and
+        inserts a new one under a new id.
+      required:
+        - section
+        - row
+        - number
+        - position_x
+        - position_y
+      properties:
+        section:
+          type: string
+        row:
+          type: string
+        number:
+          type: string
+        position_x:
+          type: [integer, 'null']
+        position_y:
+          type: [integer, 'null']
+      additionalProperties: false
+    SeatMap:
+      type: object
+      description: >-
+        A reusable venue seating template with its full seat list
+        (stage-05b plan, Data model). layout is opaque map-level geometry,
+        never interpreted by the API.
+      required:
+        - id
+        - tenant_id
+        - venue_id
+        - name
+        - layout
+        - seats
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        venue_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        layout:
+          type: object
+        seats:
+          type: array
+          items:
+            $ref: '#/components/schemas/Seat'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    SeatMapUpsertRequest:
+      type: object
+      required:
+        - name
+        - layout
+        - seats
+      properties:
+        name:
+          type: string
+        layout:
+          type: object
+        seats:
+          type: array
+          items:
+            $ref: '#/components/schemas/SeatInput'
+      additionalProperties: false
     AsyncPaymentPolicy:
       type: object
       description: >-
@@ -4324,6 +4506,57 @@ components:
             code:
               type: string
               enum: [tenant_access_denied, missing_capability, mfa_enforcement_required]
+      unevaluatedProperties: false
+    SeatMapForbiddenProblem:
+      description: >-
+        Problem document for a 403 on the seat map create endpoint (stage-05b
+        plan task breakdown item 2): either the caller has no membership in
+        the asserted tenant (code tenant_access_denied, raised by
+        ResolveTenantFromHeader before the handler is reached), the acting
+        membership does not hold seat_maps.manage (code missing_capability),
+        or the acting membership mandates confirmed MFA and has not
+        confirmed it (code mfa_enforcement_required).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [403]
+            code:
+              type: string
+              enum: [tenant_access_denied, missing_capability, mfa_enforcement_required]
+      unevaluatedProperties: false
+    SeatMapUnprocessableProblem:
+      description: >-
+        Problem document for a seat map create that cannot be processed:
+        request validation failed (code request.validation_failed, with the
+        errors map), the seats array carries two or more seats sharing the
+        same section, row, and number (code catalog.seat_map_duplicate_seats,
+        with the errors map keyed by the offending seats' positions), or the
+        name is already taken on the venue (code catalog.seat_map_name_taken,
+        stage-05b plan endpoint table).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - oneOf:
+            - type: object
+              required:
+                - errors
+              properties:
+                code:
+                  type: string
+                  enum: [request.validation_failed, catalog.seat_map_duplicate_seats]
+                errors:
+                  type: object
+                  additionalProperties:
+                    type: array
+                    items:
+                      type: string
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum: [catalog.seat_map_name_taken]
       unevaluatedProperties: false
     EventForbiddenProblem:
       description: >-

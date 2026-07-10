@@ -55,6 +55,8 @@ enum ErrorCode: string
     case CatalogCurrencyMismatch = 'catalog.currency_mismatch';
     case CatalogEventNotPublishable = 'catalog.event_not_publishable';
     case CatalogEventNotCancelable = 'catalog.event_not_cancelable';
+    case CatalogSeatMapDuplicateSeats = 'catalog.seat_map_duplicate_seats';
+    case CatalogSeatMapNameTaken = 'catalog.seat_map_name_taken';
 
     public function status(): int
     {
@@ -107,6 +109,8 @@ enum ErrorCode: string
             self::CatalogCurrencyMismatch => 422,
             self::CatalogEventNotPublishable => 409,
             self::CatalogEventNotCancelable => 409,
+            self::CatalogSeatMapDuplicateSeats => 422,
+            self::CatalogSeatMapNameTaken => 422,
         };
     }
 
@@ -161,6 +165,8 @@ enum ErrorCode: string
             self::CatalogCurrencyMismatch => 'Currency mismatch',
             self::CatalogEventNotPublishable => 'Event not publishable',
             self::CatalogEventNotCancelable => 'Event not cancelable',
+            self::CatalogSeatMapDuplicateSeats => 'Duplicate seats',
+            self::CatalogSeatMapNameTaken => 'Seat map name taken',
         };
     }
 

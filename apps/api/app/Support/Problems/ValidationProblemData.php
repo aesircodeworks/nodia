@@ -25,12 +25,16 @@ class ValidationProblemData extends ProblemData
     }
 
     /**
+     * $code defaults to the generic request.validation_failed (framework
+     * ValidationException's own path through ProblemRenderer); a
+     * HasValidationErrors domain exception passes its own stable code
+     * instead (stage-05b plan: catalog.seat_map_duplicate_seats still
+     * carries the errors map extension member).
+     *
      * @param  array<string, list<string>>  $errors
      */
-    public static function fromErrors(array $errors, string $detail, ?string $correlationId = null): self
+    public static function fromErrors(array $errors, string $detail, ?string $correlationId = null, ErrorCode $code = ErrorCode::RequestValidationFailed): self
     {
-        $code = ErrorCode::RequestValidationFailed;
-
         return new self(
             $code->type(),
             $code->title(),
