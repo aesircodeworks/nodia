@@ -16,10 +16,12 @@
 // member can always reach enrollment regardless of X-Tenant-Id.
 
 use App\Identity\Http\Controllers\CapabilityController;
+use App\Identity\Http\Controllers\ConfirmPasswordResetController;
 use App\Identity\Http\Controllers\CurrentUserController;
 use App\Identity\Http\Controllers\MfaDisableController;
 use App\Identity\Http\Controllers\MfaEnrollmentConfirmController;
 use App\Identity\Http\Controllers\MfaEnrollmentController;
+use App\Identity\Http\Controllers\RequestPasswordResetController;
 use App\Identity\Http\Controllers\StaffInvitationAcceptanceController;
 use App\Identity\Http\Controllers\StaffLogoutController;
 use App\Identity\Http\Controllers\StaffRefreshController;
@@ -29,6 +31,8 @@ use Illuminate\Support\Facades\Route;
 Route::post('/auth/staff/token', StaffTokenController::class);
 Route::post('/auth/staff/refresh', StaffRefreshController::class);
 Route::post('/auth/staff/invitation/accept', StaffInvitationAcceptanceController::class);
+Route::post('/auth/staff/password/reset', RequestPasswordResetController::class);
+Route::post('/auth/staff/password/reset/confirm', ConfirmPasswordResetController::class);
 
 Route::middleware('auth:staff')->group(function (): void {
     Route::post('/auth/staff/logout', StaffLogoutController::class);

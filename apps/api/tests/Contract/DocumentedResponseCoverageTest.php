@@ -1066,6 +1066,22 @@ function documentedResponseExercisers(): array
             'token' => '',
             'password' => 'short',
         ]),
+        // The 202 and 204 document no content, so they have no coverage
+        // keys here (mirroring the precedent above at 'post
+        // /v1/auth/staff/invitation/accept 204'); the feature test
+        // (tests/Feature/Identity/StaffPasswordResetTest.php)
+        // conformance-asserts both.
+        'post /v1/auth/staff/password/reset 422' => fn (): TestResponse => test()->postJson('/v1/auth/staff/password/reset', [
+            'email' => 'not-an-email',
+        ]),
+        'post /v1/auth/staff/password/reset/confirm 401' => fn (): TestResponse => test()->postJson('/v1/auth/staff/password/reset/confirm', [
+            'token' => 'not-a-real-token',
+            'password' => 'a-real-password',
+        ]),
+        'post /v1/auth/staff/password/reset/confirm 422' => fn (): TestResponse => test()->postJson('/v1/auth/staff/password/reset/confirm', [
+            'token' => '',
+            'password' => 'short',
+        ]),
         // Task breakdown item 13: the customer authentication and
         // lifecycle surface. Every case below hits the real Host-resolved
         // endpoint rather than X-Tenant-Id.

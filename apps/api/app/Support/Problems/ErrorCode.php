@@ -49,6 +49,8 @@ enum ErrorCode: string
     case CustomerAlreadyClaimed = 'customer_already_claimed';
     case ClaimTokenInvalid = 'claim_token_invalid';
     case ClaimTokenExpired = 'claim_token_expired';
+    case PasswordResetTokenInvalid = 'reset_token_invalid';
+    case PasswordResetTokenExpired = 'reset_token_expired';
 
     public function status(): int
     {
@@ -95,6 +97,8 @@ enum ErrorCode: string
             self::CustomerAlreadyClaimed => 409,
             self::ClaimTokenInvalid => 401,
             self::ClaimTokenExpired => 401,
+            self::PasswordResetTokenInvalid => 401,
+            self::PasswordResetTokenExpired => 401,
         };
     }
 
@@ -143,6 +147,8 @@ enum ErrorCode: string
             self::CustomerAlreadyClaimed => 'Customer already claimed',
             self::ClaimTokenInvalid => 'Claim token invalid',
             self::ClaimTokenExpired => 'Claim token expired',
+            self::PasswordResetTokenInvalid => 'Password reset token invalid',
+            self::PasswordResetTokenExpired => 'Password reset token expired',
         };
     }
 

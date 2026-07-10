@@ -38,6 +38,10 @@ export type ConfirmClaimData = {
 export type ConfirmMfaData = {
   code: string;
 };
+export type ConfirmPasswordResetData = {
+  token: string;
+  password: string;
+};
 export type CreateRoleData = {
   name: string;
   capabilities: string[];
@@ -139,7 +143,9 @@ export type ErrorCode =
   | 'customer_email_taken'
   | 'customer_already_claimed'
   | 'claim_token_invalid'
-  | 'claim_token_expired';
+  | 'claim_token_expired'
+  | 'reset_token_invalid'
+  | 'reset_token_expired';
 export type HealthChecksData = {
   database: CheckResult;
   redis: CheckResult;
@@ -231,6 +237,9 @@ export type RegisterCustomerData = {
 export type RegisterTenantDomainData = {
   domain: string;
   is_primary?: boolean;
+};
+export type RequestPasswordResetData = {
+  email: string;
 };
 export type RoleData = {
   id: string;

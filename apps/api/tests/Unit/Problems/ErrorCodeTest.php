@@ -46,6 +46,8 @@ test('the registry holds exactly the known codes', function () {
         'customer_already_claimed',
         'claim_token_invalid',
         'claim_token_expired',
+        'reset_token_invalid',
+        'reset_token_expired',
     ]);
 });
 
@@ -96,6 +98,8 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'customer_already_claimed' => [ErrorCode::CustomerAlreadyClaimed, 409, 'Customer already claimed', '/problems/customer-already-claimed'],
     'claim_token_invalid' => [ErrorCode::ClaimTokenInvalid, 401, 'Claim token invalid', '/problems/claim-token-invalid'],
     'claim_token_expired' => [ErrorCode::ClaimTokenExpired, 401, 'Claim token expired', '/problems/claim-token-expired'],
+    'reset_token_invalid' => [ErrorCode::PasswordResetTokenInvalid, 401, 'Password reset token invalid', '/problems/reset-token-invalid'],
+    'reset_token_expired' => [ErrorCode::PasswordResetTokenExpired, 401, 'Password reset token expired', '/problems/reset-token-expired'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

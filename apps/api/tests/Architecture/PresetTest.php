@@ -22,6 +22,8 @@ use App\Identity\Exceptions\MfaEnforcementRequiredException;
 use App\Identity\Exceptions\MfaNotEnrolledException;
 use App\Identity\Exceptions\MfaRequiredException;
 use App\Identity\Exceptions\MissingCapabilityException;
+use App\Identity\Exceptions\PasswordResetTokenExpiredException;
+use App\Identity\Exceptions\PasswordResetTokenInvalidException;
 use App\Identity\Exceptions\RefreshTokenReusedException;
 use App\Identity\Exceptions\RoleInUseException;
 use App\Identity\Exceptions\RoleNameTakenException;
@@ -31,6 +33,7 @@ use App\Identity\Exceptions\TenantMismatchException;
 use App\Identity\Exceptions\UnknownCapabilityException;
 use App\Identity\IdentityServiceProvider;
 use App\Identity\Mail\CustomerClaimMail;
+use App\Identity\Mail\PasswordResetMail;
 use App\Identity\Mail\StaffInvitationMail;
 use App\Support\Money\CurrencyMismatchException;
 use App\Support\Problems\ErrorCode;
@@ -112,8 +115,11 @@ arch()->preset()->laravel()->ignoring([
     CustomerAlreadyClaimedException::class,
     ClaimTokenInvalidException::class,
     ClaimTokenExpiredException::class,
+    PasswordResetTokenInvalidException::class,
+    PasswordResetTokenExpiredException::class,
     StaffInvitationMail::class,
     CustomerClaimMail::class,
+    PasswordResetMail::class,
     DefaultLocaleNotSupportedException::class,
     DomainAlreadyRegisteredException::class,
     InvalidDomainNameException::class,

@@ -132,6 +132,8 @@ class ProblemRenderer
             ErrorCode::CustomerAlreadyClaimed => 'This account has already been claimed.',
             ErrorCode::ClaimTokenInvalid => 'The claim token is malformed, tampered with, or unknown.',
             ErrorCode::ClaimTokenExpired => 'The claim token has expired.',
+            ErrorCode::PasswordResetTokenInvalid => 'The password reset token is unknown, malformed, or already used.',
+            ErrorCode::PasswordResetTokenExpired => 'The password reset token has expired.',
         };
     }
 }

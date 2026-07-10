@@ -77,4 +77,24 @@ return [
 
     'claim_token_ttl_minutes' => (int) env('CUSTOMER_CLAIM_TOKEN_TTL_MINUTES', 1_440),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Staff Password Reset Token Lifetime
+    |--------------------------------------------------------------------------
+    |
+    | POST /v1/auth/staff/password/reset issues this token, mailed to the
+    | staff user's own address (stage-03 plan, task breakdown item 16);
+    | POST /v1/auth/staff/password/reset/confirm redeems it, single-use,
+    | unlike the invitation and claim tokens above. The plan mandates a
+    | time-limited token but no specific duration; an hour is deliberately
+    | shorter than either sibling window, recorded as a decision in the
+    | stage-03 execution journal: a forgotten-password reset is a more
+    | security-sensitive action against an already-existing credential
+    | than either onboarding flow above, so the token should not remain a
+    | valid, high-privilege secret in an inbox for long.
+    |
+    */
+
+    'reset_token_ttl_minutes' => (int) env('STAFF_PASSWORD_RESET_TOKEN_TTL_MINUTES', 60),
+
 ];

@@ -598,6 +598,86 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ValidationProblem'
+  /v1/auth/staff/password/reset:
+    post:
+      operationId: requestStaffPasswordReset
+      summary: Request a staff password reset email
+      description: >-
+        Unauthenticated. Always renders 202 regardless of whether the
+        email resolves to a staff user (enumeration-safe, mirroring POST
+        /v1/auth/customer/claim, stage-03 plan Slice 8); a reset token is
+        issued and mailed only for a genuine user
+        (App\Identity\Mail\PasswordResetMail). Unlike the stateless
+        invitation and claim tokens, the reset token is stored, hashed at
+        rest, single-use, and expires after
+        identity.reset_token_ttl_minutes (one hour by default),
+        deliberately shorter than either sibling window because it acts
+        against an already-existing credential.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+      responses:
+        '202':
+          description: >-
+            The request was accepted; a reset email is sent if and only
+            if the address resolves to a staff user, which this response
+            never reveals.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+        '422':
+          description: Request validation failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+  /v1/auth/staff/password/reset/confirm:
+    post:
+      operationId: confirmStaffPasswordReset
+      summary: Confirm a staff password reset and set a new password
+      description: >-
+        Unauthenticated: the token itself is the credential (stage-03
+        plan, task breakdown item 16). Redeems the single-use reset token
+        POST /v1/auth/staff/password/reset mails to a staff user's own
+        address and sets their password; every access and refresh token
+        previously issued to the user is revoked in the same transaction,
+        so only the new password authenticates afterwards. Consumption is
+        a conditional UPDATE on the token's consumed state checked by
+        affected-row count, so parallel confirmations of one token
+        succeed exactly once; a consumed, unknown, or malformed token and
+        an expired one fail with distinct codes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmPasswordResetRequest'
+      responses:
+        '204':
+          description: >-
+            The password is set; every previously issued token is revoked
+            and the account authenticates with the new password only.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+        '401':
+          description: >-
+            The token is unknown, malformed, or already consumed (code
+            reset_token_invalid), or its expiry has passed (code
+            reset_token_expired).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/PasswordResetTokenProblem'
+        '422':
+          description: Request validation failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
   /v1/auth/mfa/enrollment:
     post:
       operationId: enrollMfa
@@ -1819,6 +1899,27 @@ components:
           type: string
           minLength: 8
       additionalProperties: false
+    PasswordResetRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+      additionalProperties: false
+    ConfirmPasswordResetRequest:
+      type: object
+      required:
+        - token
+        - password
+      properties:
+        token:
+          type: string
+        password:
+          type: string
+          minLength: 8
+      additionalProperties: false
     Membership:
       type: object
       description: >-
@@ -2516,6 +2617,23 @@ components:
             code:
               type: string
               enum: [claim_token_invalid, claim_token_expired]
+      unevaluatedProperties: false
+    PasswordResetTokenProblem:
+      description: >-
+        Problem document for a rejected staff password reset token: it is
+        unknown, malformed, or already consumed (code
+        reset_token_invalid), or its expiry has passed (code
+        reset_token_expired).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [401]
+            code:
+              type: string
+              enum: [reset_token_invalid, reset_token_expired]
       unevaluatedProperties: false
     CustomerAlreadyClaimedProblem:
       description: >-
