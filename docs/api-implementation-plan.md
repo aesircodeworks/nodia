@@ -16,7 +16,7 @@ Update this table when a stage starts and when it merges.
 | Stage 2: Tenancy and RLS Regime | Done |
 | Stage 3: Identity, AuthN, AuthZ | Done |
 | Stage 4: Transactional Outbox | Done |
-| Stage 5a: Catalog Core and Publish | In progress |
+| Stage 5a: Catalog Core and Publish | In progress (exit criteria 1 and 2: single full-sequence feature tests missing) |
 | Stage 5b: Seating Templates | Not started |
 | Stage 5c: Search and Media | Not started |
 | Stage 6: Inventory and Reserved Seating | Not started |
