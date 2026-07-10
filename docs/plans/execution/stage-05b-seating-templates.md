@@ -25,6 +25,9 @@ Sequencing note: the stage plan requires the `events.seat_map_id` migration (its
 
 ### Review rounds
 
+- Round 1 (2026-07-10 19:06 -03): needs-fixes. 3 important findings, all fixed in `1ee5dea`; 1 minor finding declined with rationale. Details in the round 1 entry below.
+- Round 2 (2026-07-10 19:14 -03): approve. Zero findings; review loop closed.
+
 ### Decisions and deviations
 
 #### task-01, 2026-07-10
@@ -303,3 +306,31 @@ Codex code review of the stage 5b surface, round 1. Four findings (three importa
 4. **Finding 4 (minor, `SeatMapData.php:30`): `SeatMapData` exposes `tenant_id`, which the stage plan's Data-model shape (line 98) does not list.** Declined, no code change. Exposing `tenant_id` on the admin output document is the established, consistent codebase convention: every other EventCatalog output Data object does it (`VenueData`, `EventData`, `TicketTypeData`, plus Identity's `MembershipData`/`RoleData`), and the finding itself notes the OpenAPI schema and generated TS type both already agree with the implementation. Removing it would break that cross-context consistency, drop a field two committed contracts document, and force an OpenAPI + type regeneration for a field the admin surface legitimately carries (this is staff surface, not the end-user surface the "raw IDs are never shown to end users" rule governs). The plan's Data-model line is a shape sketch, not an exhaustive prohibition; recorded here as a deliberate decline rather than acted on.
 
 Verification: `SeatMapEndpointsTest` + `UpsertSeatMapTest` 70/70 green (including the 5 new feature tests); nested `seats.*` validation confirmed still firing (the max-length test asserts a `seats.0.section` error). `composer -d apps/api run lint` (Pint) passed; `composer -d apps/api run analyse` (Larastan) 0 errors; `tests/Contract` 220/220 green against the extended OpenAPI; `composer run types:generate` produced no drift (rule and yaml changes do not alter generated types). Full `composer -d apps/api run test`: 1585 tests, 1584 passed, 1 failed on the same pre-existing `EventLifecycleContentionTest` publish-vs-cancel timing flake (409 vs 200) this journal already records against tasks 01/04/07 (touches no seat/seat_map table); re-ran that file alone, 4/4 green, confirming it is not a regression from this round.
+
+### Review round 2: 2026-07-10 19:14 -03
+
+Codex code review of the stage 5b surface after the round 1 fixes (`1ee5dea`), round 2. Verdict: approve. Zero findings, actionable or minor. The three important round 1 findings (JSON-array layout acceptance, missing natural-key max-length rules, missing seats ceiling) are confirmed resolved; finding 4 (minor, `tenant_id` on `SeatMapData`) stands as the deliberate decline recorded in round 1. Review loop closed.
+
+### Run closed: 2026-07-10 19:14 -03
+
+Final summary for the stage 5b run.
+
+- Tasks: 7 of 7 planned tasks completed (see the checklist above); none blocked, none skipped.
+- Gate: green locally and on CI for the current HEAD. Local, at `67d7b01`: Pint passed, Larastan 0 errors, full Pest suite green (1585 tests after the round 1 fix added 5 feature tests; the run recorded under review round 1 shows the only failure ever seen was the pre-existing `EventLifecycleContentionTest` timing flake, green on re-run), `composer types:generate` zero drift, `pnpm typecheck` green in all five workspaces, Packages ESLint green. CI, definitive set on HEAD `67d7b01` (includes the review-fix commit `1ee5dea`), all five workflows concluded success: API [29126858842](https://github.com/aesircodeworks/nodia/actions/runs/29126858842), Packages [29126858884](https://github.com/aesircodeworks/nodia/actions/runs/29126858884), Storefront [29126858871](https://github.com/aesircodeworks/nodia/actions/runs/29126858871), Admin [29126858852](https://github.com/aesircodeworks/nodia/actions/runs/29126858852), Checkin [29126858847](https://github.com/aesircodeworks/nodia/actions/runs/29126858847). Earlier green sets on `26a166e` and `d46b4ba` are recorded in the Gate entry; the two failed pre-fix sets (`ec4e22c`, `319f52f`) and the defect they exposed (untyped `layout` emitting `Record<string, any>`) are recorded there too.
+- Review: two rounds. Round 1 (needs-fixes): 3 important findings, all fixed in `1ee5dea` with tests first, plus 1 minor finding declined with rationale. Round 2 (approve): zero findings. No unaddressed blocking or important findings; the sole unresolved item is the deliberately declined minor finding 4 (`tenant_id` exposure on `SeatMapData`, kept for cross-context contract consistency).
+- Blockers: none.
+
+Exit criteria walk against the stage plan, re-verified at HEAD `67d7b01`:
+
+1. **Met.** POST creates a template with its full seat list and reads back byte-identical in shape, seats ordered by `section`, `row`, `number`: `tests/Feature/EventCatalog/SeatMapEndpointsTest.php` POST and GET item blocks (tasks 02, 03, commits `333b2a7`, `9887283`); the several-hundred-seat scale is covered by `UpsertSeatMapTest`'s chunked-bulk-insert unit coverage and now bounded by the round 1 `seat_map_max_seats` ceiling.
+2. **Met.** Seat id preservation across upserts verified by `tests/Unit/EventCatalog/UpsertSeatMapTest.php`: unchanged natural key with new coordinates keeps the id, omitted seats delete, added seats get new ids (task 04).
+3. **Met.** All four codes have dedicated feature-test assertions on the stable `code`: `catalog.seat_map_duplicate_seats` and `catalog.seat_map_name_taken` in `SeatMapEndpointsTest` (task 02), `catalog.seat_map_venue_mismatch` and `catalog.seat_map_virtual_event` in `EventEndpointsTest`'s seat-map block (task 05).
+4. **Met.** `EventEndpointsTest` sets `seat_map_id` on a physical event whose venue owns the map through the Stage 5a `UpdateEvent` Action; `EventUpdatedOutboxTest` asserts exactly one `EventUpdated` outbox row; no publish-path change shipped (task 05).
+5. **Met.** `SeatMapEndpointsTest` DELETE block: 409 `catalog.seat_map_in_use` for a template an event references, 204 with seat cascade for an unreferenced one (task 06).
+6. **Met.** Table level: `tests/Isolation/SeatMapsIsolationTest.php` and `SeatsIsolationTest.php` (task 01). Endpoint level: `SeatMapEndpointsIsolationTest.php` (GET item, GET list, POST, PUT, DELETE) and `EventSeatMapLinkageIsolationTest.php` (PATCH event linkage), covering all six seat-map-touching routes (tasks 03, 05, 07).
+7. **Met.** `tests/Concurrency/SeatMapReplaceContentionTest.php`: parallel PUTs against one map always land 200/200 with the final document matching exactly one payload in full, never interleaved or torn (task 04).
+8. **Met.** All seat-map and linkage OpenAPI paths and schemas merged into `docs/openapi/openapi.yaml` including the round 1 additions (`maxLength: 255` on seat keys, `maxItems: 50000` on seats); Contract suite 220/220 standalone; `composer types:generate` drift-free at HEAD, confirmed by the green API Contract Drift check in CI run 29126858842.
+9. **Met.** Full `composer test` green locally (task 07 third run 1581/1581; post-review 1585 tests with only the documented pre-existing flake, green on re-run); Larastan 0 errors; Pint clean; CI API workflow success on `67d7b01`.
+10. **Met.** `docs/api-implementation-plan.md` status table row reads "Stage 5b: Seating Templates | Done" (flipped in `7ab1b7f`, task 07), which this closeout confirms is accurate.
+
+All ten exit criteria met at the final HEAD. Stage 5b status: Done. Commits this run: `e5081b5` through `67d7b01` plus this journal-close commit; working tree clean and pushed.
