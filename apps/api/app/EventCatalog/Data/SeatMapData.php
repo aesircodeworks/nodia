@@ -9,6 +9,7 @@ use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\DataCollection;
 use Spatie\LaravelData\Mappers\SnakeCaseMapper;
+use Spatie\TypeScriptTransformer\Attributes\LiteralTypeScriptType;
 
 /**
  * Full seat map document (stage-05b plan, Endpoints: POST/GET response
@@ -29,6 +30,7 @@ class SeatMapData extends Data
         public string $tenantId,
         public string $venueId,
         public string $name,
+        #[LiteralTypeScriptType('Record<string, unknown>')]
         public array $layout,
         #[DataCollectionOf(SeatData::class)]
         public DataCollection $seats,

@@ -6,6 +6,7 @@ use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Mappers\SnakeCaseMapper;
+use Spatie\TypeScriptTransformer\Attributes\LiteralTypeScriptType;
 
 /**
  * POST /v1/venues/{venue}/seat-maps request body (stage-05b plan,
@@ -26,6 +27,7 @@ class UpsertSeatMapData extends Data
      */
     public function __construct(
         public string $name,
+        #[LiteralTypeScriptType('Record<string, unknown>')]
         public array $layout,
         #[DataCollectionOf(SeatInputData::class)]
         public array $seats,

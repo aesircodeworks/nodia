@@ -323,7 +323,7 @@ export type SeatMapData = {
   tenant_id: string;
   venue_id: string;
   name: string;
-  layout: Record<string, any>;
+  layout: Record<string, unknown>;
   seats: SeatData[];
   created_at: string;
   updated_at: string;
@@ -440,7 +440,7 @@ export type UpdateVenueData = {
 };
 export type UpsertSeatMapData = {
   name: string;
-  layout: Record<string, any>;
+  layout: Record<string, unknown>;
   seats: SeatInputData[];
 };
 export type ValidationProblemData = {
