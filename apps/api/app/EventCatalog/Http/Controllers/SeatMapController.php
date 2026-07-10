@@ -2,6 +2,7 @@
 
 namespace App\EventCatalog\Http\Controllers;
 
+use App\EventCatalog\Actions\DeleteSeatMap;
 use App\EventCatalog\Actions\UpsertSeatMap;
 use App\EventCatalog\Data\SeatMapData;
 use App\EventCatalog\Data\SeatMapSummaryData;
@@ -12,6 +13,7 @@ use App\EventCatalog\Models\SeatMap;
 use App\EventCatalog\Models\Venue;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Spatie\LaravelData\PaginatedDataCollection;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -64,6 +66,24 @@ class SeatMapController
         $seatMap = SeatMap::query()->find($seat_map) ?? throw SeatMapNotFoundException::forId($seat_map);
 
         return $upsertSeatMap->replace($seatMap, $data);
+    }
+
+    /**
+     * Cascades the seat map's seats at the database level; a template
+     * still referenced by an event's seat_map_id is refused by
+     * DeleteSeatMap with catalog.seat_map_in_use (stage-05b plan, TDD
+     * sequencing Slice 5). Looks up the row without loading its seats
+     * relation, unlike seatMapOrFail(): a template can carry tens of
+     * thousands of seats (stage-05b plan, Risks: "Large templates"), and
+     * DeleteSeatMap only needs the id.
+     */
+    public function destroy(string $seat_map, DeleteSeatMap $deleteSeatMap): Response
+    {
+        $seatMap = SeatMap::query()->find($seat_map) ?? throw SeatMapNotFoundException::forId($seat_map);
+
+        $deleteSeatMap($seatMap);
+
+        return response()->noContent();
     }
 
     /**

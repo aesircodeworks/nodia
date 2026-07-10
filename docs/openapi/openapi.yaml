@@ -2282,6 +2282,55 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/SeatMapUnprocessableProblem'
+    delete:
+      operationId: deleteSeatMap
+      summary: Delete a seat map template
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the seat_maps.manage capability (stage-05b plan,
+        task breakdown item 5). Seats cascade at the database level. A
+        template still referenced by an event's seat_map_id cannot be
+        deleted (code catalog.seat_map_in_use): the events_seat_map_id_foreign
+        restrict violation the database raises on the delete is mapped to
+        this problem, never surfaced as a 500. Stage 6 extends the same
+        code to templates referenced by materialized event_seats.
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Seat map deleted.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            seat_maps.manage (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SeatMapForbiddenProblem'
+        '404':
+          description: No seat map is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '409':
+          description: At least one event still references this seat map.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SeatMapDeleteConflictProblem'
   /v1/events:
     post:
       operationId: createEvent
@@ -4852,6 +4901,24 @@ components:
                 code:
                   type: string
                   enum: [catalog.seat_map_name_taken]
+      unevaluatedProperties: false
+    SeatMapDeleteConflictProblem:
+      description: >-
+        Problem document for a seat map delete refused because at least
+        one event still references it through seat_map_id (code
+        catalog.seat_map_in_use, stage-05b plan, Deletion semantics: the
+        events_seat_map_id_foreign restrict violation the database raises
+        on the delete, mapped here rather than surfaced as a 500).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [catalog.seat_map_in_use]
       unevaluatedProperties: false
     EventForbiddenProblem:
       description: >-

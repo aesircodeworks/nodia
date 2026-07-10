@@ -1,5 +1,6 @@
 <?php
 
+use App\EventCatalog\Models\Event;
 use App\EventCatalog\Models\Seat;
 use App\EventCatalog\Models\SeatMap;
 use App\EventCatalog\Models\Venue;
@@ -45,6 +46,10 @@ afterEach(function (): void {
     foreach ([$this->tenantId, $this->otherTenantId] as $tenantId) {
         app(TenantTransaction::class)->asTenant($tenantId, function () use ($tenantId): void {
             DB::table('memberships')->where('tenant_id', $tenantId)->delete();
+            // events.seat_map_id restricts (stage-05b plan, task breakdown
+            // item 6), so the DELETE describe block's in-use event must go
+            // ahead of seat_maps here.
+            DB::table('events')->where('tenant_id', $tenantId)->delete();
             DB::table('seats')->where('tenant_id', $tenantId)->delete();
             DB::table('seat_maps')->where('tenant_id', $tenantId)->delete();
             DB::table('venues')->where('tenant_id', $tenantId)->delete();
@@ -512,6 +517,125 @@ describe('PUT /v1/seat-maps/{seat_map}', function () {
 
         $this->withHeaders(['Authorization' => 'Bearer '.$strangerToken])
             ->putJson('/v1/seat-maps/'.$seatMap->id, seatMapCreatePayload())
+            ->assertForbidden()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'tenant_access_denied');
+    });
+});
+
+/*
+ * Stage-05b plan, task breakdown item 5 (TDD slice 5): DELETE
+ * /v1/seat-maps/{seat_map} removes a template and cascades its seats at
+ * the database level; a template still referenced by an event's
+ * seat_map_id is refused with the events_seat_map_id_foreign restrict
+ * violation, mapped here to catalog.seat_map_in_use rather than a 500
+ * (Endpoints: "the restricting FK surfaces this; the handler maps it to
+ * the problem document"). Writes still gate on seat_maps.manage,
+ * mirroring the POST and PUT describe blocks above.
+ */
+describe('DELETE /v1/seat-maps/{seat_map}', function () {
+    it('deletes an unused seat map and cascades its seats', function () {
+        $seatMap = makeSeatMapRow($this->tenantId, $this->venue->id);
+        makeSeatRow($this->tenantId, $seatMap->id);
+        makeSeatRow($this->tenantId, $seatMap->id, ['section' => 'B']);
+
+        $this->deleteJson('/v1/seat-maps/'.$seatMap->id)->assertNoContent();
+
+        $remaining = app(TenantTransaction::class)->asTenant($this->tenantId, fn () => [
+            'seat_maps' => SeatMap::query()->whereKey($seatMap->id)->exists(),
+            'seats' => Seat::query()->where('seat_map_id', $seatMap->id)->exists(),
+        ]);
+
+        expect($remaining['seat_maps'])->toBeFalse()
+            ->and($remaining['seats'])->toBeFalse();
+    });
+
+    it('records exactly one activity_log row for the deletion', function () {
+        $seatMap = makeSeatMapRow($this->tenantId, $this->venue->id);
+
+        $before = app(TenantTransaction::class)->asPlatform(
+            fn () => DB::table('activity_log')->where('tenant_id', $this->tenantId)->count(),
+        );
+
+        $this->deleteJson('/v1/seat-maps/'.$seatMap->id)->assertNoContent();
+
+        $after = app(TenantTransaction::class)->asPlatform(
+            fn () => DB::table('activity_log')->where('tenant_id', $this->tenantId)->count(),
+        );
+
+        expect($after)->toBe($before + 1);
+    });
+
+    it('rejects deleting a seat map referenced by an event\'s seat_map_id with catalog.seat_map_in_use', function () {
+        $seatMap = makeSeatMapRow($this->tenantId, $this->venue->id);
+        app(TenantTransaction::class)->asTenant(
+            $this->tenantId,
+            fn () => Event::factory()->atVenue($this->venue->id)->create([
+                'tenant_id' => $this->tenantId,
+                'seat_map_id' => $seatMap->id,
+            ]),
+        );
+
+        $response = $this->deleteJson('/v1/seat-maps/'.$seatMap->id);
+
+        $response->assertStatus(409)
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'catalog.seat_map_in_use');
+
+        // the refused delete leaves the template and its referencing
+        // event both intact.
+        expect(app(TenantTransaction::class)->asTenant(
+            $this->tenantId,
+            fn () => SeatMap::query()->whereKey($seatMap->id)->exists(),
+        ))->toBeTrue();
+    });
+
+    it('returns a request.not_found problem for a foreign tenant\'s seat map', function () {
+        $foreignVenue = app(TenantTransaction::class)->asTenant(
+            $this->otherTenantId,
+            fn () => Venue::factory()->create(['tenant_id' => $this->otherTenantId]),
+        );
+        $foreignSeatMap = makeSeatMapRow($this->otherTenantId, $foreignVenue->id);
+
+        $this->deleteJson('/v1/seat-maps/'.$foreignSeatMap->id)
+            ->assertNotFound()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.not_found');
+    });
+
+    it('returns a request.not_found problem for an unknown seat map id', function () {
+        $this->deleteJson('/v1/seat-maps/'.Str::uuid7())
+            ->assertNotFound()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.not_found');
+    });
+
+    it('rejects a request with no bearer', function () {
+        $seatMap = makeSeatMapRow($this->tenantId, $this->venue->id);
+
+        $this->withoutToken()
+            ->deleteJson('/v1/seat-maps/'.$seatMap->id, [], ['X-Tenant-Id' => $this->tenantId])
+            ->assertUnauthorized()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'auth.unauthenticated');
+    });
+
+    it('rejects a bearer lacking seat_maps.manage with missing_capability', function () {
+        $seatMap = makeSeatMapRow($this->tenantId, $this->venue->id);
+
+        $this->withHeaders(['Authorization' => 'Bearer '.TenantStaff::token($this->tenantId, Capability::EventsView)])
+            ->deleteJson('/v1/seat-maps/'.$seatMap->id)
+            ->assertForbidden()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'missing_capability');
+    });
+
+    it('rejects a bearer with no membership in the asserted tenant', function () {
+        $seatMap = makeSeatMapRow($this->tenantId, $this->venue->id);
+        $strangerToken = StaffTokens::issue(User::factory()->create());
+
+        $this->withHeaders(['Authorization' => 'Bearer '.$strangerToken])
+            ->deleteJson('/v1/seat-maps/'.$seatMap->id)
             ->assertForbidden()
             ->assertConformsToOpenApi()
             ->assertJsonPath('code', 'tenant_access_denied');

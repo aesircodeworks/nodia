@@ -1391,6 +1391,48 @@ function documentedResponseExercisers(): array
                 ['Authorization' => 'Bearer '.contractSeatMapBearer($tenant), 'X-Tenant-Id' => $tenant->id],
             );
         },
+        'delete /v1/seat-maps/{seat_map} 401' => function (): TestResponse {
+            $tenant = contractSeatMapTenant();
+            $venue = contractVenue($tenant);
+            $seatMap = contractSeatMap($tenant, $venue);
+
+            return test()->deleteJson('/v1/seat-maps/'.$seatMap->id, [], ['X-Tenant-Id' => $tenant->id]);
+        },
+        'delete /v1/seat-maps/{seat_map} 403' => function (): TestResponse {
+            $tenant = contractSeatMapTenant();
+            $venue = contractVenue($tenant);
+            $seatMap = contractSeatMap($tenant, $venue);
+
+            return test()->deleteJson('/v1/seat-maps/'.$seatMap->id, [], [
+                'Authorization' => 'Bearer '.contractSeatMapBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'delete /v1/seat-maps/{seat_map} 404' => function (): TestResponse {
+            $tenant = contractSeatMapTenant();
+
+            return test()->deleteJson('/v1/seat-maps/'.Str::uuid7(), [], [
+                'Authorization' => 'Bearer '.contractSeatMapBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'delete /v1/seat-maps/{seat_map} 409' => function (): TestResponse {
+            $tenant = contractSeatMapTenant();
+            $venue = contractVenue($tenant);
+            $seatMap = contractSeatMap($tenant, $venue);
+            app(TenantTransaction::class)->asTenant(
+                $tenant->id,
+                fn () => Event::factory()->atVenue($venue->id)->create([
+                    'tenant_id' => $tenant->id,
+                    'seat_map_id' => $seatMap->id,
+                ]),
+            );
+
+            return test()->deleteJson('/v1/seat-maps/'.$seatMap->id, [], [
+                'Authorization' => 'Bearer '.contractSeatMapBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
         'post /v1/events 201' => function (): TestResponse {
             $tenant = contractEventTenant();
 

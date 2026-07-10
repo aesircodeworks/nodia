@@ -452,4 +452,23 @@ it('increases the acting tenant\'s activity_log count by exactly one for every m
 
         expect(activityLogCountForCoverageTenant($tenantId))->toBe($before + 1);
     }],
+    'Stage 5b: delete a seat map' => [function (TestCase $test): void {
+        $tenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);
+        $token = coverageAdminBearer($tenantId, ['seat_maps.manage']);
+        $venueId = app(TenantTransaction::class)->asTenant(
+            $tenantId,
+            fn () => Venue::factory()->create(['tenant_id' => $tenantId])->id,
+        );
+        $seatMapId = app(TenantTransaction::class)->asTenant(
+            $tenantId,
+            fn () => SeatMap::factory()->create(['tenant_id' => $tenantId, 'venue_id' => $venueId])->id,
+        );
+        $before = activityLogCountForCoverageTenant($tenantId);
+
+        $test->deleteJson('/v1/seat-maps/'.$seatMapId, [], [
+            'Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => $tenantId,
+        ])->assertNoContent();
+
+        expect(activityLogCountForCoverageTenant($tenantId))->toBe($before + 1);
+    }],
 ]);

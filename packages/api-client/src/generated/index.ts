@@ -179,7 +179,8 @@ export type ErrorCode =
   | 'catalog.seat_map_name_taken'
   | 'catalog.seat_map_conflict'
   | 'catalog.seat_map_venue_mismatch'
-  | 'catalog.seat_map_virtual_event';
+  | 'catalog.seat_map_virtual_event'
+  | 'catalog.seat_map_in_use';
 export type EventData = {
   id: string;
   tenant_id: string;

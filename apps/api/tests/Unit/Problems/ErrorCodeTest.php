@@ -57,6 +57,7 @@ test('the registry holds exactly the known codes', function () {
         'catalog.seat_map_conflict',
         'catalog.seat_map_venue_mismatch',
         'catalog.seat_map_virtual_event',
+        'catalog.seat_map_in_use',
     ]);
 });
 
@@ -118,6 +119,7 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'catalog.seat_map_conflict' => [ErrorCode::CatalogSeatMapConflict, 409, 'Seat map conflict', '/problems/catalog-seat-map-conflict'],
     'catalog.seat_map_venue_mismatch' => [ErrorCode::CatalogSeatMapVenueMismatch, 422, 'Seat map venue mismatch', '/problems/catalog-seat-map-venue-mismatch'],
     'catalog.seat_map_virtual_event' => [ErrorCode::CatalogSeatMapVirtualEvent, 422, 'Seat map virtual event', '/problems/catalog-seat-map-virtual-event'],
+    'catalog.seat_map_in_use' => [ErrorCode::CatalogSeatMapInUse, 409, 'Seat map in use', '/problems/catalog-seat-map-in-use'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

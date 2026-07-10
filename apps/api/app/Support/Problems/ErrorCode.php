@@ -60,6 +60,7 @@ enum ErrorCode: string
     case CatalogSeatMapConflict = 'catalog.seat_map_conflict';
     case CatalogSeatMapVenueMismatch = 'catalog.seat_map_venue_mismatch';
     case CatalogSeatMapVirtualEvent = 'catalog.seat_map_virtual_event';
+    case CatalogSeatMapInUse = 'catalog.seat_map_in_use';
 
     public function status(): int
     {
@@ -117,6 +118,7 @@ enum ErrorCode: string
             self::CatalogSeatMapConflict => 409,
             self::CatalogSeatMapVenueMismatch => 422,
             self::CatalogSeatMapVirtualEvent => 422,
+            self::CatalogSeatMapInUse => 409,
         };
     }
 
@@ -176,6 +178,7 @@ enum ErrorCode: string
             self::CatalogSeatMapConflict => 'Seat map conflict',
             self::CatalogSeatMapVenueMismatch => 'Seat map venue mismatch',
             self::CatalogSeatMapVirtualEvent => 'Seat map virtual event',
+            self::CatalogSeatMapInUse => 'Seat map in use',
         };
     }
 
