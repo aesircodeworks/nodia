@@ -460,6 +460,8 @@ Test evidence (stage close gate, Fri Jul 10 03:07 local):
 - `composer -d apps/api run test` (all six suites against PostgreSQL): 936 passed, 3693 assertions, 0 failures, ~88s.
 - `composer -d apps/api run types:generate`: clean; no diff under `packages/api-client/src/generated`.
 
+Commit: `f4a5860` (`docs: close stage 3 identity with exit criteria and risk decisions`).
+
 ### Run summary
 
 Stage 3 is done. Seventeen tasks landed Passport for both identity populations, staff and customer token lifecycle with refresh reuse detection, memberships and template-aware roles under RLS, capability Gates with the authorization matrix, Stage 2 platform-route rebinding, MFA enrollment and enforcement, customers with guest claim, activity-log audit coverage, and staff password reset. Final state: 936 tests passing with 3693 assertions across all six suites, Pint and Larastan clean, zero contract drift. Handoffs: Stage 4 attaches `UserInvited`, `UserRoleChanged`, and `CustomerRegistered` (and the deferred Tenancy producers) at the Action comments already marked; Stage 5 onward authorizes admin endpoints through the capability layer built here.
