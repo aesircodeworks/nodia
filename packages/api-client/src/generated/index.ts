@@ -177,11 +177,14 @@ export type ErrorCode =
   | 'catalog.event_not_cancelable'
   | 'catalog.seat_map_duplicate_seats'
   | 'catalog.seat_map_name_taken'
-  | 'catalog.seat_map_conflict';
+  | 'catalog.seat_map_conflict'
+  | 'catalog.seat_map_venue_mismatch'
+  | 'catalog.seat_map_virtual_event';
 export type EventData = {
   id: string;
   tenant_id: string;
   venue_id: string | null;
+  seat_map_id: string | null;
   venue?: VenueData | null;
   status: string;
   name: Record<string, string>;
@@ -403,6 +406,7 @@ export type UpdateEventData = {
   end_at?: string;
   timezone?: string;
   async_payment_policy?: AsyncPaymentPolicyData;
+  seat_map_id?: string | null;
 };
 export type UpdateRoleData = {
   name?: string;

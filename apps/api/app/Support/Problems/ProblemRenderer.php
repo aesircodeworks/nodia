@@ -142,6 +142,8 @@ class ProblemRenderer
             ErrorCode::CatalogSeatMapDuplicateSeats => 'The seats array contains two or more seats sharing the same section, row, and number.',
             ErrorCode::CatalogSeatMapNameTaken => 'A seat map with this name already exists for the venue.',
             ErrorCode::CatalogSeatMapConflict => 'A seat collided with an existing section, row, and number on this seat map.',
+            ErrorCode::CatalogSeatMapVenueMismatch => "The seat map does not exist or does not belong to the event's venue.",
+            ErrorCode::CatalogSeatMapVirtualEvent => 'A virtual event cannot have a seat_map_id.',
         };
     }
 }

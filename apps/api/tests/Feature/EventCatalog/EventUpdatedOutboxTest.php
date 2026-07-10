@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Models\Event;
+use App\EventCatalog\Models\SeatMap;
+use App\EventCatalog\Models\Venue;
 use App\Identity\Capability;
 use App\Models\User;
 use App\Support\Outbox\Models\OutboxEvent;
@@ -36,7 +38,10 @@ afterEach(function (): void {
     app(TenantTransaction::class)->asTenant($this->tenantId, function (): void {
         DB::table('outbox_deliveries')->where('tenant_id', $this->tenantId)->delete();
         DB::table('outbox_events')->where('tenant_id', $this->tenantId)->delete();
+        // events before seat_maps: events.seat_map_id is on delete
+        // restrict (stage-05b plan, Data model).
         DB::table('events')->where('tenant_id', $this->tenantId)->delete();
+        DB::table('seat_maps')->where('tenant_id', $this->tenantId)->delete();
         DB::table('venues')->where('tenant_id', $this->tenantId)->delete();
         DB::table('memberships')->where('tenant_id', $this->tenantId)->delete();
     });
@@ -112,6 +117,37 @@ it('records nothing when the target event does not exist', function () {
     );
 
     expect($count)->toBe(0);
+});
+
+it('persists exactly one EventUpdated outbox row when only seat_map_id changes', function () {
+    $venue = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => Venue::factory()->create(['tenant_id' => $this->tenantId]),
+    );
+    $seatMap = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => SeatMap::factory()->create(['tenant_id' => $this->tenantId, 'venue_id' => $venue->id]),
+    );
+    $event = eventUpdatedRow($this->tenantId, [
+        'is_virtual' => false, 'venue_id' => $venue->id, 'virtual_event_url' => null,
+    ]);
+
+    $response = $this->patchJson('/v1/events/'.$event->id, ['seat_map_id' => $seatMap->id]);
+
+    $response->assertOk();
+
+    $rows = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => OutboxEvent::query()->where('type', 'EventUpdated')->get(),
+    );
+
+    expect($rows)->toHaveCount(1);
+
+    $row = $rows->first();
+
+    expect($row->aggregate_id)->toBe($event->id)
+        ->and($row->tenant_id)->toBe($this->tenantId)
+        ->and($row->payload)->toBe(['event_id' => $event->id]);
 });
 
 it('records nothing when the target event is canceled', function () {

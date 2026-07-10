@@ -8,7 +8,10 @@ use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Events\EventUpdated;
 use App\EventCatalog\Exceptions\EventImmutableException;
 use App\EventCatalog\Exceptions\EventNotFoundException;
+use App\EventCatalog\Exceptions\SeatMapVenueMismatchException;
+use App\EventCatalog\Exceptions\SeatMapVirtualEventException;
 use App\EventCatalog\Models\Event;
+use App\EventCatalog\Models\SeatMap;
 use App\Support\Outbox\OutboxRecorder;
 use Spatie\LaravelData\Optional;
 
@@ -34,6 +37,20 @@ use Spatie\LaravelData\Optional;
  * canceled and rejects) or blocked until this transaction commits, closing
  * the race where a canceled event could still be modified (CLAUDE.md:
  * invariant-guarding writes are conditional, never read-then-write).
+ *
+ * seat_map_id linkage (stage-05b plan, Endpoints: "PATCH /v1/events/
+ * {event} (extension of the Stage 5a endpoint)") is validated here, not in
+ * UpdateEventData: the check needs a database read (does the seat map
+ * exist and belong to the effective venue?) and the target Event's
+ * current row (a field UpdateEventData does not carry is left at its
+ * current value, mirroring every other field's own "leave untouched"
+ * semantics), mirroring catalog.currency_mismatch's own precedent of a
+ * boundary check living in the Action (CreateTicketType). The check runs
+ * against the *effective* venue_id/is_virtual/seat_map_id - each field
+ * given in the payload, or the locked row's current value otherwise - so
+ * changing venue_id or flipping is_virtual while seat_map_id stays set
+ * (given or already stored) is rejected exactly like setting a mismatched
+ * seat_map_id directly, unless the same request clears the link to null.
  */
 final class UpdateEvent
 {
@@ -86,10 +103,42 @@ final class UpdateEvent
             $attributes['async_payment_policy'] = $data->asyncPaymentPolicy;
         }
 
+        if (! $data->seatMapId instanceof Optional) {
+            $attributes['seat_map_id'] = $data->seatMapId;
+        }
+
+        $this->assertSeatMapLinkage($event, $attributes);
+
         $event->update($attributes);
 
         $this->outbox->record(EventUpdated::fromEvent($event));
 
         return EventData::fromModel($event->refresh());
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function assertSeatMapLinkage(Event $event, array $attributes): void
+    {
+        $seatMapId = array_key_exists('seat_map_id', $attributes) ? $attributes['seat_map_id'] : $event->seat_map_id;
+
+        if ($seatMapId === null) {
+            return;
+        }
+
+        $isVirtual = array_key_exists('is_virtual', $attributes) ? $attributes['is_virtual'] : $event->is_virtual;
+
+        if ($isVirtual) {
+            throw SeatMapVirtualEventException::forEvent($event->id);
+        }
+
+        $venueId = array_key_exists('venue_id', $attributes) ? $attributes['venue_id'] : $event->venue_id;
+
+        $seatMap = SeatMap::query()->find($seatMapId);
+
+        if ($seatMap === null || $seatMap->venue_id !== $venueId) {
+            throw SeatMapVenueMismatchException::forSeatMap($seatMapId, $venueId);
+        }
     }
 }

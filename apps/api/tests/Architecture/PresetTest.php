@@ -12,6 +12,8 @@ use App\EventCatalog\Exceptions\SeatMapConflictException;
 use App\EventCatalog\Exceptions\SeatMapDuplicateSeatsException;
 use App\EventCatalog\Exceptions\SeatMapNameTakenException;
 use App\EventCatalog\Exceptions\SeatMapNotFoundException;
+use App\EventCatalog\Exceptions\SeatMapVenueMismatchException;
+use App\EventCatalog\Exceptions\SeatMapVirtualEventException;
 use App\EventCatalog\Exceptions\TicketTypeNotFoundException;
 use App\EventCatalog\Exceptions\VenueNotFoundException;
 use App\Identity\Capability;
@@ -178,6 +180,8 @@ arch()->preset()->laravel()->ignoring([
     SeatMapNameTakenException::class,
     SeatMapNotFoundException::class,
     SeatMapConflictException::class,
+    SeatMapVenueMismatchException::class,
+    SeatMapVirtualEventException::class,
     MissingTenantHeaderException::class,
     InvalidTenantHeaderException::class,
     TenantAccessDeniedException::class,

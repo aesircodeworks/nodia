@@ -17,6 +17,9 @@ use Spatie\LaravelData\Optional;
  * nowhere"). venue is Optional when the venue relation was not requested
  * via include=venue, and ticket_types is Optional when the ticketTypes
  * relation was not requested via include=ticket_types (endpoint table).
+ * seatMapId (stage-05b plan, Endpoints: "the map id appears in the event
+ * admin read shape") is always present, unlike venue/ticket_types: it is
+ * a scalar column on events, not a relation gated behind an include.
  */
 #[MapName(SnakeCaseMapper::class)]
 class EventData extends Data
@@ -30,6 +33,7 @@ class EventData extends Data
         public string $id,
         public string $tenantId,
         public ?string $venueId,
+        public ?string $seatMapId,
         public VenueData|Optional|null $venue,
         public string $status,
         public array $name,
@@ -52,6 +56,7 @@ class EventData extends Data
             $event->id,
             $event->tenant_id,
             $event->venue_id,
+            $event->seat_map_id,
             self::venueFromModel($event),
             $event->status->value,
             $event->getTranslations('name'),

@@ -2497,7 +2497,12 @@ paths:
         pair are each an all-or-nothing bundle: supplying part of either
         renders request.validation_failed. A canceled event cannot be
         updated (code catalog.event_immutable); editing a published event
-        is allowed.
+        is allowed. seat_map_id (stage-05b plan) must belong to the
+        event's effective venue and the event must not be virtual (codes
+        catalog.seat_map_venue_mismatch, catalog.seat_map_virtual_event);
+        changing venue_id or flipping is_virtual while seat_map_id remains
+        set is rejected with the same codes unless the request clears the
+        link in the same call.
       security:
         - BearerAuth: []
       requestBody:
@@ -2552,11 +2557,16 @@ paths:
             virtual_event_url combination or start_at/end_at pair (given
             only in part, or end_at at or before start_at), a translatable
             field carrying an unsupported locale, or an invalid IANA
-            timezone.
+            timezone; or seat_map_id validation failed (stage-05b plan):
+            the seat map does not exist, is not visible under RLS, or does
+            not belong to the event's effective venue (code
+            catalog.seat_map_venue_mismatch), or the event's effective
+            is_virtual is true while seat_map_id is non-null (code
+            catalog.seat_map_virtual_event).
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ValidationProblem'
+                $ref: '#/components/schemas/EventUpdateUnprocessableProblem'
   /v1/events/{event}/publish:
     parameters:
       - name: event
@@ -3949,11 +3959,15 @@ components:
         and description carry the full locale-keyed map (the editing
         surface); venue is present only when include=venue was requested,
         null when the event has no venue; ticket_types is present only when
-        include=ticket_types was requested.
+        include=ticket_types was requested. seat_map_id (stage-05b plan,
+        Endpoints: "the map id appears in the event admin read shape") is
+        always present, unlike venue and ticket_types: it is a scalar
+        column, not a relation gated behind an include.
       required:
         - id
         - tenant_id
         - venue_id
+        - seat_map_id
         - status
         - name
         - description
@@ -3975,6 +3989,13 @@ components:
         venue_id:
           type: [string, 'null']
           format: uuid
+        seat_map_id:
+          type: [string, 'null']
+          format: uuid
+          description: >-
+            The seating template this event was built from, set via PATCH
+            /v1/events/{event} (stage-05b plan). Null until an event opts
+            into a template.
         venue:
           oneOf:
             - $ref: '#/components/schemas/Venue'
@@ -4094,6 +4115,14 @@ components:
           type: string
         async_payment_policy:
           $ref: '#/components/schemas/AsyncPaymentPolicy'
+        seat_map_id:
+          type: [string, 'null']
+          format: uuid
+          description: >-
+            Set to a seat map id belonging to the event's venue, or null to
+            clear the link (stage-05b plan, Endpoints). Changing venue_id
+            or flipping is_virtual while seat_map_id remains set (given or
+            already stored) is rejected unless the same request clears it.
       additionalProperties: false
     EventPage:
       type: object
@@ -4862,6 +4891,40 @@ components:
             code:
               type: string
               enum: [catalog.event_immutable]
+      unevaluatedProperties: false
+    EventUpdateUnprocessableProblem:
+      description: >-
+        Problem document for a PATCH on an event that cannot be processed:
+        either request validation failed (with the errors map, code
+        request.validation_failed), or seat_map_id validation failed
+        (stage-05b plan, Endpoints): the seat map does not exist, is not
+        visible under RLS, or does not belong to the event's effective
+        venue (code catalog.seat_map_venue_mismatch), or the event's
+        effective is_virtual is true while seat_map_id is non-null (code
+        catalog.seat_map_virtual_event), mirroring
+        TicketTypeUnprocessableProblem's own precedent for combining
+        multiple codes at the same status.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - oneOf:
+            - type: object
+              required:
+                - errors
+              properties:
+                code:
+                  type: string
+                  enum: [request.validation_failed]
+                errors:
+                  type: object
+                  additionalProperties:
+                    type: array
+                    items:
+                      type: string
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum: [catalog.seat_map_venue_mismatch, catalog.seat_map_virtual_event]
       unevaluatedProperties: false
     EventNotPublishableProblem:
       description: >-

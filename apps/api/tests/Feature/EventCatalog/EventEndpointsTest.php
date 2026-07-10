@@ -2,6 +2,7 @@
 
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Models\Event;
+use App\EventCatalog\Models\SeatMap;
 use App\EventCatalog\Models\TicketType;
 use App\EventCatalog\Models\Venue;
 use App\Identity\Capability;
@@ -40,7 +41,11 @@ afterEach(function (): void {
             DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
             DB::table('memberships')->where('tenant_id', $tenantId)->delete();
             DB::table('ticket_types')->where('tenant_id', $tenantId)->delete();
+            // events before seat_maps: events.seat_map_id is on delete
+            // restrict, so a seat map still referenced by an event cannot
+            // be deleted first (stage-05b plan, Data model).
             DB::table('events')->where('tenant_id', $tenantId)->delete();
+            DB::table('seat_maps')->where('tenant_id', $tenantId)->delete();
             DB::table('venues')->where('tenant_id', $tenantId)->delete();
         });
     }
@@ -61,6 +66,17 @@ function makeEventVenue(string $tenantId, array $attributes = []): Venue
     return app(TenantTransaction::class)->asTenant(
         $tenantId,
         fn () => Venue::factory()->create(['tenant_id' => $tenantId, ...$attributes]),
+    );
+}
+
+/**
+ * @param  array<string, mixed>  $attributes
+ */
+function makeEventSeatMap(string $tenantId, string $venueId, array $attributes = []): SeatMap
+{
+    return app(TenantTransaction::class)->asTenant(
+        $tenantId,
+        fn () => SeatMap::factory()->create(['tenant_id' => $tenantId, 'venue_id' => $venueId, ...$attributes]),
     );
 }
 
@@ -150,7 +166,7 @@ describe('POST /v1/events', function () {
             ->and($body['end_at'])->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/')
             ->and($body['async_payment_policy'])->toBe(['slow_methods_enabled' => true, 'low_inventory_cutoff' => null])
             ->and(array_keys($body))->toBe([
-                'id', 'tenant_id', 'venue_id', 'status', 'name', 'description', 'start_at', 'end_at',
+                'id', 'tenant_id', 'venue_id', 'seat_map_id', 'status', 'name', 'description', 'start_at', 'end_at',
                 'timezone', 'is_virtual', 'virtual_event_url', 'async_payment_policy', 'created_at', 'updated_at',
             ]);
     });
@@ -629,5 +645,136 @@ describe('PATCH /v1/events/{event}', function () {
             ->assertForbidden()
             ->assertConformsToOpenApi()
             ->assertJsonPath('code', 'missing_capability');
+    });
+
+    it('accepts seat_map_id for a physical event whose venue owns the map', function () {
+        $venue = makeEventVenue($this->tenantId);
+        $seatMap = makeEventSeatMap($this->tenantId, $venue->id);
+        $event = makeEventRow($this->tenantId, ['is_virtual' => false, 'venue_id' => $venue->id, 'virtual_event_url' => null]);
+
+        $this->patchJson('/v1/events/'.$event->id, ['seat_map_id' => $seatMap->id])
+            ->assertOk()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('seat_map_id', $seatMap->id);
+    });
+
+    it('clears seat_map_id to null', function () {
+        $venue = makeEventVenue($this->tenantId);
+        $seatMap = makeEventSeatMap($this->tenantId, $venue->id);
+        $event = makeEventRow($this->tenantId, [
+            'is_virtual' => false, 'venue_id' => $venue->id, 'virtual_event_url' => null, 'seat_map_id' => $seatMap->id,
+        ]);
+
+        $this->patchJson('/v1/events/'.$event->id, ['seat_map_id' => null])
+            ->assertOk()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('seat_map_id', null);
+    });
+
+    it('rejects a seat_map_id belonging to another venue with catalog.seat_map_venue_mismatch', function () {
+        $venue = makeEventVenue($this->tenantId);
+        $otherVenue = makeEventVenue($this->tenantId);
+        $seatMap = makeEventSeatMap($this->tenantId, $otherVenue->id);
+        $event = makeEventRow($this->tenantId, ['is_virtual' => false, 'venue_id' => $venue->id, 'virtual_event_url' => null]);
+
+        $this->patchJson('/v1/events/'.$event->id, ['seat_map_id' => $seatMap->id])
+            ->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'catalog.seat_map_venue_mismatch');
+    });
+
+    it('rejects an unknown seat_map_id with catalog.seat_map_venue_mismatch', function () {
+        $venue = makeEventVenue($this->tenantId);
+        $event = makeEventRow($this->tenantId, ['is_virtual' => false, 'venue_id' => $venue->id, 'virtual_event_url' => null]);
+
+        $this->patchJson('/v1/events/'.$event->id, ['seat_map_id' => (string) Str::uuid7()])
+            ->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'catalog.seat_map_venue_mismatch');
+    });
+
+    it('rejects a non-null seat_map_id on a virtual event with catalog.seat_map_virtual_event', function () {
+        $venue = makeEventVenue($this->tenantId);
+        $seatMap = makeEventSeatMap($this->tenantId, $venue->id);
+        $event = makeEventRow($this->tenantId, [
+            'is_virtual' => true, 'venue_id' => null, 'virtual_event_url' => 'https://example.test/stream',
+        ]);
+
+        $this->patchJson('/v1/events/'.$event->id, ['seat_map_id' => $seatMap->id])
+            ->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'catalog.seat_map_virtual_event');
+    });
+
+    it('rejects changing venue_id while seat_map_id stays set, unless the request clears the link', function () {
+        $venue = makeEventVenue($this->tenantId);
+        $otherVenue = makeEventVenue($this->tenantId);
+        $seatMap = makeEventSeatMap($this->tenantId, $venue->id);
+        $event = makeEventRow($this->tenantId, [
+            'is_virtual' => false, 'venue_id' => $venue->id, 'virtual_event_url' => null, 'seat_map_id' => $seatMap->id,
+        ]);
+
+        $this->patchJson('/v1/events/'.$event->id, [
+            'is_virtual' => false,
+            'venue_id' => $otherVenue->id,
+            'virtual_event_url' => null,
+        ])
+            ->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'catalog.seat_map_venue_mismatch');
+    });
+
+    it('allows changing venue_id when the same request clears seat_map_id', function () {
+        $venue = makeEventVenue($this->tenantId);
+        $otherVenue = makeEventVenue($this->tenantId);
+        $seatMap = makeEventSeatMap($this->tenantId, $venue->id);
+        $event = makeEventRow($this->tenantId, [
+            'is_virtual' => false, 'venue_id' => $venue->id, 'virtual_event_url' => null, 'seat_map_id' => $seatMap->id,
+        ]);
+
+        $this->patchJson('/v1/events/'.$event->id, [
+            'is_virtual' => false,
+            'venue_id' => $otherVenue->id,
+            'virtual_event_url' => null,
+            'seat_map_id' => null,
+        ])
+            ->assertOk()
+            ->assertConformsToOpenApi()
+            ->assertJson(['venue_id' => $otherVenue->id, 'seat_map_id' => null]);
+    });
+
+    it('rejects flipping is_virtual to true while seat_map_id stays set, unless the request clears the link', function () {
+        $venue = makeEventVenue($this->tenantId);
+        $seatMap = makeEventSeatMap($this->tenantId, $venue->id);
+        $event = makeEventRow($this->tenantId, [
+            'is_virtual' => false, 'venue_id' => $venue->id, 'virtual_event_url' => null, 'seat_map_id' => $seatMap->id,
+        ]);
+
+        $this->patchJson('/v1/events/'.$event->id, [
+            'is_virtual' => true,
+            'venue_id' => null,
+            'virtual_event_url' => 'https://example.test/stream',
+        ])
+            ->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'catalog.seat_map_virtual_event');
+    });
+
+    it('allows flipping is_virtual to true when the same request clears seat_map_id', function () {
+        $venue = makeEventVenue($this->tenantId);
+        $seatMap = makeEventSeatMap($this->tenantId, $venue->id);
+        $event = makeEventRow($this->tenantId, [
+            'is_virtual' => false, 'venue_id' => $venue->id, 'virtual_event_url' => null, 'seat_map_id' => $seatMap->id,
+        ]);
+
+        $this->patchJson('/v1/events/'.$event->id, [
+            'is_virtual' => true,
+            'venue_id' => null,
+            'virtual_event_url' => 'https://example.test/stream',
+            'seat_map_id' => null,
+        ])
+            ->assertOk()
+            ->assertConformsToOpenApi()
+            ->assertJson(['is_virtual' => true, 'seat_map_id' => null]);
     });
 });

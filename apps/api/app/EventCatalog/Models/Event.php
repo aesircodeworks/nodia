@@ -31,6 +31,7 @@ use Spatie\Translatable\HasTranslations;
  * @property string $id
  * @property string $tenant_id
  * @property string|null $venue_id
+ * @property string|null $seat_map_id
  * @property EventStatus $status
  * @property array<string, string> $name
  * @property array<string, string> $description
@@ -46,6 +47,7 @@ use Spatie\Translatable\HasTranslations;
 #[Fillable([
     'tenant_id',
     'venue_id',
+    'seat_map_id',
     'status',
     'name',
     'description',

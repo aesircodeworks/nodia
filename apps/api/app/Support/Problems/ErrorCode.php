@@ -58,6 +58,8 @@ enum ErrorCode: string
     case CatalogSeatMapDuplicateSeats = 'catalog.seat_map_duplicate_seats';
     case CatalogSeatMapNameTaken = 'catalog.seat_map_name_taken';
     case CatalogSeatMapConflict = 'catalog.seat_map_conflict';
+    case CatalogSeatMapVenueMismatch = 'catalog.seat_map_venue_mismatch';
+    case CatalogSeatMapVirtualEvent = 'catalog.seat_map_virtual_event';
 
     public function status(): int
     {
@@ -113,6 +115,8 @@ enum ErrorCode: string
             self::CatalogSeatMapDuplicateSeats => 422,
             self::CatalogSeatMapNameTaken => 422,
             self::CatalogSeatMapConflict => 409,
+            self::CatalogSeatMapVenueMismatch => 422,
+            self::CatalogSeatMapVirtualEvent => 422,
         };
     }
 
@@ -170,6 +174,8 @@ enum ErrorCode: string
             self::CatalogSeatMapDuplicateSeats => 'Duplicate seats',
             self::CatalogSeatMapNameTaken => 'Seat map name taken',
             self::CatalogSeatMapConflict => 'Seat map conflict',
+            self::CatalogSeatMapVenueMismatch => 'Seat map venue mismatch',
+            self::CatalogSeatMapVirtualEvent => 'Seat map virtual event',
         };
     }
 
