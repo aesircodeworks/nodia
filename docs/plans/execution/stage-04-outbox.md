@@ -16,7 +16,7 @@ Verified starting state: Stages 1-3 are Done. Stage 4 is Not started. No `app/Su
 - [x] task-02: Correlation ID container binding (plan task 2)
 - [x] task-03: `outbox_events` migration, model, isolation tests (plan task 3)
 - [x] task-04: Recording API, envelope, registry validation, architecture tests (plan task 4)
-- [ ] task-05: Horizon and queue plumbing, failed_jobs UUID PK (plan task 5)
+- [x] task-05: Horizon and queue plumbing, failed_jobs UUID PK (plan task 5)
 - [ ] task-06: `outbox_deliveries` migration, model, conditional processed transition (plan task 6)
 - [ ] task-07: Subscriber registry, after-commit dispatcher, delivery job, test fixtures (plan task 7)
 - [ ] task-08: Reconciliation sweeper, config windows, scheduler (plan task 8)
@@ -86,3 +86,22 @@ What landed:
 Deviations: none material. Envelope is a readonly value object rather than a laravel-data class so it does not enter TypeScript generation (payloads already do; that exclusion remains a later cleanup). Production Tenancy type names register now so task-14 producers can record without a second registry pass; Identity types still wait on their event classes.
 
 Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff. Focused Outbox/Events architecture and unit/feature recording tests passed 31 tests, 72 assertions. `composer -d apps/api run test` (all six suites) passed 978 tests, 3786 assertions, 0 failures.
+
+#### task-05: Horizon and queue plumbing (2026-07-10 04:13 -03)
+
+Commits: `9bbf8c5` (`chore(deps): install laravel/horizon`), `499d15f` (`feat(support): Horizon queue plumbing and failed_jobs UUID PK`).
+
+Landed plan task 5: laravel/horizon with published config, UUID primary key on `failed_jobs`, unscoped queue infrastructure tables, local-only dashboard gate, and the isolation-suite unscoped-table sweep.
+
+What landed:
+
+- `laravel/horizon` `^5.47` (verified against Packagist for Laravel 13 / illuminate `^13.0`; pulls `laravel/sentinel` as a transitive). Published `config/horizon.php` and `App\Providers\HorizonServiceProvider`.
+- `viewHorizon` gate always returns false; parent Horizon auth still admits `app()->environment('local')` only. Horizon routes sit under `/horizon`, not `/v1`.
+- Migration `2026_07_10_000021_create_failed_jobs_and_job_batches_tables`: `failed_jobs.uuid` is the uuid PK (no bigint auto-increment); `job_batches` keeps its string PK; both get `Rls::grantUnscoped` and no `tenant_id` / RLS.
+- `App\Support\Queue\UuidFailedJobProvider` extends the stock database-uuids failer so listing orders by `failed_at` without a surrogate bigint id; bound via `AppServiceProvider` when the failer is `DatabaseUuidFailedJobProvider`.
+- Queue defaults: connection `redis`, failed driver `database-uuids`, batching/failed DB connection `pgsql`.
+- `App\Support\Database\UnscopedTables` exclusion list plus isolation sweep requiring every public base table without RLS to appear on that list (cache, oauth, failed_jobs, job_batches, etc.).
+
+Deviations: none material. `failed_jobs` uses the job uuid as the sole PK rather than a separate bigint id plus uuid column, matching data-conventions; the provider subclass is the only framework adaptation required. The isolation "tenant-scoped-table sweep" named in the plan did not exist as code yet; this task introduces it as the unscoped exclusion sweep that stage-12 and later stages will extend.
+
+Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff. Focused Horizon/failed_jobs/unscoped-sweep tests passed 12 tests, 69 assertions. `composer -d apps/api run test` (all six suites) passed 990 tests, 3855 assertions, 0 failures.
