@@ -264,3 +264,28 @@ Exit criteria walk against the stage plan's ten checks:
 10. **Met.** `docs/api-implementation-plan.md`'s status table now reads "Stage 5b: Seating Templates | Done".
 
 All ten exit criteria met. Stage 5b is closed; Stage 6 (Inventory and Reserved Seating) owns `event_seats` materialization on publish, per-event seat blocking, and ticket-type zoning, as scoped by this stage's non-goals.
+
+### Gate: 2026-07-10 18:34 -03
+
+Post-close quality-gate sweep for stage 5b.
+
+Local results (repo root):
+
+- `composer -d apps/api run lint` (Pint): passed.
+- `composer -d apps/api run analyse` (Larastan): passed, 0 errors.
+- `composer -d apps/api run test` (Pest, all suites): 1581 passed, 6286 assertions, no flake.
+- `composer -d apps/api run types:generate` then `git status --short packages/api-client/src/generated`: no drift after the fix below.
+- `pnpm typecheck` (generated contract types changed on-branch): all five workspaces green.
+- `pnpm --filter api-client --filter ui run lint` (Packages ESLint, the CI-only gate): passed after the fix below.
+
+Fix applied during the sweep (a genuine stage 5b defect the local Pint/Larastan/Pest gates could not catch, surfaced only by the CI Packages ESLint step on the regenerated output): `SeatMapData.layout` and `UpsertSeatMapData.layout` shipped as `array<string, mixed>` without the `#[LiteralTypeScriptType('Record<string, unknown>')]` annotation the codebase already uses for opaque map fields (`Tenant.payout_schedule`), so spatie/typescript-transformer emitted `Record<string, any>`, which trips ESLint `@typescript-eslint/no-explicit-any` on `packages/api-client/src/generated/index.ts` (lines 326, 443). Fixed by adding the annotation to both Data classes and regenerating; `layout` now types as `Record<string, unknown>`. A follow-up commit synced the tracked `typescript-transformer-manifest.json` hash (`dc8bc4ee6372205c8405703c8b472d1c`), which the first fix commit had left behind and which the `API Contract Drift` CI check flagged. Commits: `319f52f` (annotation + regenerated `index.ts`), `26a166e` (manifest hash sync).
+
+CI (branch `feat/api-implementation`, definitive green run set on commit `26a166e`):
+
+- API: run `29124938736` — success.
+- Packages: run `29124938797` — success.
+- Storefront: run `29124938718` — success.
+- Admin: run `29124938867` — success.
+- Checkin: run `29124938811` — success.
+
+Two earlier CI sets on this branch failed before going green and drove the fixes above: set on `319f52f` had Packages ESLint (`no-explicit-any`) and API Contract Drift failures; the prior set on `ec4e22c` (pre-fix journal-close state) had the Packages ESLint failure. Every workflow is green on the final commit. All local and CI gates green.
