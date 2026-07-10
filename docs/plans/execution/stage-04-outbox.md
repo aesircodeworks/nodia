@@ -22,7 +22,7 @@ Verified starting state: Stages 1-3 are Done. Stage 4 is Not started. No `app/Su
 - [x] task-08: Reconciliation sweeper, config windows, scheduler (plan task 8)
 - [x] task-09: Ordered-consumption helper (plan task 9)
 - [x] task-10: Replay primitive and artisan command (plan task 10)
-- [ ] task-11: `UserInvited` producer in InviteUser (plan task 11)
+- [x] task-11: `UserInvited` producer in InviteUser (plan task 11)
 - [ ] task-12: `UserRoleChanged` producer in AssignRole (plan task 12)
 - [ ] task-13: `CustomerRegistered` producer in RegisterCustomer (plan task 13)
 - [ ] task-14: `TenantCreated` and `DomainVerified` producers plus 9.3 registry rows (plan task 14)
@@ -205,3 +205,21 @@ What landed:
 Deviations: none material. Replay intentionally bypasses `outbox_deliveries` and `ProcessOutboxDelivery` (rebuild rescans the log; live progress tracking stays on the delivery path). Stage 12 audited operational wrappers remain deferred.
 
 Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff. Focused OutboxReplay / SubscriberRegistry tests passed 12 tests, 47 assertions. `composer -d apps/api run test` (all six suites) passed 1036 tests, 4015 assertions, 0 failures.
+
+#### task-11: UserInvited producer in InviteUser (2026-07-10 04:45 -03)
+
+Commit: `8ee2bf3` (`feat(identity): UserInvited producer in InviteUser`), plus this journal entry.
+
+Landed plan task 11 / Slice 6 identity producer: `UserInvited` event and payload, registry registration from Identity, recording inside InviteUser's producing transaction, and the Slice 6 unit/feature suite.
+
+What landed:
+
+- `App\Identity\Events\UserInvited` and `UserInvitedPayload`: aggregate `membership` / membership id; envelope `tenant_id` from the membership (sentinel when the membership is on the platform tenant); payload fields `user_id`, `membership_id`, `tenant_id`, `role_id`, `invited_by_user_id` only (no email or name). Payload carries `#[Hidden]` so it is excluded from TypeScript generation as an internal contract.
+- `IdentityServiceProvider` registers the `UserInvited` type-name string on the outbox registry (resolved via container so direct `boot()` unit calls keep working).
+- `InviteUser` injects `OutboxRecorder` and records after the membership insert in the enclosing tenant request transaction; takes `$invitedByUserId` from the controller's authenticated staff user.
+- Slice 6 tests: HTTP success persists exactly one outbox row (type, aggregate, tenant, correlation ID from `X-Correlation-Id`, payload shape without PII); validation, capability, and membership-exists failures record nothing; platform-scope invite under the sentinel tenant carries the sentinel in the envelope; unit payload field set and no email/name; optional rollback coupling after record leaves no row.
+- Existing invite-path feature/unit suites clear `outbox_events` / `outbox_deliveries` in afterEach so tenant teardown is not blocked by the new FK rows.
+
+Deviations: none material. InviteUser still creates `MembershipScope::Tenant` even when `X-Tenant-Id` is the sentinel (pre-existing Stage 3 behavior); the platform-scope envelope test asserts envelope `tenant_id` equals the membership's tenant (sentinel) rather than requiring `scope = platform`.
+
+Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff (`UserInvitedPayload` not emitted). Focused UserInvited / InviteUserAction tests passed 14 tests, 57 assertions. `composer -d apps/api run test` (all six suites) passed 1045 tests, 4063 assertions, 0 failures.
