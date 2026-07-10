@@ -11,6 +11,7 @@
 // checks against the host-resolved tenant ahead of Passport's own
 // signature and revocation validation.
 
+use App\Http\Middleware\RecordActivityAudit;
 use App\Identity\Http\Controllers\ConfirmCustomerClaimController;
 use App\Identity\Http\Controllers\CustomerLogoutController;
 use App\Identity\Http\Controllers\CustomerRefreshController;
@@ -21,9 +22,15 @@ use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/customer/token', CustomerTokenController::class);
 Route::post('/auth/customer/refresh', CustomerRefreshController::class);
-Route::post('/customers', RegisterCustomerController::class);
+
+// RecordActivityAudit (stage-03 task breakdown item 15) is attached only
+// to the two routes that genuinely mutate a customer row; token issuance
+// and refresh above write to the unscoped Passport oauth tables, not
+// tenant-scoped domain data, so they carry no "mutating endpoint" audit
+// entry the same way the platform group's oauth-adjacent routes do not.
+Route::post('/customers', RegisterCustomerController::class)->middleware(RecordActivityAudit::class);
 Route::post('/auth/customer/claim', RequestCustomerClaimController::class);
-Route::post('/auth/customer/claim/confirm', ConfirmCustomerClaimController::class);
+Route::post('/auth/customer/claim/confirm', ConfirmCustomerClaimController::class)->middleware(RecordActivityAudit::class);
 
 Route::middleware('auth:customer')->group(function (): void {
     Route::post('/auth/customer/logout', CustomerLogoutController::class);

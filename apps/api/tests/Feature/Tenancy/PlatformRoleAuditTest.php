@@ -5,27 +5,37 @@ use App\Identity\Enums\MembershipScope;
 use App\Identity\Models\Membership;
 use App\Identity\Models\Role;
 use App\Models\User;
+use App\Support\Audit\Models\ActivityLogEntry;
 use App\Support\Tenancy\PlatformRoleAudit;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
-use Monolog\Level;
-use Tests\Support\LogCapture;
 use Tests\Support\MigratedDatabase;
 use Tests\Support\PlatformStaff;
 use Tests\Support\PostgresTestDatabase;
 use Tests\Support\StaffTokens;
+use Tests\TestCase;
 
 /*
- * Slice 7 second half of the stage-02 plan: every request executing under
- * nodia_platform emits a structured audit log entry carrying the request
- * correlation ID (system-design 4.3), asserted via the log fake. The
- * task-11 decision put storefront host resolution and the verification
- * endpoint on nodia_resolver, so the platform CRUD group is the only
- * production surface under audit.
+ * Slice 7 second half of the stage-02 plan, upgraded from a structured
+ * log line to a real activity_log row by stage-03 task breakdown item 15
+ * (App\Support\Audit\ActivityLogger): every request executing under
+ * nodia_platform is recorded, keyed by the request correlation ID
+ * (system-design 4.3). The task-11 decision put storefront host
+ * resolution and the verification endpoint on nodia_resolver, so the
+ * platform CRUD group is the only production surface under this audit.
+ *
+ * activity_log is append-only (task-14: no application role ever holds
+ * UPDATE or DELETE privilege on it), so rows from earlier tests in this
+ * same process are never removed and accumulate for the rest of the run.
+ * Every assertion below filters by a correlation id unique to its own
+ * request (either generated fresh here or read back from the response's
+ * own echoed X-Correlation-Id header) rather than a total row count, so
+ * accumulated rows from other tests can never produce a false pass.
  */
 
 const AUDIT_TENANT_ID = '019797f1-0000-7000-8000-0000000000aa';
@@ -90,35 +100,39 @@ function auditPath(string $uri): string
     ]);
 }
 
+/**
+ * @return Collection<int, ActivityLogEntry>
+ */
+function platformAuditEntries(string $correlationId): Collection
+{
+    return app(TenantTransaction::class)->asPlatform(
+        fn () => ActivityLogEntry::query()
+            ->where('event', PlatformRoleAudit::EVENT)
+            ->get()
+            ->filter(fn (ActivityLogEntry $entry): bool => $entry->properties?->get('correlation_id') === $correlationId)
+            ->values(),
+    );
+}
+
 it('emits exactly one audit entry carrying the correlation id for every platform CRUD request, error paths included', function (string $method, string $uri, array $body, int $status) {
     $token = PlatformStaff::token();
-    $handler = LogCapture::fake();
-
     $path = auditPath($uri);
 
-    $this->json($method, $path, $body, [
-        'X-Correlation-Id' => 'audit-test-correlation-id',
+    $response = $this->json($method, $path, $body, [
         'Authorization' => 'Bearer '.$token,
-    ])
-        ->assertStatus($status);
+    ])->assertStatus($status);
 
-    $entries = LogCapture::entriesNamed($handler, PlatformRoleAudit::MESSAGE);
+    $correlationId = $response->headers->get('X-Correlation-Id');
+    $entries = platformAuditEntries($correlationId);
 
-    // toEqual, not toBe: the shared log context set by the CorrelationId
-    // middleware merges its correlation_id key ahead of the entry's own.
     expect($entries)->toHaveCount(1)
-        ->and($entries[0]->level)->toBe(Level::Info)
-        ->and($entries[0]->context)->toEqual([
-            'role' => 'nodia_platform',
-            'correlation_id' => 'audit-test-correlation-id',
-            'method' => $method,
-            'path' => $path,
-        ]);
+        ->and($entries[0]->description)->toBe(sprintf('%s %s', $method, $path))
+        ->and($entries[0]->tenant_id)->toBe(config()->string('tenancy.platform_tenant_id'))
+        ->and($entries[0]->properties->get('platform_scope'))->toBeTrue();
 })->with('platform crud requests');
 
 it('carries the generated correlation id when the request supplies none', function () {
     $token = PlatformStaff::token();
-    $handler = LogCapture::fake();
 
     $response = $this->getJson('/v1/tenants', ['Authorization' => 'Bearer '.$token])->assertOk();
 
@@ -126,10 +140,10 @@ it('carries the generated correlation id when the request supplies none', functi
 
     expect(Str::isUuid($correlationId))->toBeTrue();
 
-    $entries = LogCapture::entriesNamed($handler, PlatformRoleAudit::MESSAGE);
+    $entries = platformAuditEntries($correlationId);
 
     expect($entries)->toHaveCount(1)
-        ->and($entries[0]->context['correlation_id'])->toBe($correlationId);
+        ->and($entries[0]->properties->get('correlation_id'))->toBe($correlationId);
 });
 
 it('still emits the audit entry when the platform handler fails and the transaction rolls back', function () {
@@ -138,55 +152,48 @@ it('still emits the audit entry when the platform handler fails and the transact
     });
 
     $token = PlatformStaff::token();
-    $handler = LogCapture::fake();
+    $correlationId = (string) Str::uuid();
 
     $this->getJson('/v1/__probe/audit-throwing', [
-        'X-Correlation-Id' => 'audit-rollback-correlation-id',
+        'X-Correlation-Id' => $correlationId,
         'Authorization' => 'Bearer '.$token,
-    ])
-        ->assertStatus(500);
+    ])->assertStatus(500);
 
-    $entries = LogCapture::entriesNamed($handler, PlatformRoleAudit::MESSAGE);
-
-    expect($entries)->toHaveCount(1)
-        ->and($entries[0]->context['correlation_id'])->toBe('audit-rollback-correlation-id');
+    expect(platformAuditEntries($correlationId))->toHaveCount(1);
 });
 
 it('emits no audit entry when platform auth denies the request before the role is assumed (no bearer)', function () {
-    $handler = LogCapture::fake();
+    $response = $this->getJson('/v1/tenants')->assertUnauthorized();
 
-    $this->getJson('/v1/tenants')->assertUnauthorized();
-
-    expect(LogCapture::entriesNamed($handler, PlatformRoleAudit::MESSAGE))->toBeEmpty();
+    expect(platformAuditEntries($response->headers->get('X-Correlation-Id')))->toBeEmpty();
 });
 
 it('still emits the audit entry when the bearer lacks tenants.manage, since the platform role was already assumed', function () {
     $token = PlatformStaff::token(Capability::EventsView);
-    $handler = LogCapture::fake();
 
-    $this->getJson('/v1/tenants', ['Authorization' => 'Bearer '.$token])->assertStatus(403);
+    $response = $this->getJson('/v1/tenants', ['Authorization' => 'Bearer '.$token])->assertStatus(403);
 
-    $entries = LogCapture::entriesNamed($handler, PlatformRoleAudit::MESSAGE);
-
-    expect($entries)->toHaveCount(1);
+    expect(platformAuditEntries($response->headers->get('X-Correlation-Id')))->toHaveCount(1);
 });
 
 it('emits no audit entry for requests that never assume the platform role', function (callable $request) {
-    $handler = LogCapture::fake();
+    $correlationId = $request($this);
 
-    $request($this);
-
-    expect(LogCapture::entriesNamed($handler, PlatformRoleAudit::MESSAGE))->toBeEmpty();
+    expect(platformAuditEntries($correlationId))->toBeEmpty();
 })->with([
-    'domain verification (nodia_resolver)' => [function ($test): void {
-        $test->getJson('/v1/internal/domain-verification?domain=acme.nodia.example')->assertNoContent();
+    'domain verification (nodia_resolver)' => [function (TestCase $test): ?string {
+        return $test->getJson('/v1/internal/domain-verification?domain=acme.nodia.example')
+            ->assertNoContent()
+            ->headers->get('X-Correlation-Id');
     }],
-    'storefront host resolution (nodia_app)' => [function ($test): void {
+    'storefront host resolution (nodia_app)' => [function (TestCase $test): ?string {
         Route::middleware('tenancy.storefront')->prefix('v1')->get('/__probe/audit-storefront', fn () => response()->noContent());
 
-        $test->getJson('http://acme.nodia.example/v1/__probe/audit-storefront')->assertNoContent();
+        return $test->getJson('http://acme.nodia.example/v1/__probe/audit-storefront')
+            ->assertNoContent()
+            ->headers->get('X-Correlation-Id');
     }],
-    'admin header resolution (nodia_app)' => [function ($test): void {
+    'admin header resolution (nodia_app)' => [function (TestCase $test): ?string {
         Route::middleware('tenancy.admin')->prefix('v1')->get('/__probe/audit-admin', fn () => response()->noContent());
 
         $staff = User::factory()->create();
@@ -201,10 +208,10 @@ it('emits no audit entry for requests that never assume the platform role', func
             ]);
         });
 
-        $test->getJson('/v1/__probe/audit-admin', [
+        $correlationId = $test->getJson('/v1/__probe/audit-admin', [
             'X-Tenant-Id' => AUDIT_TENANT_ID,
             'Authorization' => 'Bearer '.$token,
-        ])->assertNoContent();
+        ])->assertNoContent()->headers->get('X-Correlation-Id');
 
         app(TenantTransaction::class)->asTenant(AUDIT_TENANT_ID, function (): void {
             DB::table('memberships')->delete();
@@ -215,5 +222,7 @@ it('emits no audit entry for requests that never assume the platform role', func
         });
 
         User::query()->whereKey($staff->id)->delete();
+
+        return $correlationId;
     }],
 ]);

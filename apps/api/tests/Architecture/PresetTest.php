@@ -75,6 +75,10 @@ arch()->preset()->security();
 // which would route a plain send() call through the queue instead of
 // sending it synchronously (Illuminate\Mail\Mailer::sendMailable()), the
 // opposite of the stage plan's "no queue dependency" mandate.
+// App\Support\Audit\Models\ActivityLogEntry (stage-03 task-15) is a model
+// with no owning bounded context, the audit trail cross-cutting every
+// context writes to; it lives under App\Support like every other shared
+// primitive (Money, Rls, TenantContext), not App\Models.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -129,4 +133,5 @@ arch()->preset()->laravel()->ignoring([
     'App\Tenancy\Http\Controllers',
     'App\Identity\Models',
     'App\Identity\Http\Controllers',
+    'App\Support\Audit\Models',
 ]);

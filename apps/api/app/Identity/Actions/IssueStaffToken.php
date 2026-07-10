@@ -6,6 +6,8 @@ use App\Identity\Data\StaffTokenRequestData;
 use App\Identity\Data\TokenPairData;
 use App\Identity\Exceptions\InvalidCredentialsException;
 use App\Models\User;
+use App\Support\Audit\ActivityLogger;
+use App\Support\Tenancy\TenantTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Passport\Client;
@@ -40,6 +42,20 @@ use Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory;
  * credentials alone. The subsequent AuthorizationServer call re-checks
  * the same password through Passport's own grant, which is redundant but
  * harmless and keeps the actual token-minting path untouched.
+ *
+ * A successful token issuance also records an activity_log entry under
+ * the sentinel platform tenant (stage-03 plan, Slice 7: "successful staff
+ * token issuance writes a log entry"), the one other login-adjacent audit
+ * requirement task breakdown item 15 names besides the mutating-endpoint
+ * and platform-role-use coverage: staff login has no acting tenant of its
+ * own (this endpoint is mounted with no X-Tenant-Id and no tenant
+ * transaction, unlike every other audited write in this stage), so the
+ * entry is written inside a short, dedicated platform transaction opened
+ * just for the log call, mirroring PlatformRoleAudit's own precedent for
+ * a request with no ambient tenant context. Only a fully successful
+ * exchange reaches this call: a wrong password, unknown email, or failed
+ * MFA challenge throws before either the AuthorizationServer or the audit
+ * write ever runs.
  */
 final class IssueStaffToken
 {
@@ -49,6 +65,8 @@ final class IssueStaffToken
         private readonly AuthorizationServer $server,
         private readonly ResponseInterface $blankResponse,
         private readonly VerifyMfaChallenge $mfaChallenge,
+        private readonly TenantTransaction $transaction,
+        private readonly ActivityLogger $activityLog,
     ) {}
 
     public function __invoke(StaffTokenRequestData $data): TokenPairData
@@ -86,6 +104,12 @@ final class IssueStaffToken
 
         /** @var array{access_token: string, refresh_token: string, token_type: string, expires_in: int} $payload */
         $payload = json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->transaction->asPlatform(fn () => $this->activityLog->record(
+            description: sprintf('staff login: %s', $user->email),
+            causer: $user,
+            event: 'staff_login',
+        ));
 
         return new TokenPairData(
             $payload['access_token'],
