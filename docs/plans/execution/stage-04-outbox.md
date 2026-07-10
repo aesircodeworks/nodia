@@ -43,6 +43,18 @@ Declined: none.
 
 Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) 0 errors. `composer -d apps/api run types:generate` removed `OutboxDeliveryStatus`. Focused Redis e2e + OutboxRecorder unit suite green. `composer -d apps/api run test` (all six suites) passed 1074 tests, 4213 assertions, 0 failures.
 
+#### Review round 2 (2026-07-10 05:18 -03)
+
+Applied one Stage 4 code-review finding (important). Commit on `feat/api-implementation`: `ce99fef`.
+
+| # | Severity | Finding | Action |
+| --- | --- | --- | --- |
+| 1 | important | `AssignRole` recorded `UserRoleChanged` even when the role did not change (same-role PATCH is an intentional no-op). | Added failing Slice 6-style feature test `records nothing when the role_id is unchanged (same-role no-op PATCH)` asserting zero `UserRoleChanged` outbox rows on a successful same-role PATCH. Gated the membership `role_id` update and `OutboxRecorder::record(UserRoleChanged...)` behind `$previousRoleId !== $role->id`, the same condition already used by the last-owner guard. |
+
+Declined: none.
+
+Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) 0 errors. `composer -d apps/api run types:generate` produced no diff. Focused `UserRoleChangedOutboxTest` (6) and `LastOwnerGuardTest` (7) green. `composer -d apps/api run test` (all six suites) passed 1075 tests, 4216 assertions, 0 failures.
+
 ### Decisions and deviations
 
 
