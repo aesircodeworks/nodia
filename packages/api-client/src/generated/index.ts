@@ -96,11 +96,6 @@ export type DisableMfaData = {
 export type DomainVerificationData = {
   domain: string;
 };
-export type DomainVerifiedPayload = {
-  tenant_domain_id: string;
-  tenant_id: string;
-  domain: string;
-};
 export type ErrorCode =
   | 'request.not_found'
   | 'request.method_not_allowed'
@@ -253,11 +248,6 @@ export type StaffTokenRequestData = {
   email: string;
   password: string;
   mfa_code: string | null;
-};
-export type TenantCreatedPayload = {
-  tenant_id: string;
-  name: string;
-  default_locale: string;
 };
 export type TenantData = {
   id: string;

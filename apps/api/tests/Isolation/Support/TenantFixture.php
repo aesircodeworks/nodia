@@ -48,9 +48,21 @@ final class TenantFixture
 
     public static function clean(): void
     {
+        // outbox_events / outbox_deliveries FK to tenants and have no platform
+        // write policy, so they must be removed under nodia_app before the
+        // tenant rows can go (DomainVerified and other producers pin the
+        // owning tenant in the envelope).
+        foreach ([self::TENANT_A, self::TENANT_B] as $tenantId) {
+            actingAsRole(Rls::APP_ROLE, $tenantId, function () use ($tenantId): void {
+                DB::table('outbox_deliveries')->where('tenant_id', $tenantId)->delete();
+                DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
+            });
+        }
+
         actingAsRole(Rls::PLATFORM_ROLE, null, function (): void {
             DB::table('tenant_domains')->delete();
             DB::table('tenants')->where('id', '!=', config('tenancy.platform_tenant_id'))->delete();
         });
     }
 }
+

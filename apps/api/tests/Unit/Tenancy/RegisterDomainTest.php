@@ -9,6 +9,7 @@ use App\Tenancy\Exceptions\InvalidDomainNameException;
 use App\Tenancy\Exceptions\TenantDomainIsPrimaryException;
 use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
+use Illuminate\Support\Facades\DB;
 use Tests\Support\MigratedDatabase;
 use Tests\Support\PostgresTestDatabase;
 
@@ -20,9 +21,22 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    app(TenantTransaction::class)->asPlatform(function (): void {
+    $sentinel = config()->string('tenancy.platform_tenant_id');
+
+    $tenantIds = app(TenantTransaction::class)->asPlatform(
+        fn () => Tenant::query()->whereKeyNot($sentinel)->pluck('id')->all(),
+    );
+
+    foreach ($tenantIds as $tenantId) {
+        app(TenantTransaction::class)->asTenant($tenantId, function () use ($tenantId): void {
+            DB::table('outbox_deliveries')->where('tenant_id', $tenantId)->delete();
+            DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
+        });
+    }
+
+    app(TenantTransaction::class)->asPlatform(function () use ($sentinel): void {
         TenantDomain::query()->delete();
-        Tenant::query()->whereKeyNot(config()->string('tenancy.platform_tenant_id'))->delete();
+        Tenant::query()->whereKeyNot($sentinel)->delete();
     });
 });
 

@@ -2,18 +2,36 @@
 
 namespace App\Tenancy\Actions;
 
+use App\Support\Database\Rls;
+use App\Support\Outbox\OutboxRecorder;
 use App\Tenancy\Data\RegisterTenantDomainData;
 use App\Tenancy\Data\TenantDomainData;
+use App\Tenancy\Events\DomainVerified;
 use App\Tenancy\Exceptions\DomainAlreadyRegisteredException;
 use App\Tenancy\Exceptions\InvalidDomainNameException;
 use App\Tenancy\Exceptions\TenantDomainIsPrimaryException;
 use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 use Spatie\LaravelData\Optional;
 
+/**
+ * POST /v1/tenants/{tenant}/domains (stage-02 plan). The whole platform
+ * request already runs inside one database transaction under nodia_platform
+ * (PlatformRequestTransaction), so this Action needs no transaction of its
+ * own. DomainVerified fires on registration (Stage 2 settled trigger) and
+ * is recorded into the outbox in that same transaction (stage-04 plan,
+ * Slice 6). The envelope carries the owning tenant; outbox_events has no
+ * platform write policy, so the record path switches the open transaction
+ * to nodia_app with app.tenant_id set to the owning tenant before insert.
+ */
 final class RegisterDomain
 {
+    public function __construct(
+        private readonly OutboxRecorder $outbox,
+    ) {}
+
     public function __invoke(Tenant $tenant, RegisterTenantDomainData $data): TenantDomainData
     {
         $domain = mb_strtolower($data->domain);
@@ -43,6 +61,15 @@ final class RegisterDomain
 
             throw $e;
         }
+
+        // DomainVerified envelope tenant_id is the owning tenant; outbox
+        // tables have no platform write policy, so the insert must run under
+        // nodia_app with app.tenant_id matching the envelope. SET LOCAL dies
+        // with the enclosing platform request transaction.
+        DB::statement('set local role '.Rls::APP_ROLE);
+        DB::selectOne('select set_config(?, ?, true)', ['app.tenant_id', $tenant->id]);
+
+        $this->outbox->record(DomainVerified::fromTenantDomain($tenantDomain));
 
         return TenantDomainData::fromModel($tenantDomain);
     }

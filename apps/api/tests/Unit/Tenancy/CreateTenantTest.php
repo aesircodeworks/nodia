@@ -6,6 +6,7 @@ use App\Tenancy\Data\CreateTenantData;
 use App\Tenancy\Data\TenantData;
 use App\Tenancy\Exceptions\DefaultLocaleNotSupportedException;
 use App\Tenancy\Models\Tenant;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Support\MigratedDatabase;
 use Tests\Support\PostgresTestDatabase;
@@ -16,8 +17,15 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
+    $sentinel = config()->string('tenancy.platform_tenant_id');
+
+    app(TenantTransaction::class)->asTenant($sentinel, function () use ($sentinel): void {
+        DB::table('outbox_deliveries')->where('tenant_id', $sentinel)->delete();
+        DB::table('outbox_events')->where('tenant_id', $sentinel)->delete();
+    });
+
     app(TenantTransaction::class)->asPlatform(
-        fn () => Tenant::query()->whereKeyNot(config()->string('tenancy.platform_tenant_id'))->delete(),
+        fn () => Tenant::query()->whereKeyNot($sentinel)->delete(),
     );
 });
 

@@ -25,9 +25,18 @@ beforeEach(function (): void {
 afterEach(function (): void {
     $sentinel = config()->string('tenancy.platform_tenant_id');
 
-    actingAsRole(Rls::APP_ROLE, $sentinel, function (): void {
+    actingAsRole(Rls::APP_ROLE, $sentinel, function () use ($sentinel): void {
+        DB::table('outbox_deliveries')->where('tenant_id', $sentinel)->delete();
+        DB::table('outbox_events')->where('tenant_id', $sentinel)->delete();
         DB::table('memberships')->delete();
     });
+
+    foreach ([TenantFixture::TENANT_A, TenantFixture::TENANT_B] as $tenantId) {
+        actingAsRole(Rls::APP_ROLE, $tenantId, function () use ($tenantId): void {
+            DB::table('outbox_deliveries')->where('tenant_id', $tenantId)->delete();
+            DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
+        });
+    }
 
     actingAsRole(Rls::PLATFORM_ROLE, null, function (): void {
         DB::table('roles')->whereNotNull('tenant_id')->delete();

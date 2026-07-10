@@ -25,9 +25,17 @@ beforeEach(function (): void {
 afterEach(function (): void {
     $sentinel = config()->string('tenancy.platform_tenant_id');
 
-    app(TenantTransaction::class)->asTenant($sentinel, function (): void {
-        DB::table('memberships')->delete();
-    });
+    $tenantIds = app(TenantTransaction::class)->asPlatform(
+        fn () => Tenant::query()->whereKeyNot($sentinel)->pluck('id')->all(),
+    );
+
+    foreach ([...$tenantIds, $sentinel] as $tenantId) {
+        app(TenantTransaction::class)->asTenant($tenantId, function () use ($tenantId): void {
+            DB::table('outbox_deliveries')->where('tenant_id', $tenantId)->delete();
+            DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
+            DB::table('memberships')->where('tenant_id', $tenantId)->delete();
+        });
+    }
 
     app(TenantTransaction::class)->asPlatform(function () use ($sentinel): void {
         DB::table('roles')->whereNotNull('tenant_id')->delete();

@@ -62,7 +62,8 @@ class TenancyServiceProvider extends ServiceProvider
     public function boot(Router $router, EventTypeRegistry $registry): void
     {
         // Type-name strings only: Support\Outbox never imports these classes
-        // (stage-04 recording API registry; producers attach in task-14).
+        // (stage-04 recording API registry; producers in CreateTenant and
+        // RegisterDomain).
         $registry->register('TenantCreated');
         $registry->register('DomainVerified');
 

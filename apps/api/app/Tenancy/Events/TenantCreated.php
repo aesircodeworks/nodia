@@ -9,8 +9,7 @@ use App\Tenancy\Models\Tenant;
  * Envelope per event-conventions: tenant creation is a platform-scope
  * fact, so the envelope tenant_id is the sentinel platform tenant, which
  * is also the app.tenant_id of the platform-posture transaction the
- * Stage 4 outbox insert will run in. No producer records this event yet;
- * the outbox arrives in Stage 4.
+ * outbox insert runs in (CreateTenant under PlatformRequestTransaction).
  */
 final readonly class TenantCreated implements DomainEvent
 {

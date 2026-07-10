@@ -716,12 +716,13 @@ Should an extracted service or throughput ever demand a dedicated broker, the ou
 
 ### 9.3 Event Types
 
-1. **Identity**: UserInvited, UserRoleChanged, CustomerRegistered
-2. **Catalog**: EventCreated, EventUpdated, EventPublished, EventCanceled
-3. **Inventory**: HoldCreated, HoldExpired, HoldReleased
-4. **Orders**: OrderCreated, TicketIssued, TicketCanceled, TicketRefunded
-5. **Payments**: PaymentInitiated, PaymentConfirmed, PaymentFailed, RefundInitiated, RefundCompleted, PayoutExecuted
-6. **Check-in**: TicketCheckedIn, DuplicateScanDetected
+1. **Tenancy**: TenantCreated, DomainVerified
+2. **Identity**: UserInvited, UserRoleChanged, CustomerRegistered
+3. **Catalog**: EventCreated, EventUpdated, EventPublished, EventCanceled
+4. **Inventory**: HoldCreated, HoldExpired, HoldReleased
+5. **Orders**: OrderCreated, TicketIssued, TicketCanceled, TicketRefunded
+6. **Payments**: PaymentInitiated, PaymentConfirmed, PaymentFailed, RefundInitiated, RefundCompleted, PayoutExecuted
+7. **Check-in**: TicketCheckedIn, DuplicateScanDetected
 
 ## 10. High-Demand On-Sales
 

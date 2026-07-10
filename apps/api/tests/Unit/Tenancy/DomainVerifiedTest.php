@@ -16,7 +16,8 @@ it('builds the tenant-scoped envelope from a tenant domain', function () {
 
     $event = DomainVerified::fromTenantDomain($domain);
 
-    expect($event->tenantId)->toBe($tenantId)
+    expect($event->type())->toBe('DomainVerified')
+        ->and($event->tenantId)->toBe($tenantId)
         ->and($event->aggregateType)->toBe('tenant_domain')
         ->and($event->aggregateId)->toBe($domainId)
         ->and($event->payload)->toBeInstanceOf(DomainVerifiedPayload::class);
@@ -38,4 +39,21 @@ it('carries identifiers and facts in a snake_case payload', function () {
         'tenant_id' => $tenantId,
         'domain' => 'tickets.acme.com',
     ]);
+});
+
+it('serializes the exact field set in snake_case', function () {
+    $tenantId = Str::uuid7()->toString();
+    $domainId = Str::uuid7()->toString();
+    $payload = new DomainVerifiedPayload($domainId, $tenantId, 'tickets.acme.com');
+
+    expect($payload->toArray())->toBe([
+        'tenant_domain_id' => $domainId,
+        'tenant_id' => $tenantId,
+        'domain' => 'tickets.acme.com',
+    ])
+        ->and(array_keys($payload->toArray()))->toEqualCanonicalizing([
+            'tenant_domain_id',
+            'tenant_id',
+            'domain',
+        ]);
 });
