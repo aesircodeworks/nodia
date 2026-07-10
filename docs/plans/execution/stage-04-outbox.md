@@ -280,3 +280,16 @@ What landed:
 Deviations: none material. The mid-transaction role/tenant switch in `RegisterDomain` is required by the combination of (a) platform-admin surface under sentinel posture, (b) owning-tenant envelope, and (c) outbox tables without platform write; it is local to the producer, not a change to outbox RLS.
 
 Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` removed `TenantCreatedPayload` and `DomainVerifiedPayload` from the generated client. Focused TenantCreated / DomainVerified / CreateTenant / RegisterDomain tests passed 37 tests, 129 assertions. `composer -d apps/api run test` (all six suites) passed 1072 tests, 4202 assertions, 0 failures.
+
+### Gate (2026-07-10 05:00 -03)
+
+Local quality gates after all implementation tasks:
+
+- `composer -d apps/api run lint` (Pint): pass after one fix (`style(support): fix TenantFixture trailing newline for Pint` `956b2ab`)
+- `composer -d apps/api run analyse` (Larastan): 0 errors
+- `composer -d apps/api run types:generate`: no unexpected drift
+- `composer -d apps/api run test`: 1072 tests, 4202 assertions, 0 failures
+- `pnpm typecheck`: all workspaces pass
+
+HEAD at gate: `956b2ab`. Pushing branch `feat/api-implementation` and watching CI.
+
