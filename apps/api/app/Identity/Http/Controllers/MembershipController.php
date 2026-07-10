@@ -59,9 +59,15 @@ class MembershipController
         return response()->json($inviteUser($data, $staff->id), 201);
     }
 
-    public function update(string $membership, ChangeMembershipRoleData $data, AssignRole $assignRole): MembershipData
+    public function update(Request $request, string $membership, ChangeMembershipRoleData $data, AssignRole $assignRole): MembershipData
     {
-        return $assignRole($this->membershipOrFail($membership), $data);
+        $staff = $request->user('staff');
+
+        if (! $staff instanceof User) {
+            throw new LogicException('MembershipController::update requires an authenticated staff user; ensure auth:staff runs first.');
+        }
+
+        return $assignRole($this->membershipOrFail($membership), $data, $staff->id);
     }
 
     public function destroy(string $membership, RemoveMembership $removeMembership): Response

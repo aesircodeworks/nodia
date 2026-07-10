@@ -39,11 +39,12 @@ class IdentityServiceProvider extends ServiceProvider
     public function boot(): void
     {
         // Type-name strings only: Support\Outbox never imports these classes
-        // (stage-04 recording API registry; UserInvited producer in task-11).
+        // (stage-04 recording API registry; Identity producers in Slice 6).
         // Resolved from the container rather than method-injected so unit
         // tests that construct this provider and call boot() with no args
         // (PassportConfigurationTest) keep working.
         $this->app->make(EventTypeRegistry::class)->register('UserInvited');
+        $this->app->make(EventTypeRegistry::class)->register('UserRoleChanged');
 
         CapabilityGate::register();
 

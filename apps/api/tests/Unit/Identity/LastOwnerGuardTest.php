@@ -38,6 +38,8 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     app(TenantTransaction::class)->asTenant(LOG_TENANT, function (): void {
+        DB::table('outbox_deliveries')->where('tenant_id', LOG_TENANT)->delete();
+        DB::table('outbox_events')->where('tenant_id', LOG_TENANT)->delete();
         DB::table('memberships')->where('tenant_id', LOG_TENANT)->delete();
     });
 
@@ -78,10 +80,11 @@ it('AssignRole throws last_owner_removal when demoting the tenant\'s only Owner'
         LOG_TENANT,
         fn () => Role::factory()->create(['tenant_id' => LOG_TENANT])->id,
     );
+    $actorId = User::factory()->create()->id;
 
     $invoke = fn () => app(TenantTransaction::class)->asTenant(
         LOG_TENANT,
-        fn () => app(AssignRole::class)($onlyOwner, new ChangeMembershipRoleData($otherRoleId)),
+        fn () => app(AssignRole::class)($onlyOwner, new ChangeMembershipRoleData($otherRoleId), $actorId),
     );
 
     expect($invoke)->toThrow(LastOwnerRemovalException::class);
@@ -95,10 +98,11 @@ it('AssignRole allows demoting an Owner when another Owner membership remains', 
         LOG_TENANT,
         fn () => Role::factory()->create(['tenant_id' => LOG_TENANT])->id,
     );
+    $actorId = User::factory()->create()->id;
 
     $result = app(TenantTransaction::class)->asTenant(
         LOG_TENANT,
-        fn () => app(AssignRole::class)($firstOwner, new ChangeMembershipRoleData($otherRoleId)),
+        fn () => app(AssignRole::class)($firstOwner, new ChangeMembershipRoleData($otherRoleId), $actorId),
     );
 
     expect($result->roleId)->toBe($otherRoleId);
@@ -110,10 +114,11 @@ it('AssignRole allows reassigning a non-Owner membership freely', function () {
         LOG_TENANT,
         fn () => Role::factory()->create(['tenant_id' => LOG_TENANT])->id,
     );
+    $actorId = User::factory()->create()->id;
 
     $result = app(TenantTransaction::class)->asTenant(
         LOG_TENANT,
-        fn () => app(AssignRole::class)($membership, new ChangeMembershipRoleData($otherRoleId)),
+        fn () => app(AssignRole::class)($membership, new ChangeMembershipRoleData($otherRoleId), $actorId),
     );
 
     expect($result->roleId)->toBe($otherRoleId);
@@ -122,10 +127,11 @@ it('AssignRole allows reassigning a non-Owner membership freely', function () {
 it('AssignRole allows reassigning the Owner\'s own membership to the same role as a no-op', function () {
     $ownerRoleId = logOwnerTemplateRoleId();
     $onlyOwner = logMembership(['role_id' => $ownerRoleId]);
+    $actorId = User::factory()->create()->id;
 
     $result = app(TenantTransaction::class)->asTenant(
         LOG_TENANT,
-        fn () => app(AssignRole::class)($onlyOwner, new ChangeMembershipRoleData($ownerRoleId)),
+        fn () => app(AssignRole::class)($onlyOwner, new ChangeMembershipRoleData($ownerRoleId), $actorId),
     );
 
     expect($result->roleId)->toBe($ownerRoleId);
