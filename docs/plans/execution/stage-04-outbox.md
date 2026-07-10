@@ -21,7 +21,7 @@ Verified starting state: Stages 1-3 are Done. Stage 4 is Not started. No `app/Su
 - [x] task-07: Subscriber registry, after-commit dispatcher, delivery job, test fixtures (plan task 7)
 - [x] task-08: Reconciliation sweeper, config windows, scheduler (plan task 8)
 - [x] task-09: Ordered-consumption helper (plan task 9)
-- [ ] task-10: Replay primitive and artisan command (plan task 10)
+- [x] task-10: Replay primitive and artisan command (plan task 10)
 - [ ] task-11: `UserInvited` producer in InviteUser (plan task 11)
 - [ ] task-12: `UserRoleChanged` producer in AssignRole (plan task 12)
 - [ ] task-13: `CustomerRegistered` producer in RegisterCustomer (plan task 13)
@@ -187,3 +187,21 @@ What landed:
 Deviations: none material. Deferral uses job release as the plan prefers; exhaustion is covered by the final-attempt clean return rather than switching to sweeper-only deferral. Direct `handle()` calls without a queue job treat release as a no-op (Laravel `InteractsWithQueue`); concurrency workers retry in-process until processed.
 
 Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff. Focused ordered-consumption / config / delivery tests passed 17 tests, 68 assertions. `composer -d apps/api run test` (all six suites) passed 1028 tests, 3980 assertions, 0 failures.
+
+#### task-10: Replay primitive (2026-07-10 04:40 -03)
+
+Commit: `65d3801` (`feat(support): outbox replay primitive and artisan command`), plus this journal entry.
+
+Landed plan task 10 / Slice 5: the support API that rescans `outbox_events` in sequence order past the stability window for a subscriber's types, optional inclusive starting sequence, the `outbox:replay` artisan command, and the Slice 5 feature/unit suite.
+
+What landed:
+
+- `App\Support\Outbox\OutboxReplay`: platform-role SELECT of events whose `type` is in the subscriber's registered set, `occurred_at` past `stability_window_seconds`, ordered by `sequence` ascending, optional `sequence >= fromSequence`; each matching envelope is fed to the handler under a tenant-scoped transaction. Delivery rows are not read or mutated; consumer idempotence by event id makes double-replay safe.
+- `SubscriberRegistry::typesFor`: exposes the registered type list for a named subscriber (replay filter source).
+- `App\Console\Commands\ReplayOutboxCommand` (`outbox:replay {subscriber} {--from-sequence=}`): thin artisan wrapper reporting the number of events fed.
+- Test fixtures: `ProjectionTestSubscriber` with commutative snapshot state (applied event ids + per-aggregate counts) and visit-order tracking for sequence assertions.
+- Slice 5 tests: feature rebuild equivalence (incremental vs sequence-zero replay), sequence order with stability-window skip, double-replay same state, artisan command wiring; unit type filter, inclusive starting sequence, unregistered subscriber throws.
+
+Deviations: none material. Replay intentionally bypasses `outbox_deliveries` and `ProcessOutboxDelivery` (rebuild rescans the log; live progress tracking stays on the delivery path). Stage 12 audited operational wrappers remain deferred.
+
+Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff. Focused OutboxReplay / SubscriberRegistry tests passed 12 tests, 47 assertions. `composer -d apps/api run test` (all six suites) passed 1036 tests, 4015 assertions, 0 failures.
