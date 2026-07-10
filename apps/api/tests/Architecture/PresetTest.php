@@ -88,12 +88,16 @@ arch()->preset()->security();
 // into (system-design 9.1), not App\Models. OutboxDeliveryStatus is the
 // status enum for outbox_deliveries and lives with that infrastructure
 // rather than App\Enums (data-conventions; stage-04 plan Data model).
+// App\Support\Outbox\Jobs (stage-04 task 7) holds the delivery job next to
+// the outbox machinery rather than the top-level App\Jobs the preset
+// expects: the job is outbox infrastructure, not a domain action queue.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
     MembershipScope::class,
     MembershipAccessOutcome::class,
     OutboxDeliveryStatus::class,
+    'App\Support\Outbox\Jobs',
     CurrencyMismatchException::class,
     InvalidTenantIdException::class,
     InvalidCredentialsException::class,

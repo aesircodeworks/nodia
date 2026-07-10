@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Support\Correlation\CorrelationId;
 use App\Support\Outbox\EventTypeRegistry;
+use App\Support\Outbox\SubscriberRegistry;
 use App\Support\Queue\UuidFailedJobProvider;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
@@ -21,6 +22,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->scoped(CorrelationId::class);
         $this->app->scoped(TenantContext::class);
         $this->app->singleton(EventTypeRegistry::class);
+        // Production registry starts empty; real consumers register from
+        // their owning context providers in later stages. Test fixtures
+        // register only in test setup (stage-04 plan Slice 2).
+        $this->app->singleton(SubscriberRegistry::class);
 
         $this->app->extend('queue.failer', function ($failer, $app) {
             if (! $failer instanceof DatabaseUuidFailedJobProvider) {

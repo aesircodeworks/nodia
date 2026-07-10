@@ -18,7 +18,7 @@ Verified starting state: Stages 1-3 are Done. Stage 4 is Not started. No `app/Su
 - [x] task-04: Recording API, envelope, registry validation, architecture tests (plan task 4)
 - [x] task-05: Horizon and queue plumbing, failed_jobs UUID PK (plan task 5)
 - [x] task-06: `outbox_deliveries` migration, model, conditional processed transition (plan task 6)
-- [ ] task-07: Subscriber registry, after-commit dispatcher, delivery job, test fixtures (plan task 7)
+- [x] task-07: Subscriber registry, after-commit dispatcher, delivery job, test fixtures (plan task 7)
 - [ ] task-08: Reconciliation sweeper, config windows, scheduler (plan task 8)
 - [ ] task-09: Ordered-consumption helper (plan task 9)
 - [ ] task-10: Replay primitive and artisan command (plan task 10)
@@ -125,3 +125,28 @@ What landed:
 Deviations: none. Conditional transition lives as a model method rather than a separate action class; that keeps the guard on the row that owns the invariant and matches the task's preferred surface.
 
 Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` updated generated client with `OutboxDeliveryStatus`. Focused OutboxDelivery/OutboxDeliveriesIsolation tests passed 12 tests, 27 assertions. `composer -d apps/api run test` (all six suites) passed 1002 tests, 3882 assertions, 0 failures.
+
+#### task-07: Subscriber registry, after-commit dispatcher, delivery job, test fixtures (2026-07-10 04:28 -03)
+
+Commit: (this commit) (`feat(support): outbox subscriber registry, dispatcher, and delivery job`).
+
+Landed plan task 7 / Slice 2 delivery machinery: static subscriber registry, delivery-row fan-out at record time, after-commit one-job-per-subscriber enqueue, the cross-tenant-then-tenant worker bootstrap with mark-processed-before-effect, idempotent test subscriber fixtures, and the Slice 2 feature/unit/concurrency suite.
+
+What landed:
+
+- `App\Support\Outbox\OutboxSubscriber`: handler contract (`handle(OutboxEvent)`).
+- `App\Support\Outbox\SubscriberRegistry`: singleton map of stable name to event types plus handler; rejects duplicate names and empty type lists; `namesFor` returns registration-order routing; production starts empty (no config sniffing; tests register only in setup).
+- `App\Support\Outbox\OutboxDispatcher`: `DB::afterCommit` enqueues one `ProcessOutboxDelivery` per subscriber and sets `last_enqueued_at` under a tenant-scoped write before dispatch so the sweeper grace window has a real enqueue timestamp.
+- `App\Support\Outbox\Jobs\ProcessOutboxDelivery`: loads the envelope via `TenantTransaction::asPlatform` (SELECT only), then opens `asTenant` with the envelope tenant, conditional `markProcessed()` before the handler effect, clean no-retry exit on zero rows.
+- `OutboxRecorder` creates one pending delivery per interested subscriber in the producing transaction and schedules the dispatcher; rollback removes event and deliveries and enqueues nothing.
+- Test fixtures: `IdempotentTestSubscriber`, Pest helpers (`registerIdempotentOutboxSubscriber`, `processOutboxDeliveryTwice`, durable effects table for multi-process races).
+- Slice 2 tests: feature delivery creation / rollback / job fan-out / e2e process / duplicate job; unit registry routing and duplicate rejection; concurrency two workers one effect.
+- Architecture preset ignores `App\Support\Outbox\Jobs`.
+
+Decisions:
+
+1. Job payload is `{eventId, subscriber}` rather than event id alone. System-design 9.2 and the stage plan say jobs carry only the event ID (no envelope/payload duplicated into Redis). Multi-subscriber fan-out needs a routing key to pick one delivery row; subscriber name is that key on a single shared job class. Envelope and payload still load from PostgreSQL. Documented here as the reading of "only the event ID" = no domain state in Redis.
+2. Cross-tenant platform SELECT in the worker is infrastructure, not a staff action. `PlatformRoleAudit` only fires from `PlatformRequestTransaction` on HTTP requests; `asPlatform` inside the job does not write activity_log. Stage-04 open question: audit requirement targets staff-initiated cross-tenant operations; infrastructure SELECT is exempt. No code carve-out required beyond not calling `PlatformRoleAudit` from the job.
+3. E2E processing uses `QUEUE_CONNECTION=sync` (phpunit default) so after-commit dispatch runs the job inline against real PostgreSQL. Job payload and fan-out are asserted with `Queue::fake`. Full Horizon worker process is the same handle path; redis-backed worker is not spun in CI (matches task-05's phpunit sync choice).
+
+Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff. Focused Slice 2 outbox tests passed 12 tests, 34 assertions. `composer -d apps/api run test` (all six suites) passed 1014 tests, 3916 assertions, 0 failures.
