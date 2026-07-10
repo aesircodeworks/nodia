@@ -23,6 +23,8 @@ use Illuminate\Support\Carbon;
  * @property array<string, mixed> $layout
  * @property Carbon $created_at
  * @property Carbon $updated_at
+ * @property-read int|null $seats_count set only when a query loads it via
+ *   withCount('seats') (SeatMapController::index()'s own usage)
  */
 #[Fillable(['tenant_id', 'venue_id', 'name', 'layout'])]
 class SeatMap extends Model

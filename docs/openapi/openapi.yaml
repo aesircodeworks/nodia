@@ -2070,6 +2070,141 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/SeatMapUnprocessableProblem'
+    get:
+      operationId: listSeatMaps
+      summary: List a venue's seat map templates
+      description: >-
+        Tenant admin surface: Passport staff bearer plus X-Tenant-Id
+        membership validation, plus the events.view capability (stage-05b
+        plan, task breakdown item 3). Lists a venue's templates without
+        their seats. tenant_isolation RLS plus the venue_id scope limit
+        the result to the given venue's own templates. Allowed
+        query-builder parameters are filter[name] (partial match) and
+        sort in (name, -name, created_at, -created_at), default
+        -created_at; unknown filters or sorts are rejected with 400
+        invalid_query_parameter, never ignored.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          style: deepObject
+          explode: true
+          description: 'Allowed filters: filter[name] (partial match).'
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+            additionalProperties:
+              type: string
+        - name: sort
+          in: query
+          required: false
+          description: 'Allowed sorts: name, -name, created_at, -created_at.'
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: One page of the venue's seat map templates.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeatMapPage'
+        '400':
+          description: Unknown filter or sort parameter.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/InvalidQueryParameterProblem'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.view (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SeatMapForbiddenProblem'
+        '404':
+          description: No venue is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+  /v1/seat-maps/{seat_map}:
+    parameters:
+      - name: seat_map
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getSeatMap
+      summary: Fetch one seat map template
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the events.view capability (stage-05b plan, task
+        breakdown item 3). Full document including every seat, ordered
+        deterministically by section, row, then number. A well-formed but
+        nonexistent or foreign-tenant seat map id renders the same generic
+        request.not_found problem a malformed id gets from route-parameter
+        matching: another tenant's seat map is invisible under
+        tenant_isolation RLS, so existence never leaks.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The seat map template.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeatMap'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.view (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SeatMapForbiddenProblem'
+        '404':
+          description: No seat map is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
   /v1/events:
     post:
       operationId: createEvent
@@ -3663,6 +3798,58 @@ components:
           items:
             $ref: '#/components/schemas/SeatInput'
       additionalProperties: false
+    SeatMapSummary:
+      type: object
+      description: >-
+        List-row shape for GET /v1/venues/{venue}/seat-maps (stage-05b
+        plan, Endpoints): no seats or layout, unlike SeatMap, plus the
+        aggregated seat_count.
+      required:
+        - id
+        - venue_id
+        - name
+        - seat_count
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        venue_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        seat_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    SeatMapPage:
+      type: object
+      description: >-
+        Laravel standard paginator envelope (data, links, meta) per
+        docs/api-conventions.md.
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SeatMapSummary'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageLink'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      additionalProperties: false
     AsyncPaymentPolicy:
       type: object
       description: >-
@@ -4509,13 +4696,15 @@ components:
       unevaluatedProperties: false
     SeatMapForbiddenProblem:
       description: >-
-        Problem document for a 403 on the seat map create endpoint (stage-05b
-        plan task breakdown item 2): either the caller has no membership in
-        the asserted tenant (code tenant_access_denied, raised by
+        Problem document for a 403 on a seat map endpoint, reading or
+        mutating alike (both require a capability, events.view or
+        seat_maps.manage respectively, stage-05b plan task breakdown items
+        2 and 3): either the caller has no membership in the asserted
+        tenant (code tenant_access_denied, raised by
         ResolveTenantFromHeader before the handler is reached), the acting
-        membership does not hold seat_maps.manage (code missing_capability),
-        or the acting membership mandates confirmed MFA and has not
-        confirmed it (code mfa_enforcement_required).
+        membership does not hold the required capability (code
+        missing_capability), or the acting membership mandates confirmed
+        MFA and has not confirmed it (code mfa_enforcement_required).
       allOf:
         - $ref: '#/components/schemas/Problem'
         - type: object

@@ -28,13 +28,19 @@ class SeatMapSummaryData extends Data
         public string $updatedAt,
     ) {}
 
+    /**
+     * Prefers the seats_count attribute SeatMapController::index()'s own
+     * withCount('seats') already loads, avoiding an N+1 count query per
+     * page row; falls back to a direct count for callers that pass a
+     * model without it loaded.
+     */
     public static function fromModel(SeatMap $seatMap): self
     {
         return new self(
             $seatMap->id,
             $seatMap->venue_id,
             $seatMap->name,
-            $seatMap->seats()->count(),
+            $seatMap->seats_count ?? $seatMap->seats()->count(),
             CarbonImmutable::instance($seatMap->created_at)->utc()->format('Y-m-d\TH:i:s\Z'),
             CarbonImmutable::instance($seatMap->updated_at)->utc()->format('Y-m-d\TH:i:s\Z'),
         );

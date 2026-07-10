@@ -30,6 +30,8 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(RequireCapability::class.':'.Capability::EventsView->value)->group(function (): void {
     Route::get('/venues', [VenueController::class, 'index']);
     Route::get('/venues/{venue}', [VenueController::class, 'show'])->whereUuid('venue');
+    Route::get('/venues/{venue}/seat-maps', [SeatMapController::class, 'index'])->whereUuid('venue');
+    Route::get('/seat-maps/{seat_map}', [SeatMapController::class, 'show'])->whereUuid('seat_map');
     Route::get('/events', [EventController::class, 'index']);
     Route::get('/events/{event}', [EventController::class, 'show'])->whereUuid('event');
     Route::get('/events/{event}/ticket-types', [TicketTypeController::class, 'index'])->whereUuid('event');
