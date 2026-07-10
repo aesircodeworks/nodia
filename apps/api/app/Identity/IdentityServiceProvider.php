@@ -5,6 +5,7 @@ namespace App\Identity;
 use App\Identity\Authorization\CapabilityGate;
 use App\Identity\OAuth\IdentityAccessToken;
 use App\Identity\OAuth\IdentityRefreshTokenRepository;
+use App\Support\Outbox\EventTypeRegistry;
 use DateInterval;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -37,6 +38,13 @@ class IdentityServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Type-name strings only: Support\Outbox never imports these classes
+        // (stage-04 recording API registry; UserInvited producer in task-11).
+        // Resolved from the container rather than method-injected so unit
+        // tests that construct this provider and call boot() with no args
+        // (PassportConfigurationTest) keep working.
+        $this->app->make(EventTypeRegistry::class)->register('UserInvited');
+
         CapabilityGate::register();
 
         Passport::ignoreRoutes();

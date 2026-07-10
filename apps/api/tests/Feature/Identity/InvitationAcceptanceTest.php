@@ -38,6 +38,8 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     app(TenantTransaction::class)->asTenant($this->tenantId, function (): void {
+        DB::table('outbox_deliveries')->where('tenant_id', $this->tenantId)->delete();
+        DB::table('outbox_events')->where('tenant_id', $this->tenantId)->delete();
         DB::table('memberships')->where('tenant_id', $this->tenantId)->delete();
     });
 

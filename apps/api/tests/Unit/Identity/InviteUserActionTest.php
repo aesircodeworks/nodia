@@ -42,6 +42,8 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     app(TenantTransaction::class)->asTenant(IU_TENANT, function (): void {
+        DB::table('outbox_deliveries')->where('tenant_id', IU_TENANT)->delete();
+        DB::table('outbox_events')->where('tenant_id', IU_TENANT)->delete();
         DB::table('memberships')->where('tenant_id', IU_TENANT)->delete();
     });
 
@@ -64,10 +66,11 @@ function inviteUserRoleId(array $capabilities = []): string
 it('creates an absent user with a random, hashed, unusable password', function () {
     Mail::fake();
     $roleId = inviteUserRoleId();
+    $inviterId = User::factory()->create()->id;
 
     app(TenantTransaction::class)->asTenant(
         IU_TENANT,
-        fn () => app(InviteUser::class)(new InviteUserData('new-invitee@example.com', 'New Invitee', $roleId)),
+        fn () => app(InviteUser::class)(new InviteUserData('new-invitee@example.com', 'New Invitee', $roleId), $inviterId),
     );
 
     $user = User::query()->where('email', 'new-invitee@example.com')->firstOrFail();
@@ -82,10 +85,11 @@ it('reuses an existing user rather than creating a duplicate', function () {
     Mail::fake();
     $existing = User::factory()->create(['email' => 'reused@example.com']);
     $roleId = inviteUserRoleId();
+    $inviterId = User::factory()->create()->id;
 
     $membershipData = app(TenantTransaction::class)->asTenant(
         IU_TENANT,
-        fn () => app(InviteUser::class)(new InviteUserData('reused@example.com', 'Ignored Name', $roleId)),
+        fn () => app(InviteUser::class)(new InviteUserData('reused@example.com', 'Ignored Name', $roleId), $inviterId),
     );
 
     expect($membershipData->userId)->toBe($existing->id)
@@ -97,6 +101,7 @@ it('throws membership_exists when the user is already a member of the tenant', f
     $existing = User::factory()->create(['email' => 'already@example.com']);
     $firstRoleId = inviteUserRoleId();
     $secondRoleId = inviteUserRoleId();
+    $inviterId = User::factory()->create()->id;
 
     app(TenantTransaction::class)->asTenant(IU_TENANT, function () use ($existing, $firstRoleId): void {
         Membership::factory()->create([
@@ -108,7 +113,7 @@ it('throws membership_exists when the user is already a member of the tenant', f
 
     $invoke = fn () => app(TenantTransaction::class)->asTenant(
         IU_TENANT,
-        fn () => app(InviteUser::class)(new InviteUserData('already@example.com', 'Already', $secondRoleId)),
+        fn () => app(InviteUser::class)(new InviteUserData('already@example.com', 'Already', $secondRoleId), $inviterId),
     );
 
     expect($invoke)->toThrow(MembershipExistsException::class);
@@ -116,10 +121,11 @@ it('throws membership_exists when the user is already a member of the tenant', f
 
 it('throws request.not_found for an unknown role id', function () {
     Mail::fake();
+    $inviterId = User::factory()->create()->id;
 
     $invoke = fn () => app(TenantTransaction::class)->asTenant(
         IU_TENANT,
-        fn () => app(InviteUser::class)(new InviteUserData('nobody@example.com', 'Nobody', (string) Str::uuid7())),
+        fn () => app(InviteUser::class)(new InviteUserData('nobody@example.com', 'Nobody', (string) Str::uuid7()), $inviterId),
     );
 
     expect($invoke)->toThrow(RoleNotFoundException::class);
@@ -128,10 +134,11 @@ it('throws request.not_found for an unknown role id', function () {
 it('mails a StaffInvitationMail carrying a verifiable acceptance token once the transaction commits', function () {
     Mail::fake();
     $roleId = inviteUserRoleId();
+    $inviterId = User::factory()->create()->id;
 
     app(TenantTransaction::class)->asTenant(
         IU_TENANT,
-        fn () => app(InviteUser::class)(new InviteUserData('mailed@example.com', 'Mailed Invitee', $roleId)),
+        fn () => app(InviteUser::class)(new InviteUserData('mailed@example.com', 'Mailed Invitee', $roleId), $inviterId),
     );
 
     Mail::assertSent(StaffInvitationMail::class, fn (StaffInvitationMail $mail): bool => $mail->hasTo('mailed@example.com')

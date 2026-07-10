@@ -45,6 +45,8 @@ afterEach(function (): void {
     // memberships row from blocking an unrelated later suite's blanket
     // User::query()->delete() (observed against StaffRefreshRotationContentionTest).
     app(TenantTransaction::class)->asTenant($sentinel, function (): void {
+        DB::table('outbox_deliveries')->delete();
+        DB::table('outbox_events')->delete();
         DB::table('memberships')->delete();
     });
 
@@ -58,6 +60,8 @@ afterEach(function (): void {
 
     foreach ($tenantIds as $tenantId) {
         app(TenantTransaction::class)->asTenant($tenantId, function () use ($tenantId): void {
+            DB::table('outbox_deliveries')->where('tenant_id', $tenantId)->delete();
+            DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
             DB::table('memberships')->where('tenant_id', $tenantId)->delete();
 
             // The customer token/registration/claim exercisers (task

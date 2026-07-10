@@ -5,12 +5,14 @@ namespace App\Identity\Actions;
 use App\Identity\Data\InviteUserData;
 use App\Identity\Data\MembershipData;
 use App\Identity\Enums\MembershipScope;
+use App\Identity\Events\UserInvited;
 use App\Identity\Exceptions\MembershipExistsException;
 use App\Identity\Mail\StaffInvitationMail;
 use App\Identity\Models\Membership;
 use App\Identity\Models\Role;
 use App\Identity\Support\InvitationToken;
 use App\Models\User;
+use App\Support\Outbox\OutboxRecorder;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -23,17 +25,17 @@ use Illuminate\Support\Str;
  * (App\Tenancy\Http\Middleware\ResolveTenantFromHeader wraps the entire
  * handler in TenantTransaction::asTenant()), so this Action needs no
  * transaction of its own: the user lookup-or-create and the membership
- * insert below are already atomic with each other. That is also the
- * "single transaction with an obvious Stage 4 outbox attachment point"
- * the Domain events section asks for; the point is marked below, right
- * after the membership commits to state, mirroring how App\Identity\Actions\CreateRole
- * needed no wrapper either for its own single write.
+ * insert below are already atomic with each other. UserInvited is recorded
+ * into the outbox in that same transaction (stage-04 plan, Slice 6).
  */
 final class InviteUser
 {
-    public function __construct(private readonly TenantContext $tenantContext) {}
+    public function __construct(
+        private readonly TenantContext $tenantContext,
+        private readonly OutboxRecorder $outbox,
+    ) {}
 
-    public function __invoke(InviteUserData $data): MembershipData
+    public function __invoke(InviteUserData $data, string $invitedByUserId): MembershipData
     {
         $role = Role::visibleOrFail($data->roleId);
 
@@ -67,9 +69,7 @@ final class InviteUser
             throw $e;
         }
 
-        // Stage 4 attachment point: Outbox::record(UserInvited::class, ...)
-        // belongs here, inside the same transaction as the membership
-        // insert above (stage-03 plan, Domain events).
+        $this->outbox->record(UserInvited::fromMembership($membership, $invitedByUserId));
 
         $token = InvitationToken::issue($user->id);
 

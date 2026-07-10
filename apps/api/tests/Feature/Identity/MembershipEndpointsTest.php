@@ -39,6 +39,8 @@ beforeEach(function (): void {
 afterEach(function (): void {
     foreach ([$this->tenantId, $this->otherTenantId] as $tenantId) {
         app(TenantTransaction::class)->asTenant($tenantId, function () use ($tenantId): void {
+            DB::table('outbox_deliveries')->where('tenant_id', $tenantId)->delete();
+            DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
             DB::table('memberships')->where('tenant_id', $tenantId)->delete();
         });
     }

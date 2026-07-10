@@ -10,10 +10,12 @@ use App\Identity\Data\InviteUserData;
 use App\Identity\Data\MembershipData;
 use App\Identity\Exceptions\MembershipNotFoundException;
 use App\Identity\Models\Membership;
+use App\Models\User;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use LogicException;
 use Spatie\LaravelData\PaginatedDataCollection;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -46,9 +48,15 @@ class MembershipController
         return MembershipData::collect($memberships, PaginatedDataCollection::class);
     }
 
-    public function store(InviteUserData $data, InviteUser $inviteUser): JsonResponse
+    public function store(Request $request, InviteUserData $data, InviteUser $inviteUser): JsonResponse
     {
-        return response()->json($inviteUser($data), 201);
+        $staff = $request->user('staff');
+
+        if (! $staff instanceof User) {
+            throw new LogicException('MembershipController::store requires an authenticated staff user; ensure auth:staff runs first.');
+        }
+
+        return response()->json($inviteUser($data, $staff->id), 201);
     }
 
     public function update(string $membership, ChangeMembershipRoleData $data, AssignRole $assignRole): MembershipData
