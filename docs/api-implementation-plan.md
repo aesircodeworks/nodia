@@ -17,7 +17,7 @@ Update this table when a stage starts and when it merges.
 | Stage 3: Identity, AuthN, AuthZ | Done |
 | Stage 4: Transactional Outbox | Done |
 | Stage 5a: Catalog Core and Publish | Done |
-| Stage 5b: Seating Templates | Not started |
+| Stage 5b: Seating Templates | In progress |
 | Stage 5c: Search and Media | Not started |
 | Stage 6: Inventory and Reserved Seating | Not started |
 | Stage 7: Orders, Tickets, Promo Codes | Not started |
