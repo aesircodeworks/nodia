@@ -1,5 +1,6 @@
 <?php
 
+use App\EventCatalog\Models\Venue;
 use App\Identity\Enums\MembershipScope;
 use App\Identity\Models\Customer;
 use App\Identity\Models\Membership;
@@ -57,6 +58,7 @@ afterEach(function (): void {
             DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
             DB::table('memberships')->where('tenant_id', $tenantId)->delete();
             DB::table('customers')->where('tenant_id', $tenantId)->delete();
+            DB::table('venues')->where('tenant_id', $tenantId)->delete();
         });
     }
 
@@ -270,6 +272,36 @@ it('increases the acting tenant\'s activity_log count by exactly one for every m
             'token' => $token,
             'password' => 'new-password',
         ])->assertNoContent();
+
+        expect(activityLogCountForCoverageTenant($tenantId))->toBe($before + 1);
+    }],
+    'Stage 5a: create a venue' => [function (TestCase $test): void {
+        $tenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);
+        $token = coverageAdminBearer($tenantId, ['events.manage']);
+        $before = activityLogCountForCoverageTenant($tenantId);
+
+        $test->postJson('/v1/venues', [
+            'name' => 'Coverage Arena',
+            'address' => '1 Coverage St',
+            'city' => 'Austin',
+            'country' => 'US',
+            'capacity' => 500,
+        ], ['Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => $tenantId])->assertCreated();
+
+        expect(activityLogCountForCoverageTenant($tenantId))->toBe($before + 1);
+    }],
+    'Stage 5a: update a venue' => [function (TestCase $test): void {
+        $tenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);
+        $token = coverageAdminBearer($tenantId, ['events.manage']);
+        $venueId = app(TenantTransaction::class)->asTenant(
+            $tenantId,
+            fn () => Venue::factory()->create(['tenant_id' => $tenantId])->id,
+        );
+        $before = activityLogCountForCoverageTenant($tenantId);
+
+        $test->patchJson('/v1/venues/'.$venueId, [
+            'name' => 'Renamed Coverage Venue',
+        ], ['Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => $tenantId])->assertOk();
 
         expect(activityLogCountForCoverageTenant($tenantId))->toBe($before + 1);
     }],

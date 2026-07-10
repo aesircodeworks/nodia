@@ -1,6 +1,7 @@
 <?php
 
 use App\EventCatalog\EventCatalogServiceProvider;
+use App\EventCatalog\Exceptions\VenueNotFoundException;
 use App\Identity\Capability;
 use App\Identity\Enums\MembershipAccessOutcome;
 use App\Identity\Enums\MembershipScope;
@@ -141,6 +142,7 @@ arch()->preset()->laravel()->ignoring([
     TenantNotFoundException::class,
     UnknownDomainException::class,
     UnknownHostException::class,
+    VenueNotFoundException::class,
     MissingTenantHeaderException::class,
     InvalidTenantHeaderException::class,
     TenantAccessDeniedException::class,
@@ -152,6 +154,8 @@ arch()->preset()->laravel()->ignoring([
     'App\Tenancy\Http\Controllers',
     'App\Identity\Models',
     'App\Identity\Http\Controllers',
+    'App\EventCatalog\Models',
+    'App\EventCatalog\Http\Controllers',
     'App\Support\Audit\Models',
     'App\Support\Outbox\Models',
 ]);

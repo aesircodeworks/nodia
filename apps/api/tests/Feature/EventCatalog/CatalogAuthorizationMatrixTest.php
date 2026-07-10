@@ -21,9 +21,9 @@ use Tests\Support\TenantStaff;
  * capability probe tests/Feature/Identity/AuthorizationMatrixTest.php
  * already covers every Capability case against.
  *
- * None of Venue, Event, or TicketType exist yet (task breakdown items 3,
- * 4, and 7 build them); registering the real, permanently mounted routes
- * this early would force premature OpenAPI documentation
+ * None of Event or TicketType exist yet (task breakdown items 4 and 7
+ * build them); registering the real, permanently mounted routes this
+ * early would force premature OpenAPI documentation
  * (tests/Contract/RouteSpecDriftTest.php checks every registered /v1
  * route against docs/openapi/openapi.yaml with no exclusion list) ahead
  * of the contract each later task's own TDD loop owns. Every row below
@@ -38,6 +38,22 @@ use Tests\Support\TenantStaff;
  * RequireCapability); later tasks replace each probe's closure with a
  * real controller and Data objects without touching the capability or
  * the path.
+ *
+ * The four venue rows this file originally carried (task-01) were
+ * removed here, in task-02, the moment Venue landed with its own
+ * permanently mounted routes: a probe registered at the same method and
+ * path as a real route is never reached (Laravel matches the
+ * first-registered route for a given method/URI, and
+ * EventCatalogServiceProvider::boot() runs ahead of any test's
+ * beforeEach), so keeping the probe rows here would either silently test
+ * nothing or collide with the real controller's own validation. Coverage
+ * for venues' 401/403/success boundary moved to
+ * tests/Feature/EventCatalog/VenueEndpointsTest.php, which asserts the
+ * same three outcomes against the real routes (mirroring
+ * RoleEndpointsTest's precedent), closing the "later tasks replace each
+ * probe's closure with a real controller ... without touching the
+ * capability or the path" plan named above: the capability and path
+ * proven here carry over unchanged to the real test.
  */
 
 const CATALOG_AUTH_ID = '019797f3-0000-7000-8000-0000000000cc';
@@ -48,10 +64,6 @@ const CATALOG_AUTH_ID = '019797f3-0000-7000-8000-0000000000cc';
 function catalogAdminRoutes(): array
 {
     return [
-        'create venue' => ['POST', '/venues', Capability::EventsManage],
-        'list venues' => ['GET', '/venues', Capability::EventsView],
-        'show venue' => ['GET', '/venues/{venue}', Capability::EventsView],
-        'update venue' => ['PATCH', '/venues/{venue}', Capability::EventsManage],
         'create event' => ['POST', '/events', Capability::EventsManage],
         'list events' => ['GET', '/events', Capability::EventsView],
         'show event' => ['GET', '/events/{event}', Capability::EventsView],

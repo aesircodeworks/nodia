@@ -1759,6 +1759,244 @@ paths:
                       redis: failed
                       storage: ok
                     checked_at: '2026-07-04T12:00:00Z'
+  /v1/venues:
+    post:
+      operationId: createVenue
+      summary: Create a venue in the acting tenant
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the events.manage capability (stage-05a plan, task
+        breakdown item 3). country must be an ISO 3166-1 alpha-2 code and
+        capacity must be a positive integer, both checked in the request
+        layer ahead of the venues_capacity_positive database CHECK.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VenueCreateRequest'
+      responses:
+        '201':
+          description: Venue created.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Venue'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.manage (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/VenueForbiddenProblem'
+        '422':
+          description: >-
+            Request validation failed, including an out-of-range country or
+            capacity (code request.validation_failed, with the errors map).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+    get:
+      operationId: listVenues
+      summary: List venues in the acting tenant
+      description: >-
+        Tenant admin surface: Passport staff bearer plus X-Tenant-Id
+        membership validation, plus the events.view capability (stage-05a
+        plan, task breakdown item 3). tenant_isolation RLS scopes the
+        result to the acting tenant's own venues. Allowed query-builder
+        parameters are filter[name] and filter[city] (both partial match)
+        and sort in (name, -name, created_at, -created_at); unknown
+        filters or sorts are rejected with 400 invalid_query_parameter,
+        never ignored.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          style: deepObject
+          explode: true
+          description: 'Allowed filters: filter[name], filter[city] (partial match).'
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+              city:
+                type: string
+            additionalProperties:
+              type: string
+        - name: sort
+          in: query
+          required: false
+          description: 'Allowed sorts: name, -name, created_at, -created_at.'
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: One page of venues in the acting tenant.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VenuePage'
+        '400':
+          description: Unknown filter or sort parameter.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/InvalidQueryParameterProblem'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.view (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/VenueForbiddenProblem'
+  /v1/venues/{venue}:
+    parameters:
+      - name: venue
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getVenue
+      summary: Fetch one venue
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the events.view capability. A well-formed but
+        nonexistent or foreign-tenant venue id renders the same generic
+        request.not_found problem a malformed id gets from route-parameter
+        matching: another tenant's venue is invisible under
+        tenant_isolation RLS, so existence never leaks (stage-05a plan
+        endpoint table).
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The venue.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Venue'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.view (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/VenueForbiddenProblem'
+        '404':
+          description: No venue is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+    patch:
+      operationId: updateVenue
+      summary: Update a venue in the acting tenant
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the events.manage capability. Every field is
+        optional; a field absent from the payload is left untouched.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VenueUpdateRequest'
+      responses:
+        '200':
+          description: The updated venue.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Venue'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.manage (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/VenueForbiddenProblem'
+        '404':
+          description: No venue is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '422':
+          description: >-
+            Request validation failed, including an out-of-range country or
+            capacity (code request.validation_failed, with the errors map).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
 components:
   securitySchemes:
     BearerAuth:
@@ -2407,6 +2645,106 @@ components:
         meta:
           $ref: '#/components/schemas/PageMeta'
       additionalProperties: false
+    Venue:
+      type: object
+      description: >-
+        A tenant-scoped physical location events can be held at (stage-05a
+        plan, Data model).
+      required:
+        - id
+        - tenant_id
+        - name
+        - address
+        - city
+        - country
+        - capacity
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2.
+        capacity:
+          type: integer
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    VenueCreateRequest:
+      type: object
+      required:
+        - name
+        - address
+        - city
+        - country
+        - capacity
+      properties:
+        name:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2.
+        capacity:
+          type: integer
+          minimum: 1
+      additionalProperties: false
+    VenueUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2.
+        capacity:
+          type: integer
+          minimum: 1
+      additionalProperties: false
+    VenuePage:
+      type: object
+      description: >-
+        Laravel standard paginator envelope (data, links, meta) per
+        docs/api-conventions.md.
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Venue'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageLink'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      additionalProperties: false
     Capability:
       type: object
       description: One entry in the Capability registry (GET /v1/capabilities).
@@ -2827,6 +3165,28 @@ components:
         memberships.manage (code missing_capability), or the acting
         membership mandates confirmed MFA and has not confirmed it (code
         mfa_enforcement_required, task breakdown item 11).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [403]
+            code:
+              type: string
+              enum: [tenant_access_denied, missing_capability, mfa_enforcement_required]
+      unevaluatedProperties: false
+    VenueForbiddenProblem:
+      description: >-
+        Problem document for a 403 on a venue endpoint, reading or
+        mutating alike (both require a capability, events.view or
+        events.manage respectively, stage-05a plan task breakdown item
+        3): either the caller has no membership in the asserted tenant
+        (code tenant_access_denied, raised by ResolveTenantFromHeader
+        before the handler is reached), the acting membership does not
+        hold the required capability (code missing_capability), or the
+        acting membership mandates confirmed MFA and has not confirmed it
+        (code mfa_enforcement_required).
       allOf:
         - $ref: '#/components/schemas/Problem'
         - type: object

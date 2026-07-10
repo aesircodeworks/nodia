@@ -1,5 +1,6 @@
 <?php
 
+use App\EventCatalog\Models\Venue;
 use App\Identity\Capability;
 use App\Identity\Enums\MembershipScope;
 use App\Identity\Models\Customer;
@@ -71,6 +72,12 @@ afterEach(function (): void {
             // needs this per-tenant nodia_app delete above rather than a
             // blanket nodia_platform one.
             DB::table('customers')->where('tenant_id', $tenantId)->delete();
+
+            // contractVenueBearer()'s exercisers (stage-05a plan, task
+            // breakdown item 3) write venues scoped to a fresh
+            // contractVenueTenant() each; venues carries no platform
+            // write policy either, the same reason as customers above.
+            DB::table('venues')->where('tenant_id', $tenantId)->delete();
         });
     }
 
@@ -220,6 +227,53 @@ function contractTemplateRoleId(): string
 {
     return app(TenantTransaction::class)->asPlatform(
         fn () => Role::query()->whereNull('tenant_id')->where('name', 'Owner')->firstOrFail()->id,
+    );
+}
+
+/**
+ * A fresh tenant per call, mirroring contractRoleTenant()'s own
+ * precedent (stage-05a plan, task breakdown item 3).
+ */
+function contractVenueTenant(): Tenant
+{
+    return contractTenant();
+}
+
+/**
+ * @param  list<string>  $capabilities
+ */
+function contractVenueBearer(Tenant $tenant, array $capabilities = ['events.view', 'events.manage']): string
+{
+    $user = User::factory()->create();
+
+    $response = test()->postJson('/v1/auth/staff/token', [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    app(TenantTransaction::class)->asTenant($tenant->id, function () use ($user, $tenant, $capabilities): void {
+        Membership::factory()->create([
+            'user_id' => $user->id,
+            'tenant_id' => $tenant->id,
+            'role_id' => Role::factory()->create(['tenant_id' => $tenant->id, 'capabilities' => $capabilities])->id,
+            'scope' => MembershipScope::Tenant,
+        ]);
+    });
+
+    /** @var string $token */
+    $token = $response->json('access_token');
+
+    return $token;
+}
+
+/**
+ * @param  array<string, mixed>  $attributes
+ */
+function contractVenue(Tenant $tenant, array $attributes = []): Venue
+{
+    return app(TenantTransaction::class)->asTenant(
+        $tenant->id,
+        fn () => Venue::factory()->create(['tenant_id' => $tenant->id, ...$attributes]),
     );
 }
 
@@ -852,6 +906,152 @@ function documentedResponseExercisers(): array
                 'Authorization' => 'Bearer '.contractRoleBearer($tenant),
                 'X-Tenant-Id' => $tenant->id,
             ]);
+        },
+        'post /v1/venues 201' => function (): TestResponse {
+            $tenant = contractVenueTenant();
+
+            return test()->postJson(
+                '/v1/venues',
+                ['name' => 'Contract Arena', 'address' => '1 Contract St', 'city' => 'Austin', 'country' => 'US', 'capacity' => 500],
+                ['Authorization' => 'Bearer '.contractVenueBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/venues 401' => function (): TestResponse {
+            $tenant = contractVenueTenant();
+
+            return test()->postJson(
+                '/v1/venues',
+                ['name' => 'Contract Arena', 'address' => '1 Contract St', 'city' => 'Austin', 'country' => 'US', 'capacity' => 500],
+                ['X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/venues 403' => function (): TestResponse {
+            $tenant = contractVenueTenant();
+
+            return test()->postJson(
+                '/v1/venues',
+                ['name' => 'Contract Arena', 'address' => '1 Contract St', 'city' => 'Austin', 'country' => 'US', 'capacity' => 500],
+                ['Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'post /v1/venues 422' => function (): TestResponse {
+            $tenant = contractVenueTenant();
+
+            return test()->postJson(
+                '/v1/venues',
+                ['name' => '', 'address' => '1 Contract St', 'city' => 'Austin', 'country' => 'US', 'capacity' => 500],
+                ['Authorization' => 'Bearer '.contractVenueBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'get /v1/venues 200' => function (): TestResponse {
+            $tenant = contractVenueTenant();
+
+            return test()->getJson('/v1/venues', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/venues 400' => function (): TestResponse {
+            $tenant = contractVenueTenant();
+
+            return test()->getJson('/v1/venues?sort=capacity', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/venues 401' => function (): TestResponse {
+            $tenant = contractVenueTenant();
+
+            return test()->getJson('/v1/venues', ['X-Tenant-Id' => $tenant->id]);
+        },
+        'get /v1/venues 403' => function (): TestResponse {
+            $tenant = contractVenueTenant();
+
+            return test()->getJson('/v1/venues', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/venues/{venue} 200' => function (): TestResponse {
+            $tenant = contractVenueTenant();
+            $venue = contractVenue($tenant);
+
+            return test()->getJson('/v1/venues/'.$venue->id, [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/venues/{venue} 401' => function (): TestResponse {
+            $tenant = contractVenueTenant();
+            $venue = contractVenue($tenant);
+
+            return test()->getJson('/v1/venues/'.$venue->id, ['X-Tenant-Id' => $tenant->id]);
+        },
+        'get /v1/venues/{venue} 403' => function (): TestResponse {
+            $tenant = contractVenueTenant();
+            $venue = contractVenue($tenant);
+
+            return test()->getJson('/v1/venues/'.$venue->id, [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/venues/{venue} 404' => function (): TestResponse {
+            $tenant = contractVenueTenant();
+
+            return test()->getJson('/v1/venues/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'patch /v1/venues/{venue} 200' => function (): TestResponse {
+            $tenant = contractVenueTenant();
+            $venue = contractVenue($tenant);
+
+            return test()->patchJson(
+                '/v1/venues/'.$venue->id,
+                ['name' => 'Renamed Contract Arena'],
+                ['Authorization' => 'Bearer '.contractVenueBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/venues/{venue} 401' => function (): TestResponse {
+            $tenant = contractVenueTenant();
+            $venue = contractVenue($tenant);
+
+            return test()->patchJson(
+                '/v1/venues/'.$venue->id,
+                ['name' => 'Renamed Contract Arena'],
+                ['X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/venues/{venue} 403' => function (): TestResponse {
+            $tenant = contractVenueTenant();
+            $venue = contractVenue($tenant);
+
+            return test()->patchJson(
+                '/v1/venues/'.$venue->id,
+                ['name' => 'Renamed Contract Arena'],
+                ['Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/venues/{venue} 404' => function (): TestResponse {
+            $tenant = contractVenueTenant();
+
+            return test()->patchJson(
+                '/v1/venues/'.Str::uuid7(),
+                ['name' => 'Ghost'],
+                ['Authorization' => 'Bearer '.contractVenueBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/venues/{venue} 422' => function (): TestResponse {
+            $tenant = contractVenueTenant();
+            $venue = contractVenue($tenant);
+
+            return test()->patchJson(
+                '/v1/venues/'.$venue->id,
+                ['capacity' => 0],
+                ['Authorization' => 'Bearer '.contractVenueBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
         },
         'get /v1/capabilities 200' => fn (): TestResponse => test()->getJson('/v1/capabilities', [
             'Authorization' => 'Bearer '.contractStaffBearer(),

@@ -54,6 +54,13 @@ export type CreateTenantData = {
   enabled_gateways?: string[];
   payout_schedule?: Record<string, unknown> | null;
 };
+export type CreateVenueData = {
+  name: string;
+  address: string;
+  city: string;
+  country: string;
+  capacity: number;
+};
 export type CurrentUserData = {
   id: string;
   name: string;
@@ -288,6 +295,13 @@ export type UpdateTenantData = {
 export type UpdateTenantDomainData = {
   is_primary?: boolean;
 };
+export type UpdateVenueData = {
+  name?: string;
+  address?: string;
+  city?: string;
+  country?: string;
+  capacity?: number;
+};
 export type ValidationProblemData = {
   errors: Record<string, string[]>;
   type: string;
@@ -296,4 +310,15 @@ export type ValidationProblemData = {
   detail: string;
   code: string;
   correlation_id?: string;
+};
+export type VenueData = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  address: string;
+  city: string;
+  country: string;
+  capacity: number;
+  created_at: string;
+  updated_at: string;
 };
