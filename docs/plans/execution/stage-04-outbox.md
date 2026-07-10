@@ -23,7 +23,7 @@ Verified starting state: Stages 1-3 are Done. Stage 4 is Not started. No `app/Su
 - [x] task-09: Ordered-consumption helper (plan task 9)
 - [x] task-10: Replay primitive and artisan command (plan task 10)
 - [x] task-11: `UserInvited` producer in InviteUser (plan task 11)
-- [ ] task-12: `UserRoleChanged` producer in AssignRole (plan task 12)
+- [x] task-12: `UserRoleChanged` producer in AssignRole (plan task 12)
 - [ ] task-13: `CustomerRegistered` producer in RegisterCustomer (plan task 13)
 - [ ] task-14: `TenantCreated` and `DomainVerified` producers plus 9.3 registry rows (plan task 14)
 
@@ -223,3 +223,22 @@ What landed:
 Deviations: none material. InviteUser still creates `MembershipScope::Tenant` even when `X-Tenant-Id` is the sentinel (pre-existing Stage 3 behavior); the platform-scope envelope test asserts envelope `tenant_id` equals the membership's tenant (sentinel) rather than requiring `scope = platform`.
 
 Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff (`UserInvitedPayload` not emitted). Focused UserInvited / InviteUserAction tests passed 14 tests, 57 assertions. `composer -d apps/api run test` (all six suites) passed 1045 tests, 4063 assertions, 0 failures.
+
+#### task-12: UserRoleChanged producer in AssignRole (2026-07-10 04:50 -03)
+
+Commit: `edde86d` (`feat(identity): UserRoleChanged producer in AssignRole`), plus this journal entry.
+
+Landed plan task 12 / Slice 6 identity producer: `UserRoleChanged` event and payload, registry registration from Identity, recording inside AssignRole's producing transaction, and the Slice 6 unit/feature suite.
+
+What landed:
+
+- `App\Identity\Events\UserRoleChanged` and `UserRoleChangedPayload`: aggregate `membership` / membership id; envelope `tenant_id` from the membership; payload fields `membership_id`, `user_id`, `previous_role_id`, `new_role_id`, `changed_by_user_id` only (no email or name, no tenant_id in payload). Payload carries `#[Hidden]` so it is excluded from TypeScript generation as an internal contract.
+- `IdentityServiceProvider` registers the `UserRoleChanged` type-name string on the outbox registry alongside `UserInvited`.
+- `AssignRole` injects `OutboxRecorder`, captures `previous_role_id` before the update, and records after the membership update in the enclosing tenant request transaction; takes `$changedByUserId` from the controller's authenticated staff user.
+- `MembershipController::update` passes the staff user id the same way `store` passes the inviter for InviteUser.
+- Slice 6 tests: HTTP success persists exactly one outbox row (type, aggregate, tenant, correlation ID from `X-Correlation-Id`, payload shape without PII); validation, capability, and last-owner-removal failures record nothing; unit payload field set and no email/name; optional rollback coupling after record leaves no row.
+- `LastOwnerGuardTest` updated for the new AssignRole signature and clears `outbox_events` / `outbox_deliveries` in afterEach so tenant teardown is not blocked by the new FK rows.
+
+Deviations: none material. Same-role no-op reassignment still records `UserRoleChanged` with identical previous/new role ids (AssignRole always updates and records, matching the Action's pre-existing no-op path).
+
+Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff (`UserRoleChangedPayload` not emitted). Focused UserRoleChanged / LastOwnerGuard tests passed 15 tests, 50 assertions. `composer -d apps/api run test` (all six suites) passed 1053 tests, 4105 assertions, 0 failures.
