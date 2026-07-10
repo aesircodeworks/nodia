@@ -117,6 +117,10 @@ class ProblemRenderer
             ErrorCode::RoleInUse => 'This role is assigned to at least one membership and cannot be deleted.',
             ErrorCode::RoleNameTaken => 'A role with this name already exists in the tenant.',
             ErrorCode::UnknownCapability => 'The capabilities list includes a name that is not in the capability registry.',
+            ErrorCode::MembershipExists => 'This user already has a membership in the tenant.',
+            ErrorCode::LastOwnerRemoval => 'This membership is the tenant\'s only Owner and cannot be demoted or removed.',
+            ErrorCode::InvitationTokenInvalid => 'The invitation token is malformed, tampered with, or unknown.',
+            ErrorCode::InvitationTokenExpired => 'The invitation token has expired.',
         };
     }
 }

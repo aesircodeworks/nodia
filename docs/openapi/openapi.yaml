@@ -550,6 +550,45 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/UnauthenticatedProblem'
+  /v1/auth/staff/invitation/accept:
+    post:
+      operationId: acceptStaffInvitation
+      summary: Accept a staff invitation and set first credentials
+      description: >-
+        Unauthenticated: the token itself is the credential (stage-03
+        plan, task breakdown item 9). Redeems the signed, time-limited
+        acceptance token POST /v1/memberships mails to a newly invited
+        user and sets their password, replacing the random unusable one
+        InviteUser generated. The token is stateless (App\Identity\Support\InvitationToken):
+        tampering with it, or presenting one whose embedded expiry has
+        passed, fail with distinct codes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptInvitationRequest'
+      responses:
+        '204':
+          description: The password is set; the account can now authenticate.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+        '401':
+          description: >-
+            The token is malformed, tampered with, or names a user that no
+            longer resolves (code invitation_token_invalid), or its
+            embedded expiry has passed (code invitation_token_expired).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/InvitationTokenProblem'
+        '422':
+          description: Request validation failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
   /v1/me:
     get:
       operationId: getCurrentUser
@@ -893,6 +932,262 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/UnauthenticatedProblem'
+  /v1/memberships:
+    get:
+      operationId: listMemberships
+      summary: List memberships in the acting tenant
+      description: >-
+        Tenant admin surface: Passport staff bearer plus X-Tenant-Id
+        membership validation (tenancy.admin); no capability is required
+        to read, mirroring GET /v1/roles (stage-03 plan, task breakdown
+        item 9). Explicitly scoped to the asserted tenant, in addition to
+        RLS: memberships_self_read (task-04) permissively widens SELECT
+        visibility to the caller's own membership rows in every tenant, so
+        the endpoint filters to the asserted tenant itself rather than
+        relying on RLS alone. Page pagination with the standard Laravel
+        paginator envelope. Allowed query-builder parameters are
+        filter[user_id], filter[role_id], and sort in (created_at,
+        -created_at); unknown filters or sorts are rejected with 400
+        invalid_query_parameter, never ignored.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          style: deepObject
+          explode: true
+          description: 'Allowed filters: filter[user_id], filter[role_id] (exact match).'
+          schema:
+            type: object
+            properties:
+              user_id:
+                type: string
+              role_id:
+                type: string
+            additionalProperties:
+              type: string
+        - name: sort
+          in: query
+          required: false
+          description: 'Allowed sorts: created_at, -created_at.'
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: One page of memberships in the acting tenant.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MembershipPage'
+        '400':
+          description: Unknown filter or sort parameter.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/InvalidQueryParameterProblem'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: The caller has no membership in the asserted tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TenantAccessDeniedProblem'
+    post:
+      operationId: inviteUser
+      summary: Invite a user to the acting tenant
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id
+        membership validation, plus the memberships.manage capability
+        (stage-03 plan, task breakdown item 9). Creates the user if the
+        email is not already known, with a random password nobody is ever
+        told (code path App\Identity\Actions\InviteUser), and mails a
+        signed, time-limited acceptance token through POST
+        /v1/auth/staff/invitation/accept. A user already a member of the
+        tenant fails with membership_exists.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteUserRequest'
+      responses:
+        '201':
+          description: Membership created; an acceptance email was sent.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Membership'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), or the acting membership does not hold
+            memberships.manage (code missing_capability).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MembershipForbiddenProblem'
+        '404':
+          description: No role is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '409':
+          description: The invited user already has a membership in this tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MembershipExistsProblem'
+        '422':
+          description: Request validation failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+  /v1/memberships/{membership}:
+    parameters:
+      - name: membership
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      operationId: changeMembershipRole
+      summary: Change a membership's role
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id
+        membership validation, plus the memberships.manage capability
+        (task breakdown item 9). Demoting the tenant's only membership
+        holding the global Owner template role fails with
+        last_owner_removal.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeMembershipRoleRequest'
+      responses:
+        '200':
+          description: The updated membership.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Membership'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), or the acting membership does not hold
+            memberships.manage (code missing_capability).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MembershipForbiddenProblem'
+        '404':
+          description: >-
+            No membership is visible with this id in the acting tenant, or
+            the new role id is unknown or foreign to the tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '409':
+          description: >-
+            The membership is the tenant's only Owner and cannot be
+            demoted.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/LastOwnerRemovalProblem'
+        '422':
+          description: Request validation failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+    delete:
+      operationId: removeMembership
+      summary: Remove a membership
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id
+        membership validation, plus the memberships.manage capability
+        (task breakdown item 9). Removing the tenant's only membership
+        holding the global Owner template role fails with
+        last_owner_removal.
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Membership removed.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), or the acting membership does not hold
+            memberships.manage (code missing_capability).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MembershipForbiddenProblem'
+        '404':
+          description: No membership is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '409':
+          description: >-
+            The membership is the tenant's only Owner and cannot be
+            removed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/LastOwnerRemovalProblem'
   /v1/internal/domain-verification:
     get:
       operationId: verifyDomain
@@ -1062,7 +1357,9 @@ components:
         One row of CurrentUser.memberships: the caller's own membership in
         one tenant (scope tenant) or their platform-scope administrator
         membership (scope platform, tenant_id the sentinel platform
-        tenant).
+        tenant). Also the response shape for POST /v1/memberships and
+        PATCH /v1/memberships/{membership}, and the element type of
+        MembershipPage's data (stage-03 plan, task breakdown item 9).
       required:
         - id
         - user_id
@@ -1095,6 +1392,64 @@ components:
         scope:
           type: string
           enum: [tenant, platform]
+      additionalProperties: false
+    MembershipPage:
+      type: object
+      description: >-
+        Laravel standard paginator envelope (data, links, meta) per
+        docs/api-conventions.md.
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Membership'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageLink'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      additionalProperties: false
+    InviteUserRequest:
+      type: object
+      required:
+        - email
+        - name
+        - role_id
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role_id:
+          type: string
+          format: uuid
+      additionalProperties: false
+    ChangeMembershipRoleRequest:
+      type: object
+      required:
+        - role_id
+      properties:
+        role_id:
+          type: string
+          format: uuid
+      additionalProperties: false
+    AcceptInvitationRequest:
+      type: object
+      required:
+        - token
+        - password
+      properties:
+        token:
+          type: string
+        password:
+          type: string
+          minLength: 8
       additionalProperties: false
     CurrentUser:
       type: object
@@ -1732,6 +2087,72 @@ components:
                 code:
                   type: string
                   enum: [unknown_capability]
+      unevaluatedProperties: false
+    MembershipForbiddenProblem:
+      description: >-
+        Problem document for a 403 on a membership-mutating endpoint:
+        either the caller has no membership in the asserted tenant (code
+        tenant_access_denied, raised by ResolveTenantFromHeader before the
+        handler is reached), or the acting membership does not hold
+        memberships.manage (code missing_capability).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [403]
+            code:
+              type: string
+              enum: [tenant_access_denied, missing_capability]
+      unevaluatedProperties: false
+    MembershipExistsProblem:
+      description: >-
+        Problem document for an invite whose target user already has a
+        membership in the tenant.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [membership_exists]
+      unevaluatedProperties: false
+    LastOwnerRemovalProblem:
+      description: >-
+        Problem document for a role change or removal that would leave
+        the tenant with no membership holding the global Owner template
+        role.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [last_owner_removal]
+      unevaluatedProperties: false
+    InvitationTokenProblem:
+      description: >-
+        Problem document for a rejected staff invitation acceptance
+        token: it is malformed, tampered with, or names a user that no
+        longer resolves (code invitation_token_invalid), or its embedded
+        expiry has passed (code invitation_token_expired).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [401]
+            code:
+              type: string
+              enum: [invitation_token_invalid, invitation_token_expired]
       unevaluatedProperties: false
     InvalidQueryParameterProblem:
       description: >-

@@ -31,6 +31,10 @@ test('the registry holds exactly the known codes', function () {
         'role_in_use',
         'role_name_taken',
         'unknown_capability',
+        'membership_exists',
+        'last_owner_removal',
+        'invitation_token_invalid',
+        'invitation_token_expired',
     ]);
 });
 
@@ -66,6 +70,10 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'role_in_use' => [ErrorCode::RoleInUse, 409, 'Role in use', '/problems/role-in-use'],
     'role_name_taken' => [ErrorCode::RoleNameTaken, 409, 'Role name taken', '/problems/role-name-taken'],
     'unknown_capability' => [ErrorCode::UnknownCapability, 422, 'Unknown capability', '/problems/unknown-capability'],
+    'membership_exists' => [ErrorCode::MembershipExists, 409, 'Membership exists', '/problems/membership-exists'],
+    'last_owner_removal' => [ErrorCode::LastOwnerRemoval, 409, 'Last owner removal', '/problems/last-owner-removal'],
+    'invitation_token_invalid' => [ErrorCode::InvitationTokenInvalid, 401, 'Invitation token invalid', '/problems/invitation-token-invalid'],
+    'invitation_token_expired' => [ErrorCode::InvitationTokenExpired, 401, 'Invitation token expired', '/problems/invitation-token-expired'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

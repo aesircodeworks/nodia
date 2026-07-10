@@ -34,6 +34,10 @@ enum ErrorCode: string
     case RoleInUse = 'role_in_use';
     case RoleNameTaken = 'role_name_taken';
     case UnknownCapability = 'unknown_capability';
+    case MembershipExists = 'membership_exists';
+    case LastOwnerRemoval = 'last_owner_removal';
+    case InvitationTokenInvalid = 'invitation_token_invalid';
+    case InvitationTokenExpired = 'invitation_token_expired';
 
     public function status(): int
     {
@@ -65,6 +69,10 @@ enum ErrorCode: string
             self::RoleInUse => 409,
             self::RoleNameTaken => 409,
             self::UnknownCapability => 422,
+            self::MembershipExists => 409,
+            self::LastOwnerRemoval => 409,
+            self::InvitationTokenInvalid => 401,
+            self::InvitationTokenExpired => 401,
         };
     }
 
@@ -98,6 +106,10 @@ enum ErrorCode: string
             self::RoleInUse => 'Role in use',
             self::RoleNameTaken => 'Role name taken',
             self::UnknownCapability => 'Unknown capability',
+            self::MembershipExists => 'Membership exists',
+            self::LastOwnerRemoval => 'Last owner removal',
+            self::InvitationTokenInvalid => 'Invitation token invalid',
+            self::InvitationTokenExpired => 'Invitation token expired',
         };
     }
 

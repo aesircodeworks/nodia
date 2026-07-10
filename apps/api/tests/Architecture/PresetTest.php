@@ -6,6 +6,11 @@ use App\Identity\Enums\MembershipScope;
 use App\Identity\Exceptions\InvalidCredentialsException;
 use App\Identity\Exceptions\InvalidMembershipScopeException;
 use App\Identity\Exceptions\InvalidRefreshTokenException;
+use App\Identity\Exceptions\InvitationTokenExpiredException;
+use App\Identity\Exceptions\InvitationTokenInvalidException;
+use App\Identity\Exceptions\LastOwnerRemovalException;
+use App\Identity\Exceptions\MembershipExistsException;
+use App\Identity\Exceptions\MembershipNotFoundException;
 use App\Identity\Exceptions\MissingCapabilityException;
 use App\Identity\Exceptions\RefreshTokenReusedException;
 use App\Identity\Exceptions\RoleInUseException;
@@ -14,6 +19,7 @@ use App\Identity\Exceptions\RoleNotEditableException;
 use App\Identity\Exceptions\RoleNotFoundException;
 use App\Identity\Exceptions\UnknownCapabilityException;
 use App\Identity\IdentityServiceProvider;
+use App\Identity\Mail\StaffInvitationMail;
 use App\Support\Money\CurrencyMismatchException;
 use App\Support\Problems\ErrorCode;
 use App\Support\Tenancy\InvalidTenantIdException;
@@ -51,7 +57,12 @@ arch()->preset()->security();
 // renderer rather than App\Enums. MembershipAccessOutcome (stage-03
 // task-05) is the same story: Identity's own internal resolution result,
 // never part of the wire contract, so it stays with the Action that
-// returns it.
+// returns it. StaffInvitationMail (stage-03 task-09) lives under
+// App\Identity\Mail, not the top-level App\Mail the preset expects: that
+// namespace also requires every class in it to implement ShouldQueue,
+// which would route a plain send() call through the queue instead of
+// sending it synchronously (Illuminate\Mail\Mailer::sendMailable()), the
+// opposite of the stage plan's "no queue dependency" mandate.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -69,6 +80,12 @@ arch()->preset()->laravel()->ignoring([
     RoleNameTakenException::class,
     RoleNotFoundException::class,
     UnknownCapabilityException::class,
+    MembershipExistsException::class,
+    MembershipNotFoundException::class,
+    LastOwnerRemovalException::class,
+    InvitationTokenInvalidException::class,
+    InvitationTokenExpiredException::class,
+    StaffInvitationMail::class,
     DefaultLocaleNotSupportedException::class,
     DomainAlreadyRegisteredException::class,
     InvalidDomainNameException::class,

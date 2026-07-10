@@ -3,6 +3,7 @@
 namespace App\Identity\Models;
 
 use App\Identity\Capability;
+use App\Identity\Exceptions\RoleNotFoundException;
 use App\Identity\Exceptions\UnknownCapabilityException;
 use Database\Factories\Identity\Models\RoleFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -70,5 +71,19 @@ class Role extends Model
         return [
             'capabilities' => 'array',
         ];
+    }
+
+    /**
+     * Shared by App\Identity\Actions\InviteUser and AssignRole, which both
+     * need to resolve a request-supplied role id the same way
+     * App\Identity\Http\Controllers\RoleController::roleOrFail() already
+     * does for the role endpoints themselves: roles_template_or_tenant_read
+     * RLS already makes another tenant's custom role invisible to a plain
+     * find(), so a nonexistent id and a foreign tenant's role render
+     * identically, and existence never leaks.
+     */
+    public static function visibleOrFail(string $id): self
+    {
+        return self::query()->find($id) ?? throw RoleNotFoundException::forId($id);
     }
 }

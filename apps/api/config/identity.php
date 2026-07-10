@@ -23,4 +23,22 @@ return [
 
     'refresh_token_ttl_minutes' => (int) env('PASSPORT_REFRESH_TOKEN_TTL_MINUTES', 43_200),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Staff Invitation Acceptance Token Lifetime
+    |--------------------------------------------------------------------------
+    |
+    | POST /v1/memberships (InviteUser) issues a signed, time-limited token
+    | mailed to the invitee (stage-03 plan, task breakdown item 9); POST
+    | /v1/auth/staff/invitation/accept redeems it. The plan mandates
+    | "time-limited" but no specific duration, the same open point the
+    | refresh token TTL above already resolved by picking an explicit,
+    | config-driven, testable value; a week gives a real invitee enough
+    | time to check their inbox without the token becoming a long-lived
+    | secret.
+    |
+    */
+
+    'invitation_token_ttl_minutes' => (int) env('STAFF_INVITATION_TOKEN_TTL_MINUTES', 10_080),
+
 ];

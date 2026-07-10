@@ -2,16 +2,11 @@
 
 namespace App\Identity\Data;
 
+use App\Identity\Models\Membership;
 use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Mappers\SnakeCaseMapper;
 
-/**
- * Wire shape only for now: memberships and roles ship in a later Stage 3
- * task, so nothing constructs this yet. CurrentUserData needs a concrete
- * element type for its always-present, currently-always-empty memberships
- * list.
- */
 #[MapName(SnakeCaseMapper::class)]
 class MembershipData extends Data
 {
@@ -25,4 +20,25 @@ class MembershipData extends Data
         public string $roleName,
         public string $scope,
     ) {}
+
+    /**
+     * $membership must have its user and role relations already loaded
+     * (stage-03 plan, task breakdown item 9): App\Identity\Actions\ListOwnMemberships
+     * (task-05) builds MembershipData by hand instead, because that
+     * Action's role lookup is a separate per-tenant transaction, not an
+     * eager-loaded relation on the same connection.
+     */
+    public static function fromModel(Membership $membership): self
+    {
+        return new self(
+            $membership->id,
+            $membership->user_id,
+            $membership->user->name,
+            $membership->user->email,
+            $membership->tenant_id,
+            $membership->role_id,
+            $membership->role->name,
+            $membership->scope->value,
+        );
+    }
 }

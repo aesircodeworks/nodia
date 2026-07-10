@@ -1,3 +1,7 @@
+export type AcceptInvitationData = {
+  token: string;
+  password: string;
+};
 export type BrandingSettingsData = {
   primary_color: string | null;
   logo_url: string | null;
@@ -19,6 +23,9 @@ export type CapabilityData = {
 };
 export type CapabilityListData = {
   data: CapabilityData[];
+};
+export type ChangeMembershipRoleData = {
+  role_id: string;
 };
 export type CheckResult = 'ok' | 'failed';
 export type CreateRoleData = {
@@ -93,7 +100,11 @@ export type ErrorCode =
   | 'role_not_editable'
   | 'role_in_use'
   | 'role_name_taken'
-  | 'unknown_capability';
+  | 'unknown_capability'
+  | 'membership_exists'
+  | 'last_owner_removal'
+  | 'invitation_token_invalid'
+  | 'invitation_token_expired';
 export type HealthChecksData = {
   database: CheckResult;
   redis: CheckResult;
@@ -115,6 +126,11 @@ export type HealthReportData = {
   checked_at: string;
 };
 export type HealthStatus = 'ok';
+export type InviteUserData = {
+  email: string;
+  name: string;
+  role_id: string;
+};
 export type LengthAwarePaginator<TKey, TValue> = {
   data: TKey extends string ? Record<TKey, TValue> : TValue[];
   links: {

@@ -10,6 +10,7 @@ use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Assert;
@@ -171,6 +172,40 @@ function contractTemplateRoleId(): string
 {
     return app(TenantTransaction::class)->asPlatform(
         fn () => Role::query()->whereNull('tenant_id')->where('name', 'Owner')->firstOrFail()->id,
+    );
+}
+
+/**
+ * A fresh tenant per call, mirroring contractRoleTenant()'s own precedent
+ * (task breakdown item 9): several membership exercisers need a tenant
+ * with no pre-existing memberships beyond the bearer's own, so
+ * membership_exists and last_owner_removal assertions stay deterministic.
+ */
+function contractMembershipTenant(): Tenant
+{
+    return contractTenant();
+}
+
+/**
+ * @param  list<string>  $capabilities
+ */
+function contractMembershipBearer(Tenant $tenant, array $capabilities = ['memberships.manage']): string
+{
+    return contractRoleBearer($tenant, $capabilities);
+}
+
+/**
+ * @param  array<string, mixed>  $attributes
+ */
+function contractMembership(Tenant $tenant, array $attributes = []): Membership
+{
+    return app(TenantTransaction::class)->asTenant(
+        $tenant->id,
+        fn () => Membership::factory()->create([
+            'tenant_id' => $tenant->id,
+            'role_id' => Role::factory()->create(['tenant_id' => $tenant->id])->id,
+            ...$attributes,
+        ]),
     );
 }
 
@@ -653,6 +688,219 @@ function documentedResponseExercisers(): array
             'Authorization' => 'Bearer '.contractStaffBearer(),
         ]),
         'get /v1/capabilities 401' => fn (): TestResponse => test()->getJson('/v1/capabilities'),
+        'get /v1/memberships 200' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+
+            return test()->getJson('/v1/memberships', [
+                'Authorization' => 'Bearer '.contractMembershipBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/memberships 400' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+
+            return test()->getJson('/v1/memberships?sort=email', [
+                'Authorization' => 'Bearer '.contractMembershipBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/memberships 401' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+
+            return test()->getJson('/v1/memberships', ['X-Tenant-Id' => $tenant->id]);
+        },
+        'get /v1/memberships 403' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+            $stranger = User::factory()->create();
+
+            $response = test()->postJson('/v1/auth/staff/token', [
+                'email' => $stranger->email,
+                'password' => 'password',
+            ]);
+
+            return test()->getJson('/v1/memberships', [
+                'Authorization' => 'Bearer '.$response->json('access_token'),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/memberships 201' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+            Mail::fake();
+
+            return test()->postJson('/v1/memberships', [
+                'email' => 'contract-post-'.Str::uuid7().'@example.com',
+                'name' => 'Contract Post Invitee',
+                'role_id' => contractTemplateRoleId(),
+            ], [
+                'Authorization' => 'Bearer '.contractMembershipBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/memberships 401' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+
+            return test()->postJson('/v1/memberships', [
+                'email' => 'contract-401@example.com',
+                'name' => 'X',
+                'role_id' => contractTemplateRoleId(),
+            ], ['X-Tenant-Id' => $tenant->id]);
+        },
+        'post /v1/memberships 403' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+
+            return test()->postJson('/v1/memberships', [
+                'email' => 'contract-403@example.com',
+                'name' => 'X',
+                'role_id' => contractTemplateRoleId(),
+            ], [
+                'Authorization' => 'Bearer '.contractMembershipBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/memberships 404' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+
+            return test()->postJson('/v1/memberships', [
+                'email' => 'contract-404@example.com',
+                'name' => 'X',
+                'role_id' => (string) Str::uuid7(),
+            ], [
+                'Authorization' => 'Bearer '.contractMembershipBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/memberships 409' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+            $existing = User::factory()->create(['email' => 'contract-membership-exists@example.com']);
+            contractMembership($tenant, ['user_id' => $existing->id]);
+
+            return test()->postJson('/v1/memberships', [
+                'email' => 'contract-membership-exists@example.com',
+                'name' => 'X',
+                'role_id' => contractTemplateRoleId(),
+            ], [
+                'Authorization' => 'Bearer '.contractMembershipBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/memberships 422' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+
+            return test()->postJson('/v1/memberships', [
+                'email' => 'not-an-email',
+                'name' => '',
+                'role_id' => 'not-a-uuid',
+            ], [
+                'Authorization' => 'Bearer '.contractMembershipBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'patch /v1/memberships/{membership} 200' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+            $membership = contractMembership($tenant);
+            $newRoleId = contractRole($tenant)->id;
+
+            return test()->patchJson(
+                '/v1/memberships/'.$membership->id,
+                ['role_id' => $newRoleId],
+                ['Authorization' => 'Bearer '.contractMembershipBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/memberships/{membership} 401' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+            $membership = contractMembership($tenant);
+
+            return test()->patchJson(
+                '/v1/memberships/'.$membership->id,
+                ['role_id' => contractTemplateRoleId()],
+                ['X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/memberships/{membership} 403' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+            $membership = contractMembership($tenant);
+
+            return test()->patchJson(
+                '/v1/memberships/'.$membership->id,
+                ['role_id' => contractTemplateRoleId()],
+                ['Authorization' => 'Bearer '.contractMembershipBearer($tenant, ['events.view']), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/memberships/{membership} 404' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+
+            return test()->patchJson(
+                '/v1/memberships/'.Str::uuid7(),
+                ['role_id' => contractTemplateRoleId()],
+                ['Authorization' => 'Bearer '.contractMembershipBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/memberships/{membership} 409' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+            $onlyOwner = contractMembership($tenant, ['role_id' => contractTemplateRoleId()]);
+            $otherRoleId = contractRole($tenant)->id;
+
+            return test()->patchJson(
+                '/v1/memberships/'.$onlyOwner->id,
+                ['role_id' => $otherRoleId],
+                ['Authorization' => 'Bearer '.contractMembershipBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/memberships/{membership} 422' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+            $membership = contractMembership($tenant);
+
+            return test()->patchJson(
+                '/v1/memberships/'.$membership->id,
+                ['role_id' => 'not-a-uuid'],
+                ['Authorization' => 'Bearer '.contractMembershipBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'delete /v1/memberships/{membership} 401' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+            $membership = contractMembership($tenant);
+
+            return test()->deleteJson('/v1/memberships/'.$membership->id, [], ['X-Tenant-Id' => $tenant->id]);
+        },
+        'delete /v1/memberships/{membership} 403' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+            $membership = contractMembership($tenant);
+
+            return test()->deleteJson('/v1/memberships/'.$membership->id, [], [
+                'Authorization' => 'Bearer '.contractMembershipBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'delete /v1/memberships/{membership} 404' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+
+            return test()->deleteJson('/v1/memberships/'.Str::uuid7(), [], [
+                'Authorization' => 'Bearer '.contractMembershipBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'delete /v1/memberships/{membership} 409' => function (): TestResponse {
+            $tenant = contractMembershipTenant();
+            $onlyOwner = contractMembership($tenant, ['role_id' => contractTemplateRoleId()]);
+
+            return test()->deleteJson('/v1/memberships/'.$onlyOwner->id, [], [
+                'Authorization' => 'Bearer '.contractMembershipBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        // The 204 documents no content, so it has no coverage key here
+        // (mirroring the precedent above at 'get
+        // /v1/internal/domain-verification'); the feature test
+        // (tests/Feature/Identity/InvitationAcceptanceTest.php)
+        // conformance-asserts it.
+        'post /v1/auth/staff/invitation/accept 401' => fn (): TestResponse => test()->postJson('/v1/auth/staff/invitation/accept', [
+            'token' => 'not-a-real-token',
+            'password' => 'a-real-password',
+        ]),
+        'post /v1/auth/staff/invitation/accept 422' => fn (): TestResponse => test()->postJson('/v1/auth/staff/invitation/accept', [
+            'token' => '',
+            'password' => 'short',
+        ]),
     ];
 }
 
