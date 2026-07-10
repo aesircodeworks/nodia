@@ -391,6 +391,7 @@ erDiagram
         json supported_locales
         json enabled_gateways
         json payout_schedule
+        string settlement_currency
     }
 
     TENANT_DOMAIN {
@@ -450,6 +451,8 @@ erDiagram
 ```
 
 `ACTIVITY_LOG` is spatie/laravel-activitylog's table with its published migration adjusted for UUID keys and an added non-null `tenant_id` under RLS (platform-scope entries use a sentinel platform tenant). Tenant branding assets and other file attachments live in spatie/laravel-medialibrary's polymorphic `media` table, not drawn here.
+
+`TENANT.settlement_currency` is a single ISO 4217 code (stage-05a addition, additive migration on top of Stage 2's original `tenants` table), the currency every one of the tenant's `TICKET_TYPE` rows must match (section 12, ADR 018). It has no dedicated admin endpoint yet; `App\Tenancy\Actions\ResolveTenantSettlementCurrency` is the only sanctioned read of it, consumed by EventCatalog's ticket type currency validation without EventCatalog ever touching Tenancy's tables directly (section 3.1).
 
 ### 8.2 Catalog and Inventory
 

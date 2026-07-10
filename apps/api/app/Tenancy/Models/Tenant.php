@@ -17,10 +17,11 @@ use Illuminate\Support\Carbon;
  * @property list<string> $supported_locales
  * @property list<string> $enabled_gateways
  * @property array<string, mixed>|null $payout_schedule
+ * @property string $settlement_currency
  * @property Carbon $created_at
  * @property Carbon $updated_at
  */
-#[Fillable(['name', 'branding_settings', 'default_locale', 'supported_locales', 'enabled_gateways', 'payout_schedule'])]
+#[Fillable(['name', 'branding_settings', 'default_locale', 'supported_locales', 'enabled_gateways', 'payout_schedule', 'settlement_currency'])]
 class Tenant extends Model
 {
     /** @use HasFactory<TenantFactory> */

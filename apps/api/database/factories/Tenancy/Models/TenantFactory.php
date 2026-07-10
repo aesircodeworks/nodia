@@ -26,6 +26,7 @@ class TenantFactory extends Factory
             'supported_locales' => ['en'],
             'enabled_gateways' => [],
             'payout_schedule' => null,
+            'settlement_currency' => 'USD',
         ];
     }
 }
