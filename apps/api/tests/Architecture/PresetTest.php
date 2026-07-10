@@ -8,6 +8,7 @@ use App\EventCatalog\Exceptions\EventNotCancelableException;
 use App\EventCatalog\Exceptions\EventNotFoundException;
 use App\EventCatalog\Exceptions\EventNotPublishableException;
 use App\EventCatalog\Exceptions\InvalidEventVenueConfigurationException;
+use App\EventCatalog\Exceptions\SeatMapConflictException;
 use App\EventCatalog\Exceptions\SeatMapDuplicateSeatsException;
 use App\EventCatalog\Exceptions\SeatMapNameTakenException;
 use App\EventCatalog\Exceptions\SeatMapNotFoundException;
@@ -111,9 +112,10 @@ arch()->preset()->security();
 // invariant and is not meant to reach the HTTP boundary, mirroring
 // InvalidMembershipScopeException's own precedent for the identical
 // situation. SeatMapDuplicateSeatsException, SeatMapNameTakenException
-// (stage-05b task-02), and SeatMapNotFoundException (stage-05b task-03)
-// live in App\EventCatalog\Exceptions like every other HasErrorCode
-// exception in this context, not App\Exceptions.
+// (stage-05b task-02), SeatMapNotFoundException (stage-05b task-03), and
+// SeatMapConflictException (stage-05b task-04) live in
+// App\EventCatalog\Exceptions like every other HasErrorCode exception in
+// this context, not App\Exceptions.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -175,6 +177,7 @@ arch()->preset()->laravel()->ignoring([
     SeatMapDuplicateSeatsException::class,
     SeatMapNameTakenException::class,
     SeatMapNotFoundException::class,
+    SeatMapConflictException::class,
     MissingTenantHeaderException::class,
     InvalidTenantHeaderException::class,
     TenantAccessDeniedException::class,

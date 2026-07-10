@@ -51,9 +51,12 @@ Route::middleware([RequireCapability::class.':'.Capability::EventsManage->value,
 // mutating surface is gated by its own seat_maps.manage capability, a
 // third, dedicated group so RequireCapability checks that one rather than
 // events.manage (mirroring the events.publish group's own precedent
-// above for why a distinct capability needs its own group).
+// above for why a distinct capability needs its own group). Task
+// breakdown item 4 (TDD slice 4) adds the PUT full-replace route below to
+// the same group.
 Route::middleware([RequireCapability::class.':'.Capability::SeatMapsManage->value, RecordActivityAudit::class])->group(function (): void {
     Route::post('/venues/{venue}/seat-maps', [SeatMapController::class, 'store'])->whereUuid('venue');
+    Route::put('/seat-maps/{seat_map}', [SeatMapController::class, 'update'])->whereUuid('seat_map');
 });
 
 Route::middleware([RequireCapability::class.':'.Capability::EventsPublish->value, RecordActivityAudit::class])->group(function (): void {

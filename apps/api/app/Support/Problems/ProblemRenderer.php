@@ -141,6 +141,7 @@ class ProblemRenderer
             ErrorCode::CatalogEventNotCancelable => 'This event is already canceled.',
             ErrorCode::CatalogSeatMapDuplicateSeats => 'The seats array contains two or more seats sharing the same section, row, and number.',
             ErrorCode::CatalogSeatMapNameTaken => 'A seat map with this name already exists for the venue.',
+            ErrorCode::CatalogSeatMapConflict => 'A seat collided with an existing section, row, and number on this seat map.',
         };
     }
 }

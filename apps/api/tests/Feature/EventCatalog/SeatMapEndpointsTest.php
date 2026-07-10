@@ -359,6 +359,165 @@ describe('GET /v1/seat-maps/{seat_map}', function () {
     });
 });
 
+/*
+ * Stage-05b plan, task breakdown item 4 (TDD slice 4): PUT
+ * /v1/seat-maps/{seat_map} replaces a template's name, layout, and seat
+ * set in one document, matching create's validation and problem codes
+ * (Endpoints: "Errors: as create, plus 404 for the seat map itself").
+ * Writes still gate on seat_maps.manage, not events.view, mirroring the
+ * POST describe block above.
+ */
+describe('PUT /v1/seat-maps/{seat_map}', function () {
+    it('replaces name, layout, and seat set, returning the full document ordered by section/row/number', function () {
+        $seatMap = makeSeatMapRow($this->tenantId, $this->venue->id, ['name' => 'Original Name', 'layout' => ['stage' => 'south']]);
+        $kept = makeSeatRow($this->tenantId, $seatMap->id, ['section' => 'A', 'row' => '1', 'number' => '1', 'position_x' => 0, 'position_y' => 0]);
+        makeSeatRow($this->tenantId, $seatMap->id, ['section' => 'A', 'row' => '1', 'number' => '2']);
+
+        $response = $this->putJson('/v1/seat-maps/'.$seatMap->id, [
+            'name' => 'Replaced Name',
+            'layout' => ['stage' => 'north'],
+            'seats' => [
+                ['section' => 'A', 'row' => '1', 'number' => '1', 'position_x' => 9, 'position_y' => 9],
+                ['section' => 'C', 'row' => '3', 'number' => '1', 'position_x' => null, 'position_y' => null],
+            ],
+        ]);
+
+        $response->assertOk()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('id', $seatMap->id)
+            ->assertJsonPath('name', 'Replaced Name')
+            ->assertJsonPath('layout', ['stage' => 'north'])
+            ->assertJsonCount(2, 'seats');
+
+        expect(collect($response->json('seats'))->map(fn (array $seat) => [$seat['section'], $seat['row'], $seat['number']])->all())
+            ->toBe([['A', '1', '1'], ['C', '3', '1']]);
+
+        // the kept seat's id survives the coordinate change; the omitted
+        // (A,1,2) seat is gone and the new (C,3,1) seat got a fresh id.
+        $keptInResponse = collect($response->json('seats'))->firstWhere('section', 'A');
+
+        expect($keptInResponse['id'])->toBe($kept->id)
+            ->and($keptInResponse['position_x'])->toBe(9)
+            ->and($keptInResponse['position_y'])->toBe(9);
+    });
+
+    it('records exactly one activity_log row for the replacement', function () {
+        $seatMap = makeSeatMapRow($this->tenantId, $this->venue->id);
+
+        $before = app(TenantTransaction::class)->asPlatform(
+            fn () => DB::table('activity_log')->where('tenant_id', $this->tenantId)->count(),
+        );
+
+        $this->putJson('/v1/seat-maps/'.$seatMap->id, seatMapCreatePayload())->assertOk();
+
+        $after = app(TenantTransaction::class)->asPlatform(
+            fn () => DB::table('activity_log')->where('tenant_id', $this->tenantId)->count(),
+        );
+
+        expect($after)->toBe($before + 1);
+    });
+
+    it('rejects an in-payload duplicate natural key with catalog.seat_map_duplicate_seats listing the offending positions', function () {
+        $seatMap = makeSeatMapRow($this->tenantId, $this->venue->id, ['name' => 'Unreplaced']);
+
+        $response = $this->putJson('/v1/seat-maps/'.$seatMap->id, seatMapCreatePayload([
+            'seats' => [
+                ['section' => 'A', 'row' => '1', 'number' => '1', 'position_x' => null, 'position_y' => null],
+                ['section' => 'A', 'row' => '1', 'number' => '1', 'position_x' => null, 'position_y' => null],
+                ['section' => 'B', 'row' => '1', 'number' => '1', 'position_x' => null, 'position_y' => null],
+            ],
+        ]));
+
+        $response->assertUnprocessable()
+            ->assertHeader('Content-Type', 'application/problem+json')
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'catalog.seat_map_duplicate_seats');
+
+        expect(array_keys($response->json('errors')))->toBe(['seats.0', 'seats.1']);
+
+        // the original document survives untouched: the name was never
+        // overwritten, since the in-payload check runs before any query.
+        expect(app(TenantTransaction::class)->asTenant(
+            $this->tenantId,
+            fn () => SeatMap::query()->whereKey($seatMap->id)->value('name'),
+        ))->toBe('Unreplaced');
+    });
+
+    it('rejects a rename to a name already taken on the same venue with catalog.seat_map_name_taken', function () {
+        makeSeatMapRow($this->tenantId, $this->venue->id, ['name' => 'Taken Name']);
+        $seatMap = makeSeatMapRow($this->tenantId, $this->venue->id, ['name' => 'Renameable']);
+
+        $this->putJson('/v1/seat-maps/'.$seatMap->id, seatMapCreatePayload(['name' => 'Taken Name']))
+            ->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'catalog.seat_map_name_taken');
+    });
+
+    it('rejects an invalid payload with request.validation_failed carrying the errors map', function () {
+        $seatMap = makeSeatMapRow($this->tenantId, $this->venue->id);
+
+        $response = $this->putJson('/v1/seat-maps/'.$seatMap->id, seatMapCreatePayload(['name' => '']));
+
+        $response->assertUnprocessable()
+            ->assertHeader('Content-Type', 'application/problem+json')
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.validation_failed');
+
+        expect($response->json('errors'))->toHaveKey('name');
+    });
+
+    it('returns a request.not_found problem for a foreign tenant\'s seat map', function () {
+        $foreignVenue = app(TenantTransaction::class)->asTenant(
+            $this->otherTenantId,
+            fn () => Venue::factory()->create(['tenant_id' => $this->otherTenantId]),
+        );
+        $foreignSeatMap = makeSeatMapRow($this->otherTenantId, $foreignVenue->id);
+
+        $this->putJson('/v1/seat-maps/'.$foreignSeatMap->id, seatMapCreatePayload())
+            ->assertNotFound()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.not_found');
+    });
+
+    it('returns a request.not_found problem for an unknown seat map id', function () {
+        $this->putJson('/v1/seat-maps/'.Str::uuid7(), seatMapCreatePayload())
+            ->assertNotFound()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.not_found');
+    });
+
+    it('rejects a request with no bearer', function () {
+        $seatMap = makeSeatMapRow($this->tenantId, $this->venue->id);
+
+        $this->withoutToken()
+            ->putJson('/v1/seat-maps/'.$seatMap->id, seatMapCreatePayload(), ['X-Tenant-Id' => $this->tenantId])
+            ->assertUnauthorized()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'auth.unauthenticated');
+    });
+
+    it('rejects a bearer lacking seat_maps.manage with missing_capability', function () {
+        $seatMap = makeSeatMapRow($this->tenantId, $this->venue->id);
+
+        $this->withHeaders(['Authorization' => 'Bearer '.TenantStaff::token($this->tenantId, Capability::EventsView)])
+            ->putJson('/v1/seat-maps/'.$seatMap->id, seatMapCreatePayload())
+            ->assertForbidden()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'missing_capability');
+    });
+
+    it('rejects a bearer with no membership in the asserted tenant', function () {
+        $seatMap = makeSeatMapRow($this->tenantId, $this->venue->id);
+        $strangerToken = StaffTokens::issue(User::factory()->create());
+
+        $this->withHeaders(['Authorization' => 'Bearer '.$strangerToken])
+            ->putJson('/v1/seat-maps/'.$seatMap->id, seatMapCreatePayload())
+            ->assertForbidden()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'tenant_access_denied');
+    });
+});
+
 describe('GET /v1/venues/{venue}/seat-maps', function () {
     beforeEach(function (): void {
         $this->withHeaders([

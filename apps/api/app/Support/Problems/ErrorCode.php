@@ -57,6 +57,7 @@ enum ErrorCode: string
     case CatalogEventNotCancelable = 'catalog.event_not_cancelable';
     case CatalogSeatMapDuplicateSeats = 'catalog.seat_map_duplicate_seats';
     case CatalogSeatMapNameTaken = 'catalog.seat_map_name_taken';
+    case CatalogSeatMapConflict = 'catalog.seat_map_conflict';
 
     public function status(): int
     {
@@ -111,6 +112,7 @@ enum ErrorCode: string
             self::CatalogEventNotCancelable => 409,
             self::CatalogSeatMapDuplicateSeats => 422,
             self::CatalogSeatMapNameTaken => 422,
+            self::CatalogSeatMapConflict => 409,
         };
     }
 
@@ -167,6 +169,7 @@ enum ErrorCode: string
             self::CatalogEventNotCancelable => 'Event not cancelable',
             self::CatalogSeatMapDuplicateSeats => 'Duplicate seats',
             self::CatalogSeatMapNameTaken => 'Seat map name taken',
+            self::CatalogSeatMapConflict => 'Seat map conflict',
         };
     }
 

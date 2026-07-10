@@ -54,6 +54,7 @@ test('the registry holds exactly the known codes', function () {
         'catalog.event_not_cancelable',
         'catalog.seat_map_duplicate_seats',
         'catalog.seat_map_name_taken',
+        'catalog.seat_map_conflict',
     ]);
 });
 
@@ -112,6 +113,7 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'catalog.event_not_cancelable' => [ErrorCode::CatalogEventNotCancelable, 409, 'Event not cancelable', '/problems/catalog-event-not-cancelable'],
     'catalog.seat_map_duplicate_seats' => [ErrorCode::CatalogSeatMapDuplicateSeats, 422, 'Duplicate seats', '/problems/catalog-seat-map-duplicate-seats'],
     'catalog.seat_map_name_taken' => [ErrorCode::CatalogSeatMapNameTaken, 422, 'Seat map name taken', '/problems/catalog-seat-map-name-taken'],
+    'catalog.seat_map_conflict' => [ErrorCode::CatalogSeatMapConflict, 409, 'Seat map conflict', '/problems/catalog-seat-map-conflict'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

@@ -2,6 +2,7 @@
 
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Models\Event;
+use App\EventCatalog\Models\SeatMap;
 use App\EventCatalog\Models\TicketType;
 use App\EventCatalog\Models\Venue;
 use App\Identity\Enums\MembershipScope;
@@ -427,6 +428,27 @@ it('increases the acting tenant\'s activity_log count by exactly one for every m
                 ['section' => 'A', 'row' => '1', 'number' => '1', 'position_x' => null, 'position_y' => null],
             ],
         ], ['Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => $tenantId])->assertCreated();
+
+        expect(activityLogCountForCoverageTenant($tenantId))->toBe($before + 1);
+    }],
+    'Stage 5b: replace a seat map' => [function (TestCase $test): void {
+        $tenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);
+        $token = coverageAdminBearer($tenantId, ['seat_maps.manage']);
+        $venueId = app(TenantTransaction::class)->asTenant(
+            $tenantId,
+            fn () => Venue::factory()->create(['tenant_id' => $tenantId])->id,
+        );
+        $seatMapId = app(TenantTransaction::class)->asTenant(
+            $tenantId,
+            fn () => SeatMap::factory()->create(['tenant_id' => $tenantId, 'venue_id' => $venueId])->id,
+        );
+        $before = activityLogCountForCoverageTenant($tenantId);
+
+        $test->putJson('/v1/seat-maps/'.$seatMapId, [
+            'name' => 'Coverage Replaced Map',
+            'layout' => [],
+            'seats' => [],
+        ], ['Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => $tenantId])->assertOk();
 
         expect(activityLogCountForCoverageTenant($tenantId))->toBe($before + 1);
     }],

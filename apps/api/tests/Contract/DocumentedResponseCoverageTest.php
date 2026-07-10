@@ -1338,6 +1338,59 @@ function documentedResponseExercisers(): array
                 'X-Tenant-Id' => $tenant->id,
             ]);
         },
+        'put /v1/seat-maps/{seat_map} 200' => function (): TestResponse {
+            $tenant = contractSeatMapTenant();
+            $venue = contractVenue($tenant);
+            $seatMap = contractSeatMap($tenant, $venue);
+
+            return test()->putJson(
+                '/v1/seat-maps/'.$seatMap->id,
+                contractSeatMapCreatePayload(['name' => 'Contract Replaced Bowl']),
+                ['Authorization' => 'Bearer '.contractSeatMapBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'put /v1/seat-maps/{seat_map} 401' => function (): TestResponse {
+            $tenant = contractSeatMapTenant();
+            $venue = contractVenue($tenant);
+            $seatMap = contractSeatMap($tenant, $venue);
+
+            return test()->putJson(
+                '/v1/seat-maps/'.$seatMap->id,
+                contractSeatMapCreatePayload(),
+                ['X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'put /v1/seat-maps/{seat_map} 403' => function (): TestResponse {
+            $tenant = contractSeatMapTenant();
+            $venue = contractVenue($tenant);
+            $seatMap = contractSeatMap($tenant, $venue);
+
+            return test()->putJson(
+                '/v1/seat-maps/'.$seatMap->id,
+                contractSeatMapCreatePayload(),
+                ['Authorization' => 'Bearer '.contractSeatMapBearer($tenant, ['events.view']), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'put /v1/seat-maps/{seat_map} 404' => function (): TestResponse {
+            $tenant = contractSeatMapTenant();
+
+            return test()->putJson(
+                '/v1/seat-maps/'.Str::uuid7(),
+                contractSeatMapCreatePayload(),
+                ['Authorization' => 'Bearer '.contractSeatMapBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'put /v1/seat-maps/{seat_map} 422' => function (): TestResponse {
+            $tenant = contractSeatMapTenant();
+            $venue = contractVenue($tenant);
+            $seatMap = contractSeatMap($tenant, $venue);
+
+            return test()->putJson(
+                '/v1/seat-maps/'.$seatMap->id,
+                contractSeatMapCreatePayload(['name' => '']),
+                ['Authorization' => 'Bearer '.contractSeatMapBearer($tenant), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
         'post /v1/events 201' => function (): TestResponse {
             $tenant = contractEventTenant();
 

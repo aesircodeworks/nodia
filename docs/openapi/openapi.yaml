@@ -2205,6 +2205,83 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/NotFoundProblem'
+    put:
+      operationId: replaceSeatMap
+      summary: Replace a seat map template's name, layout, and seat set
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the seat_maps.manage capability (stage-05b plan,
+        task breakdown item 4). Full replace, declarative inside one
+        transaction: incoming seats are matched to existing rows by the
+        natural key (section, row, number); a matched seat keeps its id
+        and gets its coordinates updated, an unmatched incoming seat is
+        inserted with a new id, and an existing seat absent from the
+        payload is deleted. Renaming a seat's section, row, or number is
+        therefore a delete plus an insert under a new id, not an update:
+        seat identity is only stable across an edit that keeps the same
+        natural key. name and layout are replaced outright. The
+        seat_maps row is locked (SELECT ... FOR UPDATE) for the duration
+        of the transaction, so concurrent replaces of the same map
+        serialize instead of interleaving their diffs; the
+        (seat_map_id, section, row, number) unique index is defense in
+        depth against anything that bypasses that lock, translated to a
+        409 catalog.seat_map_conflict problem rather than a 500, but is
+        not reachable through two ordinary PUT requests and therefore
+        carries no response entry of its own here.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeatMapUpsertRequest'
+      responses:
+        '200':
+          description: The replaced seat map.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeatMap'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            seat_maps.manage (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SeatMapForbiddenProblem'
+        '404':
+          description: No seat map is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '422':
+          description: >-
+            Request validation failed (code request.validation_failed, with
+            the errors map); the seats array contains two or more seats
+            sharing the same section, row, and number (code
+            catalog.seat_map_duplicate_seats, with the errors map keyed by
+            the offending seats' positions, e.g. seats.0); or the new name
+            is already taken by another seat map on the same venue (code
+            catalog.seat_map_name_taken).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SeatMapUnprocessableProblem'
   /v1/events:
     post:
       operationId: createEvent

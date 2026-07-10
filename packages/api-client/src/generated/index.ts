@@ -176,7 +176,8 @@ export type ErrorCode =
   | 'catalog.event_not_publishable'
   | 'catalog.event_not_cancelable'
   | 'catalog.seat_map_duplicate_seats'
-  | 'catalog.seat_map_name_taken';
+  | 'catalog.seat_map_name_taken'
+  | 'catalog.seat_map_conflict';
 export type EventData = {
   id: string;
   tenant_id: string;

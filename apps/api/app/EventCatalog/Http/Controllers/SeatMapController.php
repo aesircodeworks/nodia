@@ -53,6 +53,20 @@ class SeatMapController
     }
 
     /**
+     * Full replace (stage-05b plan, task breakdown item 4): the not-found
+     * lookup here is a plain find() under RLS, same as show()'s and
+     * store()'s own venueOrFail()/seatMapOrFail() precedent; the Action's
+     * own lockForUpdate() re-fetch inside its transaction is what actually
+     * serializes concurrent replaces of the same map, not this lookup.
+     */
+    public function update(string $seat_map, UpsertSeatMapData $data, UpsertSeatMap $upsertSeatMap): SeatMapData
+    {
+        $seatMap = SeatMap::query()->find($seat_map) ?? throw SeatMapNotFoundException::forId($seat_map);
+
+        return $upsertSeatMap->replace($seatMap, $data);
+    }
+
+    /**
      * Mirrors VenueController::venueOrFail(): a well-formed but nonexistent
      * or foreign-tenant venue id renders the generic request.not_found
      * problem, never a seat-map-specific code, so existence never leaks
