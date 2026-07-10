@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Support\Outbox\EventTypeRegistry;
 use App\Support\Outbox\Jobs\ProcessOutboxDelivery;
+use App\Support\Outbox\OrderedConsumption;
 use App\Support\Outbox\SubscriberRegistry;
 use App\Support\Tenancy\TenantTransaction;
 use Illuminate\Database\Schema\Blueprint;
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\Support\Outbox\FixtureDomainEvent;
 use Tests\Support\Outbox\IdempotentTestSubscriber;
+use Tests\Support\Outbox\OrderedTestSubscriber;
 
 /**
  * Pest helpers for outbox delivery and the mandated duplicate-delivery
@@ -32,6 +34,20 @@ function registerIdempotentOutboxSubscriber(?array $eventTypes = null): Idempote
     return $subscriber;
 }
 
+/**
+ * @param  list<string>|null  $eventTypes
+ */
+function registerOrderedOutboxSubscriber(?array $eventTypes = null): OrderedTestSubscriber
+{
+    $subscriber = new OrderedTestSubscriber;
+    $types = $eventTypes ?? [FixtureDomainEvent::TYPE];
+
+    app(EventTypeRegistry::class)->register(FixtureDomainEvent::TYPE);
+    app(SubscriberRegistry::class)->register(OrderedTestSubscriber::NAME, $types, $subscriber);
+
+    return $subscriber;
+}
+
 function ensureOutboxTestEffectsTable(): void
 {
     if (Schema::hasTable(IdempotentTestSubscriber::EFFECTS_TABLE)) {
@@ -39,14 +55,20 @@ function ensureOutboxTestEffectsTable(): void
     }
 
     Schema::create(IdempotentTestSubscriber::EFFECTS_TABLE, function (Blueprint $table): void {
-        $table->uuid('id')->primary();
+        // bigserial PK records application order for ordered-consumption
+        // concurrency assertions (stage-04 Slice 4).
+        $table->id();
         $table->uuid('event_id');
+        $table->unsignedBigInteger('event_sequence')->nullable();
         $table->string('subscriber');
     });
 
     // Workers run under nodia_app via TenantTransaction; grant so the
     // durable effect side channel is writable inside that posture.
-    DB::statement('grant select, insert, update, delete on '.IdempotentTestSubscriber::EFFECTS_TABLE.' to nodia_app, nodia_platform');
+    // Sequence/identity nextval needs USAGE for nodia_app inserts.
+    $table = IdempotentTestSubscriber::EFFECTS_TABLE;
+    DB::statement("grant select, insert, update, delete on {$table} to nodia_app, nodia_platform");
+    DB::statement("grant usage, select on sequence {$table}_id_seq to nodia_app, nodia_platform");
 }
 
 function dropOutboxTestEffectsTable(): void
@@ -61,8 +83,16 @@ function dropOutboxTestEffectsTable(): void
 function processOutboxDeliveryTwice(string $eventId, string $subscriber = IdempotentTestSubscriber::NAME): void
 {
     $job = new ProcessOutboxDelivery($eventId, $subscriber);
-    $job->handle(app(TenantTransaction::class), app(SubscriberRegistry::class));
-    $job->handle(app(TenantTransaction::class), app(SubscriberRegistry::class));
+    $job->handle(
+        app(TenantTransaction::class),
+        app(SubscriberRegistry::class),
+        app(OrderedConsumption::class),
+    );
+    $job->handle(
+        app(TenantTransaction::class),
+        app(SubscriberRegistry::class),
+        app(OrderedConsumption::class),
+    );
 }
 
 function forgetOutboxSubscriberRegistry(): void

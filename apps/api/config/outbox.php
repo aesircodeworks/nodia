@@ -32,4 +32,20 @@ return [
 
     'sweeper_grace_seconds' => (int) env('OUTBOX_SWEEPER_GRACE_SECONDS', 60),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Ordered Consumption Deferral Backoff
+    |--------------------------------------------------------------------------
+    |
+    | When an OrderedOutboxSubscriber is not ready (unprocessed same-aggregate
+    | predecessor, or event still inside the stability window), ProcessOutboxDelivery
+    | releases the job for this many seconds (stage-04 plan ordered-helper risk).
+    | Sized under the sweeper grace (default 60s) and the every-minute sweeper
+    | schedule so exhausted attempts still age into sweeper re-enqueue rather
+    | than only dead-lettering. Tunable without migration.
+    |
+    */
+
+    'ordered_defer_seconds' => (int) env('OUTBOX_ORDERED_DEFER_SECONDS', 15),
+
 ];

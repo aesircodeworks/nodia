@@ -8,7 +8,6 @@ use App\Support\Outbox\Models\OutboxEvent;
 use App\Support\Outbox\OutboxSubscriber;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 
 /**
  * Idempotent test subscriber for outbox delivery coverage (stage-04 plan
@@ -35,8 +34,8 @@ final class IdempotentTestSubscriber implements OutboxSubscriber
 
         if (Schema::hasTable(self::EFFECTS_TABLE)) {
             DB::table(self::EFFECTS_TABLE)->insert([
-                'id' => Str::uuid7()->toString(),
                 'event_id' => $event->id,
+                'event_sequence' => $event->sequence,
                 'subscriber' => self::NAME,
             ]);
         }

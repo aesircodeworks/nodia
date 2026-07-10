@@ -6,6 +6,7 @@ use App\Support\Outbox\Enums\OutboxDeliveryStatus;
 use App\Support\Outbox\EventTypeRegistry;
 use App\Support\Outbox\Jobs\ProcessOutboxDelivery;
 use App\Support\Outbox\Models\OutboxDelivery;
+use App\Support\Outbox\OrderedConsumption;
 use App\Support\Outbox\OutboxRecorder;
 use App\Support\Outbox\SubscriberRegistry;
 use App\Support\Tenancy\TenantTransaction;
@@ -84,6 +85,7 @@ it('resolves two parallel workers on one delivery to exactly one subscriber effe
             ])->handle(
                 app(TenantTransaction::class),
                 app(SubscriberRegistry::class),
+                app(OrderedConsumption::class),
             );
 
             return true;

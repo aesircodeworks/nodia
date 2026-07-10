@@ -16,15 +16,18 @@ use Illuminate\Support\Facades\File;
 it('ships config/outbox.php with the stage-04 default windows', function (): void {
     expect(File::exists(config_path('outbox.php')))->toBeTrue()
         ->and(config()->integer('outbox.stability_window_seconds'))->toBe(5)
-        ->and(config()->integer('outbox.sweeper_grace_seconds'))->toBe(60);
+        ->and(config()->integer('outbox.sweeper_grace_seconds'))->toBe(60)
+        ->and(config()->integer('outbox.ordered_defer_seconds'))->toBe(15);
 });
 
 it('reads grace and stability windows from config so tests can override them', function (): void {
     config()->set('outbox.stability_window_seconds', 12);
     config()->set('outbox.sweeper_grace_seconds', 90);
+    config()->set('outbox.ordered_defer_seconds', 7);
 
     expect(config()->integer('outbox.stability_window_seconds'))->toBe(12)
-        ->and(config()->integer('outbox.sweeper_grace_seconds'))->toBe(90);
+        ->and(config()->integer('outbox.sweeper_grace_seconds'))->toBe(90)
+        ->and(config()->integer('outbox.ordered_defer_seconds'))->toBe(7);
 });
 
 it('computes cutoffs from the framework clock so freezeTime and travel control the windows', function (): void {
