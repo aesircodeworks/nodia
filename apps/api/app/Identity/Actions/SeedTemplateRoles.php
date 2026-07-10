@@ -50,6 +50,7 @@ final class SeedTemplateRoles
                 Capability::OrdersRefund,
                 Capability::PayoutsView,
                 Capability::CheckinScan,
+                Capability::SeatMapsManage,
             ],
             'Event Manager' => [
                 Capability::EventsView,
@@ -57,6 +58,7 @@ final class SeedTemplateRoles
                 Capability::EventsPublish,
                 Capability::OrdersView,
                 Capability::CheckinScan,
+                Capability::SeatMapsManage,
             ],
             'Box Office' => [
                 Capability::EventsView,

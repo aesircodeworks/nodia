@@ -6,9 +6,10 @@ use App\Identity\Capability;
  * Locks the registry down (stage-03 plan, Data model): later stages
  * extend the enum, never repurpose an existing entry, so a change to this
  * test signals exactly that kind of accidental rename or removal.
+ * seat_maps.manage is stage-05b's addition (Task breakdown item 1).
  */
 
-it('carries the stage-03 initial registry, no more and no less', function () {
+it('carries the exact capability registry, no more and no less', function () {
     $values = array_map(fn (Capability $capability): string => $capability->value, Capability::cases());
 
     expect($values)->toBe([
@@ -22,6 +23,7 @@ it('carries the stage-03 initial registry, no more and no less', function () {
         'orders.refund',
         'payouts.view',
         'checkin.scan',
+        'seat_maps.manage',
     ]);
 });
 
@@ -45,4 +47,5 @@ it('marks every other capability as not financially privileged', function (Capab
     Capability::EventsPublish,
     Capability::OrdersView,
     Capability::CheckinScan,
+    Capability::SeatMapsManage,
 ]);

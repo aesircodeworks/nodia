@@ -22,6 +22,7 @@ enum Capability: string
     case OrdersRefund = 'orders.refund';
     case PayoutsView = 'payouts.view';
     case CheckinScan = 'checkin.scan';
+    case SeatMapsManage = 'seat_maps.manage';
 
     /**
      * MFA is mandatory for platform-scope staff and tenant roles that

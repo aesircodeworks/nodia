@@ -20,7 +20,8 @@ export type Capability =
   | 'orders.view'
   | 'orders.refund'
   | 'payouts.view'
-  | 'checkin.scan';
+  | 'checkin.scan'
+  | 'seat_maps.manage';
 export type CapabilityData = {
   name: string;
   is_financially_privileged: boolean;
