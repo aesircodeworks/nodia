@@ -25,7 +25,7 @@ Verified starting state: Stages 1-3 are Done. Stage 4 is Not started. No `app/Su
 - [x] task-11: `UserInvited` producer in InviteUser (plan task 11)
 - [x] task-12: `UserRoleChanged` producer in AssignRole (plan task 12)
 - [x] task-13: `CustomerRegistered` producer in RegisterCustomer (plan task 13)
-- [ ] task-14: `TenantCreated` and `DomainVerified` producers plus 9.3 registry rows (plan task 14)
+- [x] task-14: `TenantCreated` and `DomainVerified` producers plus 9.3 registry rows (plan task 14)
 
 ### Review rounds
 
@@ -260,3 +260,23 @@ What landed:
 Deviations: none.
 
 Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff (`CustomerRegisteredPayload` not emitted). Focused CustomerRegistered / RegisterCustomer tests passed 14 tests, 53 assertions. `composer -d apps/api run test` (all six suites) passed 1061 tests, 4149 assertions, 0 failures.
+
+#### task-14: TenantCreated and DomainVerified producers (2026-07-10 05:00 -03)
+
+Commit: `be03f66` (`feat(tenancy): TenantCreated and DomainVerified outbox producers`), plus this journal entry.
+
+Landed plan task 14 / Slice 6 Tenancy producers: record `TenantCreated` from CreateTenant and `DomainVerified` from RegisterDomain (Stage 2 settled trigger), plus the Tenancy rows in system-design 9.3, and the Slice 6 Tenancy unit/feature suite.
+
+What landed:
+
+- `CreateTenant` injects `OutboxRecorder` and records `TenantCreated` after the tenant insert in the enclosing platform request transaction. Envelope `tenant_id` is the sentinel platform tenant (matches `app.tenant_id` so outbox RLS WITH CHECK passes under platform posture).
+- `RegisterDomain` injects `OutboxRecorder` and records `DomainVerified` after the domain insert. Envelope carries the owning tenant. Because `outbox_events` has no platform write policy, the Action switches the open transaction to `nodia_app` with `app.tenant_id` set to the owning tenant before the record call (SET LOCAL dies with the enclosing platform request transaction).
+- Both payloads carry `#[Hidden]` so they are excluded from TypeScript generation as internal contracts; `types:generate` removes the previously emitted types.
+- Event class docblocks updated to reflect attached producers; `TenancyServiceProvider` already registered both type-name strings (verified).
+- `docs/system-design.md` section 9.3 gains a Tenancy row (`TenantCreated`, `DomainVerified`) at the top of the catalog.
+- Slice 6 tests: HTTP success for tenant create (exactly one `TenantCreated` under sentinel, correlation ID, payload shape) and domain registration (exactly one `DomainVerified` under owning tenant); validation, locale, already-registered, and second-primary failures record nothing; optional rollback coupling after each producer leaves no row. Unit field-set serialization tests for both payloads.
+- Existing create/register teardown paths clear `outbox_events` / `outbox_deliveries` so tenant deletes are not blocked by FK rows; `TenantFixture::clean()` clears fixture-tenant outbox rows the same way.
+
+Deviations: none material. The mid-transaction role/tenant switch in `RegisterDomain` is required by the combination of (a) platform-admin surface under sentinel posture, (b) owning-tenant envelope, and (c) outbox tables without platform write; it is local to the producer, not a change to outbox RLS.
+
+Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` removed `TenantCreatedPayload` and `DomainVerifiedPayload` from the generated client. Focused TenantCreated / DomainVerified / CreateTenant / RegisterDomain tests passed 37 tests, 129 assertions. `composer -d apps/api run test` (all six suites) passed 1072 tests, 4202 assertions, 0 failures.
