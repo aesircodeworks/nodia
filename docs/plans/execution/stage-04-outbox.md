@@ -17,7 +17,7 @@ Verified starting state: Stages 1-3 are Done. Stage 4 is Not started. No `app/Su
 - [x] task-03: `outbox_events` migration, model, isolation tests (plan task 3)
 - [x] task-04: Recording API, envelope, registry validation, architecture tests (plan task 4)
 - [x] task-05: Horizon and queue plumbing, failed_jobs UUID PK (plan task 5)
-- [ ] task-06: `outbox_deliveries` migration, model, conditional processed transition (plan task 6)
+- [x] task-06: `outbox_deliveries` migration, model, conditional processed transition (plan task 6)
 - [ ] task-07: Subscriber registry, after-commit dispatcher, delivery job, test fixtures (plan task 7)
 - [ ] task-08: Reconciliation sweeper, config windows, scheduler (plan task 8)
 - [ ] task-09: Ordered-consumption helper (plan task 9)
@@ -105,3 +105,23 @@ What landed:
 Deviations: none material. `failed_jobs` uses the job uuid as the sole PK rather than a separate bigint id plus uuid column, matching data-conventions; the provider subclass is the only framework adaptation required. The isolation "tenant-scoped-table sweep" named in the plan did not exist as code yet; this task introduces it as the unscoped exclusion sweep that stage-12 and later stages will extend.
 
 Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff. Focused Horizon/failed_jobs/unscoped-sweep tests passed 12 tests, 69 assertions. `composer -d apps/api run test` (all six suites) passed 990 tests, 3855 assertions, 0 failures.
+
+#### task-06: outbox_deliveries migration, model, conditional processed transition (2026-07-10 04:20 -03)
+
+Commit: (this commit) (`feat(support): outbox_deliveries table, model, and conditional mark processed`).
+
+Landed plan task 6 / Slice 2 isolation and unit slice: the `outbox_deliveries` table with unique (event, subscriber), partial pending sweep index, and RLS in the same migration; the status enum; the `OutboxDelivery` model with conditional `markProcessed()`; isolation and unit tests. Registry, dispatcher, jobs, and sweeper remain for later tasks.
+
+What landed:
+
+- Migration `2026_07_10_000022_create_outbox_deliveries_table`: uuid PK, FK to `outbox_events` and `tenants`, subscriber string, status string, nullable `processed_at` / `last_enqueued_at`, timestamps; unique `(outbox_event_id, subscriber)`; partial index `outbox_deliveries_pending_sweep_idx` on `(subscriber, created_at) WHERE status = 'pending'`; `Rls::applyTenantPolicies('outbox_deliveries')` (no platform write).
+- `App\Support\Outbox\Enums\OutboxDeliveryStatus`: string-backed `pending` / `processed`.
+- `App\Support\Outbox\Models\OutboxDelivery`: `HasUuids`, enum cast, `markProcessed()` as conditional UPDATE `SET status=processed, processed_at=now() WHERE id=? AND status=pending` checked by affected-row count; zero rows returns false (idempotent, not error).
+- Isolation suite: `OutboxDeliveryFixture` plus `OutboxDeliveriesIsolationTest` (own-tenant read, cross-tenant update/delete zero rows, foreign-tenant WITH CHECK reject, raw SQL isolation, platform read both, platform write denied, owning-tenant insert).
+- Unit: status enum cases; mark processed wins once with `processed_at`; second mark returns false and leaves the first `processed_at` unchanged.
+- Architecture preset ignores `OutboxDeliveryStatus` (lives under Support\Outbox, not App\Enums); `App\Support\Outbox\Models` already covers the new model.
+- `composer types:generate` adds the backed enum to the api-client (same EnumTransformer path as `MembershipScope`).
+
+Deviations: none. Conditional transition lives as a model method rather than a separate action class; that keeps the guard on the row that owns the invariant and matches the task's preferred surface.
+
+Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` updated generated client with `OutboxDeliveryStatus`. Focused OutboxDelivery/OutboxDeliveriesIsolation tests passed 12 tests, 27 assertions. `composer -d apps/api run test` (all six suites) passed 1002 tests, 3882 assertions, 0 failures.

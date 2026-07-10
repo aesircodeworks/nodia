@@ -36,6 +36,7 @@ use App\Identity\Mail\CustomerClaimMail;
 use App\Identity\Mail\PasswordResetMail;
 use App\Identity\Mail\StaffInvitationMail;
 use App\Support\Money\CurrencyMismatchException;
+use App\Support\Outbox\Enums\OutboxDeliveryStatus;
 use App\Support\Problems\ErrorCode;
 use App\Support\Tenancy\InvalidTenantIdException;
 use App\Tenancy\Exceptions\DefaultLocaleNotSupportedException;
@@ -82,14 +83,17 @@ arch()->preset()->security();
 // with no owning bounded context, the audit trail cross-cutting every
 // context writes to; it lives under App\Support like every other shared
 // primitive (Money, Rls, TenantContext), not App\Models.
-// App\Support\Outbox\Models\OutboxEvent (stage-04 task-03) is the same
-// story for the transactional outbox: shared infrastructure every context
-// records into (system-design 9.1), not App\Models.
+// App\Support\Outbox\Models (stage-04 tasks 3 and 6) is the same story for
+// the transactional outbox: shared infrastructure every context records
+// into (system-design 9.1), not App\Models. OutboxDeliveryStatus is the
+// status enum for outbox_deliveries and lives with that infrastructure
+// rather than App\Enums (data-conventions; stage-04 plan Data model).
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
     MembershipScope::class,
     MembershipAccessOutcome::class,
+    OutboxDeliveryStatus::class,
     CurrencyMismatchException::class,
     InvalidTenantIdException::class,
     InvalidCredentialsException::class,

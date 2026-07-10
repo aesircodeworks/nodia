@@ -216,6 +216,7 @@ export type Money = {
   amount: number;
   currency: string;
 };
+export type OutboxDeliveryStatus = 'pending' | 'processed';
 export type PaginatedDataCollection<TKey, TValue> = LengthAwarePaginator<TKey, TValue>;
 export type ProblemData = {
   type: string;
