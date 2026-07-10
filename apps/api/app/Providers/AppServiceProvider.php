@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Support\Correlation\CorrelationId;
+use App\Support\Outbox\EventTypeRegistry;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
@@ -17,6 +18,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->scoped(CorrelationId::class);
         $this->app->scoped(TenantContext::class);
+        $this->app->singleton(EventTypeRegistry::class);
     }
 
     /**

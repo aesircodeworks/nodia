@@ -2,6 +2,7 @@
 
 namespace App\Tenancy\Events;
 
+use App\Support\Outbox\DomainEvent;
 use App\Tenancy\Models\TenantDomain;
 
 /**
@@ -15,7 +16,7 @@ use App\Tenancy\Models\TenantDomain;
  * column and no challenge flow; if a later stage adds tenant self-service
  * domain registration, its verification flow gets a new event type.
  */
-final readonly class DomainVerified
+final readonly class DomainVerified implements DomainEvent
 {
     public string $aggregateType;
 
@@ -25,6 +26,31 @@ final readonly class DomainVerified
         public DomainVerifiedPayload $payload,
     ) {
         $this->aggregateType = 'tenant_domain';
+    }
+
+    public function type(): string
+    {
+        return 'DomainVerified';
+    }
+
+    public function tenantId(): string
+    {
+        return $this->tenantId;
+    }
+
+    public function aggregateType(): string
+    {
+        return $this->aggregateType;
+    }
+
+    public function aggregateId(): string
+    {
+        return $this->aggregateId;
+    }
+
+    public function payload(): DomainVerifiedPayload
+    {
+        return $this->payload;
     }
 
     public static function fromTenantDomain(TenantDomain $domain): self

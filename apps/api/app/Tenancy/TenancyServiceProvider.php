@@ -6,6 +6,7 @@ use App\Http\Middleware\EnforceCustomerTenantClaim;
 use App\Http\Middleware\EnforceMfaCompliance;
 use App\Http\Middleware\RequireCapability;
 use App\Identity\Capability;
+use App\Support\Outbox\EventTypeRegistry;
 use App\Tenancy\Http\Middleware\PlatformRequestTransaction;
 use App\Tenancy\Http\Middleware\ResolveTenantFromHeader;
 use App\Tenancy\Http\Middleware\ResolveTenantFromHost;
@@ -58,8 +59,13 @@ use Illuminate\Support\ServiceProvider;
  */
 class TenancyServiceProvider extends ServiceProvider
 {
-    public function boot(Router $router): void
+    public function boot(Router $router, EventTypeRegistry $registry): void
     {
+        // Type-name strings only: Support\Outbox never imports these classes
+        // (stage-04 recording API registry; producers attach in task-14).
+        $registry->register('TenantCreated');
+        $registry->register('DomainVerified');
+
         $router->middlewareGroup('tenancy.platform', [
             'auth:staff',
             PlatformRequestTransaction::class,

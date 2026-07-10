@@ -29,3 +29,20 @@ foreach ($contexts as $context) {
         ->expect("App\\{$context}\\Http")
         ->toOnlyBeUsedIn("App\\{$context}");
 }
+
+// Domain events are recorded only by the owning context (event-conventions);
+// other contexts never import a foreign Events/ tree. Support\Outbox knows
+// only the DomainEvent contract, never concrete event classes.
+foreach ($contexts as $context) {
+    arch("only the {$context} context uses its own Events")
+        ->expect("App\\{$context}\\Events")
+        ->toOnlyBeUsedIn("App\\{$context}");
+}
+
+// The transactional outbox is shared infrastructure: it must not reach into
+// any bounded context's models (stage-04 plan, Slice 1 architecture).
+foreach ($contexts as $context) {
+    arch("Support Outbox does not import {$context} models")
+        ->expect('App\Support\Outbox')
+        ->not->toUse("App\\{$context}\\Models");
+}

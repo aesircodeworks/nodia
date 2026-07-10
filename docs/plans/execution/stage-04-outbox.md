@@ -15,7 +15,7 @@ Verified starting state: Stages 1-3 are Done. Stage 4 is Not started. No `app/Su
 
 - [x] task-02: Correlation ID container binding (plan task 2)
 - [x] task-03: `outbox_events` migration, model, isolation tests (plan task 3)
-- [ ] task-04: Recording API, envelope, registry validation, architecture tests (plan task 4)
+- [x] task-04: Recording API, envelope, registry validation, architecture tests (plan task 4)
 - [ ] task-05: Horizon and queue plumbing, failed_jobs UUID PK (plan task 5)
 - [ ] task-06: `outbox_deliveries` migration, model, conditional processed transition (plan task 6)
 - [ ] task-07: Subscriber registry, after-commit dispatcher, delivery job, test fixtures (plan task 7)
@@ -65,3 +65,24 @@ What landed:
 Deviations: none. Laravel's `bigInteger()->generatedAs()->always()` expresses the identity column without raw `ALTER TABLE`; sequence privilege grant remains raw SQL as the task notes require. Append-only is model-level only (standard CRUD grants via `applyTenantPolicies`), matching the stage plan's "application invariant" wording rather than activity_log's privilege strip.
 
 Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff. Focused Isolation `OutboxEventsIsolationTest` passed 8 tests, 15 assertions. `composer -d apps/api run test` (all six suites) passed 951 tests, 3724 assertions, 0 failures.
+
+#### task-04: Recording API (2026-07-10 04:07 -03)
+
+Commit: (this commit) (`feat(support): outbox recording API with registry and domain event contract`).
+
+Landed plan task 4 / Slice 1 recording API: the DomainEvent contract, EventTypeRegistry, OutboxEnvelope, OutboxRecorder (in-transaction only, registry-validated, no deliveries), Tenancy events adapted to the contract, and Slice 1 unit/feature/architecture tests.
+
+What landed:
+
+- `App\Support\Outbox\DomainEvent`: interface for type, tenant_id, aggregate coordinates, and laravel-data payload.
+- `App\Support\Outbox\EventTypeRegistry`: singleton set of allowed type-name strings; production types register from owning context providers (no Support imports of context classes); tests register fixture types in setup.
+- `App\Support\Outbox\OutboxEnvelope`: readonly envelope assembled at record time (id, type, tenant, aggregate, correlation_id, occurred_at, payload); sequence is identity-assigned and refreshed after insert.
+- `App\Support\Outbox\OutboxRecorder`: throws outside an open transaction; rejects unregistered types; writes one `outbox_events` row with UUIDv7 id, correlation from `CorrelationId` (lazy UUIDv7 when unset), `occurred_at` from `now()` (fake-clock compatible), snake_case payload via `Data::toArray()`; does not create deliveries.
+- Tenancy `TenantCreated` and `DomainVerified` implement `DomainEvent` without changing public properties or payload shapes; `TenancyServiceProvider` registers their type names.
+- Architecture: contexts' Events/ trees are only used inside their owning context; `App\Support\Outbox` imports no context models.
+- Unit: outside transaction throws; unregistered type throws; occurred_at UTC from fake clock; correlation_id bound or generated UUIDv7; snake_case payload; model update/delete LogicException.
+- Feature (real PostgreSQL): rolled-back record leaves no row; committed record persists exactly one full envelope row.
+
+Deviations: none material. Envelope is a readonly value object rather than a laravel-data class so it does not enter TypeScript generation (payloads already do; that exclusion remains a later cleanup). Production Tenancy type names register now so task-14 producers can record without a second registry pass; Identity types still wait on their event classes.
+
+Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff. Focused Outbox/Events architecture and unit/feature recording tests passed 31 tests, 72 assertions. `composer -d apps/api run test` (all six suites) passed 978 tests, 3786 assertions, 0 failures.

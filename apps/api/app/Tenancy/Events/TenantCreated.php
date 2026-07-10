@@ -2,6 +2,7 @@
 
 namespace App\Tenancy\Events;
 
+use App\Support\Outbox\DomainEvent;
 use App\Tenancy\Models\Tenant;
 
 /**
@@ -11,7 +12,7 @@ use App\Tenancy\Models\Tenant;
  * Stage 4 outbox insert will run in. No producer records this event yet;
  * the outbox arrives in Stage 4.
  */
-final readonly class TenantCreated
+final readonly class TenantCreated implements DomainEvent
 {
     public string $aggregateType;
 
@@ -21,6 +22,31 @@ final readonly class TenantCreated
         public TenantCreatedPayload $payload,
     ) {
         $this->aggregateType = 'tenant';
+    }
+
+    public function type(): string
+    {
+        return 'TenantCreated';
+    }
+
+    public function tenantId(): string
+    {
+        return $this->tenantId;
+    }
+
+    public function aggregateType(): string
+    {
+        return $this->aggregateType;
+    }
+
+    public function aggregateId(): string
+    {
+        return $this->aggregateId;
+    }
+
+    public function payload(): TenantCreatedPayload
+    {
+        return $this->payload;
     }
 
     public static function fromTenant(Tenant $tenant): self
