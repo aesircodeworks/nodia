@@ -82,6 +82,9 @@ arch()->preset()->security();
 // with no owning bounded context, the audit trail cross-cutting every
 // context writes to; it lives under App\Support like every other shared
 // primitive (Money, Rls, TenantContext), not App\Models.
+// App\Support\Outbox\Models\OutboxEvent (stage-04 task-03) is the same
+// story for the transactional outbox: shared infrastructure every context
+// records into (system-design 9.1), not App\Models.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -140,4 +143,5 @@ arch()->preset()->laravel()->ignoring([
     'App\Identity\Models',
     'App\Identity\Http\Controllers',
     'App\Support\Audit\Models',
+    'App\Support\Outbox\Models',
 ]);

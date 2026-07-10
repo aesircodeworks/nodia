@@ -14,7 +14,7 @@ Verified starting state: Stages 1-3 are Done. Stage 4 is Not started. No `app/Su
 ### Task checklist
 
 - [x] task-02: Correlation ID container binding (plan task 2)
-- [ ] task-03: `outbox_events` migration, model, isolation tests (plan task 3)
+- [x] task-03: `outbox_events` migration, model, isolation tests (plan task 3)
 - [ ] task-04: Recording API, envelope, registry validation, architecture tests (plan task 4)
 - [ ] task-05: Horizon and queue plumbing, failed_jobs UUID PK (plan task 5)
 - [ ] task-06: `outbox_deliveries` migration, model, conditional processed transition (plan task 6)
@@ -48,3 +48,20 @@ What landed:
 Deviations: none. Class lives at `App\Support\Correlation\CorrelationId` as the stage plan suggests; middleware keeps its existing class name and imports the support class as `CurrentCorrelationId` to avoid a same-name collision.
 
 Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff. `composer -d apps/api run test` (all six suites) passed 943 tests, 3709 assertions, 0 failures. Focused `php artisan test --filter=CorrelationId` passed 11 tests, 39 assertions (6 feature, 5 unit).
+
+#### task-03: outbox_events migration, model, isolation tests (2026-07-10 03:59 -03)
+
+Commit: `3cc9319` (`feat(support): outbox_events table, model, and isolation tests`).
+
+Landed plan task 3 / Slice 1 isolation: the `outbox_events` table with sequence identity, indexes, and RLS in the same migration, the append-only `OutboxEvent` model, and the two-tenant isolation suite.
+
+What landed:
+
+- Migration `2026_07_10_000020_create_outbox_events_table`: uuid PK, `sequence bigint generated always as identity` (unique), envelope columns per event-conventions (`type`, `tenant_id` FK, `aggregate_type`, `aggregate_id`, `correlation_id` string, `occurred_at`, jsonb `payload`, timestamps), composite index `(aggregate_type, aggregate_id, sequence)`, index `(type, sequence)`, `Rls::applyTenantPolicies('outbox_events')` (no platform write), and `GRANT USAGE, SELECT` on `outbox_events_sequence_seq` for app/platform inserts.
+- `App\Support\Outbox\Models\OutboxEvent`: `HasUuids`, fillable create surface only, casts for `sequence`/`payload`/`occurred_at`, `updating`/`deleting` throw `LogicException` (append-only application invariant).
+- Isolation suite: `OutboxEventFixture` plus `OutboxEventsIsolationTest` (own-tenant read, cross-tenant update/delete zero rows, foreign-tenant WITH CHECK reject, raw SQL isolation, platform read both, platform write denied, owning-tenant insert assigns sequence identity).
+- Architecture `PresetTest` ignores `App\Support\Outbox\Models` the same way as `App\Support\Audit\Models`.
+
+Deviations: none. Laravel's `bigInteger()->generatedAs()->always()` expresses the identity column without raw `ALTER TABLE`; sequence privilege grant remains raw SQL as the task notes require. Append-only is model-level only (standard CRUD grants via `applyTenantPolicies`), matching the stage plan's "application invariant" wording rather than activity_log's privilege strip.
+
+Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff. Focused Isolation `OutboxEventsIsolationTest` passed 8 tests, 15 assertions. `composer -d apps/api run test` (all six suites) passed 951 tests, 3724 assertions, 0 failures.
