@@ -233,3 +233,9 @@ Codex approved the stage 5a diff with only minor notes. Recorded verbatim for th
 11. **Met.** Pint, Larastan, and all six suites green locally (1436/1436) and on CI for the final code tree (all five workflows green at `ff19da9`, run IDs above).
 
 **Status decision.** Nine of eleven exit criteria are verifiably met; criteria 1 and 2 fail their literal check (no single full-sequence feature test for the GA and virtual paths). The master plan row is therefore set to "In progress (exit criteria 1 and 2: single full-sequence feature tests missing)" rather than Done. The remaining work is small: two feature tests chaining the existing, individually proven endpoints, plus flipping the status row.
+
+#### Exit criteria 1 and 2 closed (2026-07-10T11:03-03:00)
+
+Added `tests/Feature/EventCatalog/CatalogPublishSequenceTest.php` with the two missing full-sequence feature tests. The GA test chains, as one test with one bearer holding `events.manage` and `events.publish`: `POST /v1/venues` (201), `POST /v1/events` with the created venue (201, status draft), `POST /v1/events/{event}/ticket-types` (201, `{amount, currency}` price), `POST /v1/events/{event}/publish` (200, status published). The virtual test runs the same sequence without a venue (`is_virtual` true, `virtual_event_url` set, `venue_id` null). Every response asserts OpenAPI conformance. Both tests passed on first run, as expected: every step was already individually proven, only the chained sequence was missing.
+
+Gates: Pint clean, Larastan 0 errors, all six suites green at 1438 tests / 5662 assertions / 0 failures (net +2 over the closeout's 1436). No Data classes changed, so no type regeneration was needed. With criteria 1 and 2 now met as specified, all eleven exit criteria hold and the master plan row flips to Done in this same commit.
