@@ -331,3 +331,40 @@ CI runs for push at e71d00c (all success):
 | Storefront | 29078427574 | success |
 | Packages | 29078427565 | success |
 
+
+### Review rounds (summary)
+
+| Round | Verdict | Actionable | Outcome |
+| --- | --- | --- | --- |
+| 1 | needs-fixes | Redis e2e missing; OutboxDeliveryStatus leaked to TS; minor fillable id | Fixed in `5e09ee5` |
+| 2 | needs-fixes | AssignRole no-op recorded UserRoleChanged | Fixed in `ce99fef` |
+| 3 | approve | 0 | Clean |
+
+CI after latest review fixes (HEAD `20ac736`):
+
+| Workflow | Run ID | Conclusion |
+| --- | --- | --- |
+| API | 29079404481 | success |
+| Admin | 29079404523 | success |
+| Checkin | 29079404516 | success |
+| Storefront | 29079404505 | success |
+| Packages | 29079404482 | success |
+
+### Final summary (2026-07-10 05:22 -03)
+
+Stage 4 Transactional Outbox completed end to end: tasks 2-14, local gates, CI green, three review rounds with two fix rounds, no unaddressed blocking/important findings.
+
+#### Exit criteria
+
+1. **Met.** Slice 1 feature/unit: rollback leaves no rows; outside-transaction throws. CI Isolation/Pest green.
+2. **Met.** `OutboxRedisDeliveryTest` records then `queue:work redis --once` against real Redis + PostgreSQL; delivery processed once. (Horizon is installed; worker uses the same Redis queue drivers.)
+3. **Met.** Duplicate-delivery feature test + `OutboxDeliveryContentionTest` concurrency race.
+4. **Met.** Sweeper feature tests: grace from created_at, inside-window skip, processed never re-enqueued, stability gate.
+5. **Met.** Ordered-consumption feature + `OrderedOutboxConsumptionContentionTest`.
+6. **Met.** OutboxReplay feature: rebuild equivalence, double replay, sequence order, stability skip.
+7. **Met.** OutboxEventsIsolationTest + OutboxDeliveriesIsolationTest; unscoped sweep includes failed_jobs/job_batches.
+8. **Met.** UserInvited/UserRoleChanged/CustomerRegistered/TenantCreated/DomainVerified outbox feature tests; system-design 9.3 Tenancy rows added.
+9. **Met.** Identity payload unit tests exclude email/name; payloads `#[Hidden]`.
+10. **Met.** 1075 tests locally; CI API (Pint, Larastan, Pest, Isolation, Architecture, Concurrency, Contract Drift) green; Support/Outbox architecture constraints enforced.
+11. **Met** by this close-out: status table set to Done.
+
