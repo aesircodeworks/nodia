@@ -232,6 +232,58 @@ describe('POST /v1/venues/{venue}/seat-maps', function () {
             ->assertJsonPath('code', 'request.validation_failed');
     });
 
+    it('rejects a layout that is a JSON array rather than an object', function () {
+        $response = $this->postJson(
+            "/v1/venues/{$this->venue->id}/seat-maps",
+            seatMapCreatePayload(['layout' => ['north', 'south']]),
+        );
+
+        $response->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.validation_failed');
+
+        expect($response->json('errors'))->toHaveKey('layout');
+    });
+
+    it('accepts an empty layout object', function () {
+        $this->postJson("/v1/venues/{$this->venue->id}/seat-maps", seatMapCreatePayload(['layout' => []]))
+            ->assertCreated()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('layout', []);
+    });
+
+    it('rejects a seat natural-key field longer than the column length', function () {
+        $response = $this->postJson("/v1/venues/{$this->venue->id}/seat-maps", seatMapCreatePayload([
+            'seats' => [
+                ['section' => str_repeat('a', 256), 'row' => '1', 'number' => '1', 'position_x' => null, 'position_y' => null],
+            ],
+        ]));
+
+        $response->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.validation_failed');
+
+        expect($response->json('errors'))->toHaveKey('seats.0.section');
+    });
+
+    it('rejects a seats collection exceeding the configured ceiling', function () {
+        config()->set('catalog.seat_map_max_seats', 2);
+
+        $response = $this->postJson("/v1/venues/{$this->venue->id}/seat-maps", seatMapCreatePayload([
+            'seats' => [
+                ['section' => 'A', 'row' => '1', 'number' => '1', 'position_x' => null, 'position_y' => null],
+                ['section' => 'A', 'row' => '1', 'number' => '2', 'position_x' => null, 'position_y' => null],
+                ['section' => 'A', 'row' => '1', 'number' => '3', 'position_x' => null, 'position_y' => null],
+            ],
+        ]));
+
+        $response->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.validation_failed');
+
+        expect($response->json('errors'))->toHaveKey('seats');
+    });
+
     it('returns a request.not_found problem for a foreign tenant\'s venue', function () {
         $foreignVenue = app(TenantTransaction::class)->asTenant(
             $this->otherTenantId,

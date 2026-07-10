@@ -3869,10 +3869,13 @@ components:
       properties:
         section:
           type: string
+          maxLength: 255
         row:
           type: string
+          maxLength: 255
         number:
           type: string
+          maxLength: 255
         position_x:
           type: [integer, 'null']
         position_y:
@@ -3931,6 +3934,7 @@ components:
           type: object
         seats:
           type: array
+          maxItems: 50000
           items:
             $ref: '#/components/schemas/SeatInput'
       additionalProperties: false

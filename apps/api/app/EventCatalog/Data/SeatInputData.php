@@ -36,9 +36,9 @@ class SeatInputData extends Data
     public static function rules(): array
     {
         return [
-            'section' => ['required', 'string'],
-            'row' => ['required', 'string'],
-            'number' => ['required', 'string'],
+            'section' => ['required', 'string', 'max:255'],
+            'row' => ['required', 'string', 'max:255'],
+            'number' => ['required', 'string', 'max:255'],
             'position_x' => ['present', 'nullable', 'integer'],
             'position_y' => ['present', 'nullable', 'integer'],
         ];
