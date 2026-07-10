@@ -73,6 +73,21 @@ final class SubscriberRegistry
         return $this->subscribers[$name]['handler'];
     }
 
+    /**
+     * Event type names this subscriber is registered for, in registration
+     * order. Used by OutboxReplay to filter the rescan (system-design 9.1).
+     *
+     * @return list<string>
+     */
+    public function typesFor(string $name): array
+    {
+        if (! isset($this->subscribers[$name])) {
+            throw new LogicException("Subscriber [{$name}] is not registered.");
+        }
+
+        return array_keys($this->subscribers[$name]['types']);
+    }
+
     public function isRegistered(string $name): bool
     {
         return isset($this->subscribers[$name]);

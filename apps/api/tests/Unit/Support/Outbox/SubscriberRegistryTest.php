@@ -58,9 +58,16 @@ it('routes event types to the subscribers registered for them in registration or
         ->and($registry->namesFor('OtherEvent'))->toBe(['alpha', 'gamma'])
         ->and($registry->namesFor('Unregistered'))->toBe([])
         ->and($registry->handler('alpha'))->toBe($first)
+        ->and($registry->typesFor('alpha'))->toBe([FixtureDomainEvent::TYPE, 'OtherEvent'])
+        ->and($registry->typesFor('beta'))->toBe([FixtureDomainEvent::TYPE])
         ->and($registry->isRegistered('beta'))->toBeTrue()
         ->and($registry->isRegistered('missing'))->toBeFalse()
         ->and($registry->names())->toBe(['alpha', 'beta', 'gamma']);
+});
+
+it('rejects typesFor for an unregistered subscriber', function () {
+    expect(fn () => app(SubscriberRegistry::class)->typesFor('missing'))
+        ->toThrow(LogicException::class, 'missing');
 });
 
 it('rejects a subscriber with an empty event type list', function () {
