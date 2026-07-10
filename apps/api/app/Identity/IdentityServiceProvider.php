@@ -45,6 +45,7 @@ class IdentityServiceProvider extends ServiceProvider
         // (PassportConfigurationTest) keep working.
         $this->app->make(EventTypeRegistry::class)->register('UserInvited');
         $this->app->make(EventTypeRegistry::class)->register('UserRoleChanged');
+        $this->app->make(EventTypeRegistry::class)->register('CustomerRegistered');
 
         CapabilityGate::register();
 

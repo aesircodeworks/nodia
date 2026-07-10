@@ -41,6 +41,8 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     app(TenantTransaction::class)->asTenant(RC_TENANT, function (): void {
+        DB::table('outbox_deliveries')->where('tenant_id', RC_TENANT)->delete();
+        DB::table('outbox_events')->where('tenant_id', RC_TENANT)->delete();
         DB::table('customers')->where('tenant_id', RC_TENANT)->delete();
     });
 

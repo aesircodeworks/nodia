@@ -4,8 +4,10 @@ namespace App\Identity\Actions;
 
 use App\Identity\Data\CustomerData;
 use App\Identity\Data\RegisterCustomerData;
+use App\Identity\Events\CustomerRegistered;
 use App\Identity\Exceptions\CustomerEmailTakenException;
 use App\Identity\Models\Customer;
+use App\Support\Outbox\OutboxRecorder;
 use App\Support\Tenancy\TenantContext;
 use App\Tenancy\Actions\ResolveTenantDefaultLocale;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -20,13 +22,15 @@ use Spatie\LaravelData\Optional;
  * (App\Tenancy\Http\Middleware\ResolveTenantFromHost wraps the entire
  * handler in TenantTransaction::asTenant()), so this Action needs no
  * transaction of its own, mirroring App\Identity\Actions\InviteUser's own
- * precedent; the Stage 4 outbox attachment point is marked below.
+ * precedent. CustomerRegistered is recorded into the outbox in that same
+ * transaction (stage-04 plan, Slice 6).
  */
 final class RegisterCustomer
 {
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly ResolveTenantDefaultLocale $defaultLocale,
+        private readonly OutboxRecorder $outbox,
     ) {}
 
     public function __invoke(RegisterCustomerData $data): CustomerData
@@ -55,9 +59,7 @@ final class RegisterCustomer
             throw $e;
         }
 
-        // Stage 4 attachment point: Outbox::record(CustomerRegistered::class, ...)
-        // belongs here, inside the same transaction as the insert above
-        // (stage-03 plan, Domain events).
+        $this->outbox->record(CustomerRegistered::fromCustomer($customer));
 
         return CustomerData::fromModel($customer);
     }
