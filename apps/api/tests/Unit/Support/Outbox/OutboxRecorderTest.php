@@ -142,3 +142,32 @@ it('persists the full envelope fields on a successful record', function () {
         ->and($row->sequence)->toBeInt()
         ->and($row->sequence)->toBeGreaterThan(0);
 });
+
+it('persists an explicit id through mass assignment on create', function () {
+    // OutboxRecorder passes a pre-generated UUIDv7 as id; without id in
+    // Fillable the attribute is stripped and HasUuids invents another key.
+    $assignedId = Str::uuid7()->toString();
+    $aggregateId = Str::uuid7()->toString();
+
+    $row = app(TenantTransaction::class)->asTenant($this->tenantId, function () use ($assignedId, $aggregateId) {
+        return OutboxEvent::query()->create([
+            'id' => $assignedId,
+            'type' => FixtureDomainEvent::TYPE,
+            'tenant_id' => $this->tenantId,
+            'aggregate_type' => 'fixture',
+            'aggregate_id' => $aggregateId,
+            'correlation_id' => 'fillable-id-test',
+            'occurred_at' => now(),
+            'payload' => ['ok' => true],
+        ]);
+    });
+
+    expect($row->id)->toBe($assignedId);
+
+    $fromDb = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => OutboxEvent::query()->whereKey($assignedId)->value('id'),
+    );
+
+    expect($fromDb)->toBe($assignedId);
+});

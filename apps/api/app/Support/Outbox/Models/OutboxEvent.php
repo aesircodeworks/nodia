@@ -29,6 +29,7 @@ use LogicException;
  * @property Carbon $updated_at
  */
 #[Fillable([
+    'id',
     'type',
     'tenant_id',
     'aggregate_type',
