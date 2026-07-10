@@ -20,7 +20,7 @@ Verified starting state: Stages 1-3 are Done. Stage 4 is Not started. No `app/Su
 - [x] task-06: `outbox_deliveries` migration, model, conditional processed transition (plan task 6)
 - [x] task-07: Subscriber registry, after-commit dispatcher, delivery job, test fixtures (plan task 7)
 - [x] task-08: Reconciliation sweeper, config windows, scheduler (plan task 8)
-- [ ] task-09: Ordered-consumption helper (plan task 9)
+- [x] task-09: Ordered-consumption helper (plan task 9)
 - [ ] task-10: Replay primitive and artisan command (plan task 10)
 - [ ] task-11: `UserInvited` producer in InviteUser (plan task 11)
 - [ ] task-12: `UserRoleChanged` producer in AssignRole (plan task 12)
@@ -168,3 +168,22 @@ What landed:
 Deviations: none material. Stability age uses `outbox_events.occurred_at` (set from `now()` at record time in the same transaction as insert); that is the domain timestamp already on the envelope and matches the fake-clock path the recorder uses. Command lives under `App\Console\Commands` (Laravel discovery path) rather than next to Support/Outbox Jobs, so the architecture preset needs no new ignore.
 
 Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff. Focused Slice 3 outbox tests passed 9 tests, 28 assertions. `composer -d apps/api run test` (all six suites) passed 1023 tests, 3944 assertions, 0 failures.
+
+#### task-09: Ordered-consumption helper (2026-07-10 04:35 -03)
+
+Commit: `13bc8bd` (`feat(support): ordered-consumption helper with stability and predecessor gates`), plus this journal entry.
+
+Landed plan task 9 / Slice 4: the ordered-consumption readiness gate, opt-in marker for ordered subscribers, job integration with release-based deferral and final-attempt exhaustion exit, config backoff, and the Slice 4 feature/concurrency suite.
+
+What landed:
+
+- `App\Support\Outbox\OrderedOutboxSubscriber`: empty marker extending `OutboxSubscriber`; implementors opt into ordering. Stage 8b may extend with payload-derived ordering keys; Stage 4 keys strictly on envelope aggregate.
+- `App\Support\Outbox\OrderedConsumption`: `isReady` is false when the event is younger than `stability_window_seconds` or a same-aggregate lower-sequence delivery for the same subscriber is still pending. Different aggregates never block. Call under tenant scope so RLS applies.
+- `ProcessOutboxDelivery`: before conditional `markProcessed`, ordered handlers consult `OrderedConsumption`. Unready deliveries stay pending; the job releases with `ordered_defer_seconds` backoff (default 15, under sweeper grace). On the final attempt (`attempts >= tries`) the job returns without releasing or failing so the sweeper re-enqueues rather than dead-lettering (stage-04 ordered-helper risk). Job `$tries = 40` overrides Horizon supervisor `tries = 1`.
+- `config/outbox.php`: `ordered_defer_seconds` env-overridable default 15.
+- Test fixtures: `OrderedTestSubscriber`, `registerOrderedOutboxSubscriber`; durable effects table uses bigserial PK plus `event_sequence` for application-order assertions.
+- Slice 4 tests: predecessor unprocessed defers then processes after predecessor; different aggregate does not block; younger than stability not processed; final-attempt exhaustion leaves pending without release/fail; concurrency two workers racing out-of-order same-aggregate events apply effects in sequence order.
+
+Deviations: none material. Deferral uses job release as the plan prefers; exhaustion is covered by the final-attempt clean return rather than switching to sweeper-only deferral. Direct `handle()` calls without a queue job treat release as a no-op (Laravel `InteractsWithQueue`); concurrency workers retry in-process until processed.
+
+Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) passed with 0 errors. `composer -d apps/api run types:generate` produced no diff. Focused ordered-consumption / config / delivery tests passed 17 tests, 68 assertions. `composer -d apps/api run test` (all six suites) passed 1028 tests, 3980 assertions, 0 failures.
