@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\DB;
 use Tests\Isolation\Support\RlsHonestConnection;
 use Tests\Support\MigratedDatabase;
 use Tests\Support\PostgresTestDatabase;
@@ -45,6 +46,19 @@ pest()->extend(TestCase::class)
         PostgresTestDatabase::use();
         MigratedDatabase::ensure();
         RlsHonestConnection::ensure();
+    })
+    // In a full multi-suite run each Isolation test's downgraded
+    // nodia_isolation connection outlives its test, held open by the
+    // torn-down application instance surviving in a reference cycle PHP's
+    // garbage collector does not get around to collecting, accumulating
+    // one idle server backend per test until the Concurrency suite
+    // starves against max_connections with "sorry, too many clients
+    // already". Purging closes this test's own socket; collecting cycles
+    // releases the previous tests' retained ones. Costs nothing here:
+    // the next test's beforeEach reconnects on first query anyway.
+    ->afterEach(function (): void {
+        DB::purge();
+        gc_collect_cycles();
     })
     ->in('Isolation');
 
