@@ -2,6 +2,10 @@ export type AcceptInvitationData = {
   token: string;
   password: string;
 };
+export type AsyncPaymentPolicyData = {
+  slow_methods_enabled: boolean;
+  low_inventory_cutoff: number | null;
+};
 export type BrandingSettingsData = {
   primary_color: string | null;
   logo_url: string | null;
@@ -148,6 +152,7 @@ export type ErrorCode =
   | 'claim_token_expired'
   | 'reset_token_invalid'
   | 'reset_token_expired';
+export type EventStatus = 'draft' | 'published' | 'canceled';
 export type HealthChecksData = {
   database: CheckResult;
   redis: CheckResult;

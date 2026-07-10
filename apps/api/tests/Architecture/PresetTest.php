@@ -1,6 +1,8 @@
 <?php
 
+use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\EventCatalogServiceProvider;
+use App\EventCatalog\Exceptions\InvalidEventVenueConfigurationException;
 use App\EventCatalog\Exceptions\VenueNotFoundException;
 use App\Identity\Capability;
 use App\Identity\Enums\MembershipAccessOutcome;
@@ -93,14 +95,23 @@ arch()->preset()->security();
 // App\Support\Outbox\Jobs (stage-04 task 7) holds the delivery job next to
 // the outbox machinery rather than the top-level App\Jobs the preset
 // expects: the job is outbox infrastructure, not a domain action queue.
+// EventStatus (stage-05a task-03) is events.status's registry and lives
+// with EventCatalog like Capability and MembershipScope live with their
+// own contexts, not App\Enums. InvalidEventVenueConfigurationException
+// (stage-05a task-03) guards the exactly-one-of-venue-or-url application
+// invariant and is not meant to reach the HTTP boundary, mirroring
+// InvalidMembershipScopeException's own precedent for the identical
+// situation.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
     MembershipScope::class,
     MembershipAccessOutcome::class,
     OutboxDeliveryStatus::class,
+    EventStatus::class,
     'App\Support\Outbox\Jobs',
     CurrencyMismatchException::class,
+    InvalidEventVenueConfigurationException::class,
     InvalidTenantIdException::class,
     InvalidCredentialsException::class,
     InvalidMembershipScopeException::class,
