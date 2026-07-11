@@ -148,6 +148,10 @@ class ProblemRenderer
             ErrorCode::CatalogSeatMapVirtualEvent => 'A virtual event cannot have a seat_map_id.',
             ErrorCode::CatalogSeatMapInUse => 'This seat map is referenced by at least one event and cannot be deleted.',
             ErrorCode::InsufficientInventory => 'There is not enough inventory available for this ticket type.',
+            ErrorCode::EventNotFound => 'No published event has this id for the resolved tenant.',
+            ErrorCode::TicketTypeNotInEvent => 'This ticket type does not belong to the given event.',
+            ErrorCode::SalesWindowClosed => "This ticket type's sales window is not currently open.",
+            ErrorCode::HoldNotFound => 'No hold has this id for the resolved tenant.',
         };
     }
 }

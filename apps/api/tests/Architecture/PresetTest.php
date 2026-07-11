@@ -52,7 +52,14 @@ use App\Identity\IdentityServiceProvider;
 use App\Identity\Mail\CustomerClaimMail;
 use App\Identity\Mail\PasswordResetMail;
 use App\Identity\Mail\StaffInvitationMail;
+use App\Inventory\Enums\HoldStatus;
+use App\Inventory\Exceptions\HoldEventNotFoundException;
+use App\Inventory\Exceptions\HoldNotFoundException;
+use App\Inventory\Exceptions\InsufficientHoldInventoryException;
 use App\Inventory\Exceptions\InsufficientInventoryException;
+use App\Inventory\Exceptions\SalesWindowClosedException;
+use App\Inventory\Exceptions\TicketTypeNotInEventException;
+use App\Inventory\InventoryServiceProvider;
 use App\Support\Media\Exceptions\MediaNotFoundException;
 use App\Support\Money\CurrencyMismatchException;
 use App\Support\Outbox\Enums\OutboxDeliveryStatus;
@@ -144,6 +151,7 @@ arch()->preset()->laravel()->ignoring([
     MembershipAccessOutcome::class,
     OutboxDeliveryStatus::class,
     EventStatus::class,
+    HoldStatus::class,
     'App\Support\Outbox\Jobs',
     CurrencyMismatchException::class,
     InvalidEventVenueConfigurationException::class,
@@ -203,6 +211,11 @@ arch()->preset()->laravel()->ignoring([
     SeatMapVirtualEventException::class,
     SeatMapInUseException::class,
     InsufficientInventoryException::class,
+    HoldEventNotFoundException::class,
+    TicketTypeNotInEventException::class,
+    SalesWindowClosedException::class,
+    InsufficientHoldInventoryException::class,
+    HoldNotFoundException::class,
     MissingTenantHeaderException::class,
     InvalidTenantHeaderException::class,
     TenantAccessDeniedException::class,
@@ -217,6 +230,8 @@ arch()->preset()->laravel()->ignoring([
     'App\EventCatalog\Models',
     'App\EventCatalog\Http\Controllers',
     'App\Inventory\Models',
+    'App\Inventory\Http\Controllers',
+    InventoryServiceProvider::class,
     'App\Support\Audit\Models',
     'App\Support\Outbox\Models',
     'App\Support\Media\Models',

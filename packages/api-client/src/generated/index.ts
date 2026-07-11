@@ -58,6 +58,10 @@ export type CreateEventData = {
   timezone: string;
   async_payment_policy?: AsyncPaymentPolicyData;
 };
+export type CreateHoldData = {
+  event_id: string;
+  items: HoldItemInputData[];
+};
 export type CreateRoleData = {
   name: string;
   capabilities: string[];
@@ -183,7 +187,11 @@ export type ErrorCode =
   | 'catalog.seat_map_venue_mismatch'
   | 'catalog.seat_map_virtual_event'
   | 'catalog.seat_map_in_use'
-  | 'insufficient_inventory';
+  | 'insufficient_inventory'
+  | 'event_not_found'
+  | 'ticket_type_not_in_event'
+  | 'sales_window_closed'
+  | 'hold_not_found';
 export type EventData = {
   id: string;
   tenant_id: string;
@@ -232,6 +240,23 @@ export type HealthReportData = {
   checked_at: string;
 };
 export type HealthStatus = 'ok';
+export type HoldData = {
+  id: string;
+  event_id: string;
+  status: string;
+  expires_at: string;
+  items: HoldItemData[];
+  seat_ids: string[];
+};
+export type HoldItemData = {
+  ticket_type_id: string;
+  quantity: number;
+};
+export type HoldItemInputData = {
+  ticket_type_id: string;
+  quantity: number;
+};
+export type HoldStatus = 'active' | 'released' | 'expired' | 'committed';
 export type InviteUserData = {
   email: string;
   name: string;

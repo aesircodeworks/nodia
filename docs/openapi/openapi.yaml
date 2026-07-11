@@ -3379,6 +3379,93 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/NotFoundProblem'
+  /v1/storefront/holds:
+    post:
+      operationId: createHold
+      summary: Create a hold on GA inventory
+      description: >-
+        Storefront surface: guest checkout, no authentication required
+        (stage-06 plan, Endpoints "POST /v1/storefront/holds"). customer_id
+        is never accepted in the request body; it is derived from an
+        optional customer bearer token and stays null for anonymous
+        guests. GA ticket types only in this task; seated selection
+        (seat_ids) lands in a later stage-06 task. expires_at is 10
+        minutes from creation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateHoldRequest'
+      responses:
+        '201':
+          description: The created hold.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hold'
+        '404':
+          description: >-
+            The given event_id does not resolve to a published event for
+            the resolved tenant (code event_not_found).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/HoldEventNotFoundProblem'
+        '422':
+          description: >-
+            Request validation failed (code request.validation_failed, with
+            the errors map), or an item's ticket_type_id does not belong to
+            the given event (code ticket_type_not_in_event).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/HoldCreateUnprocessableProblem'
+        '409':
+          description: >-
+            An item's ticket type is outside its sales window (code
+            sales_window_closed), or the requested quantity exceeds
+            availability (code insufficient_inventory, with the failing
+            ticket_type_id in the errors map).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/HoldCreateConflictProblem'
+  /v1/storefront/holds/{hold}:
+    parameters:
+      - name: hold
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getStorefrontHold
+      summary: Fetch a hold for the countdown display
+      description: >-
+        Storefront surface: guest checkout, no authentication required. A
+        nonexistent or cross-tenant hold id renders the same hold_not_found
+        problem, so hold existence never leaks across tenants (RLS makes
+        cross-tenant a natural not-found).
+      responses:
+        '200':
+          description: The hold.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hold'
+        '404':
+          description: No hold has this id for the resolved tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/HoldNotFoundProblem'
 components:
   securitySchemes:
     BearerAuth:
@@ -4553,6 +4640,89 @@ components:
           type: string
           format: date-time
       additionalProperties: false
+    HoldItem:
+      type: object
+      description: One GA line item of a hold (stage-06 plan, Endpoints).
+      required:
+        - ticket_type_id
+        - quantity
+      properties:
+        ticket_type_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+      additionalProperties: false
+    HoldItemInput:
+      type: object
+      description: One GA line item of a CreateHoldRequest (stage-06 plan, Endpoints).
+      required:
+        - ticket_type_id
+        - quantity
+      properties:
+        ticket_type_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+      additionalProperties: false
+    Hold:
+      type: object
+      description: >-
+        POST and GET /v1/storefront/holds/{hold} response shape (stage-06
+        plan, Endpoints). seat_ids is always an empty array in this task:
+        seated hold wiring lands in a later stage-06 task.
+      required:
+        - id
+        - event_id
+        - status
+        - expires_at
+        - items
+        - seat_ids
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [active, released, expired, committed]
+        expires_at:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/HoldItem'
+        seat_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+      additionalProperties: false
+    CreateHoldRequest:
+      type: object
+      description: >-
+        POST /v1/storefront/holds request body (stage-06 plan, Endpoints).
+        customer_id is never accepted here: it is derived from an optional
+        customer bearer token server-side, never trusted from the body.
+      required:
+        - event_id
+        - items
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/HoldItemInput'
+      additionalProperties: false
     TicketTypeCreateRequest:
       type: object
       description: >-
@@ -5075,6 +5245,94 @@ components:
             code:
               type: string
               enum: [request.not_found]
+      unevaluatedProperties: false
+    HoldEventNotFoundProblem:
+      description: >-
+        Problem document for POST /v1/storefront/holds when event_id does
+        not resolve to a published event for the resolved tenant (stage-06
+        plan, Endpoints).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [404]
+            code:
+              type: string
+              enum: [event_not_found]
+      unevaluatedProperties: false
+    HoldNotFoundProblem:
+      description: >-
+        Problem document for GET /v1/storefront/holds/{hold} when the id is
+        unknown or belongs to a different tenant (stage-06 plan, Endpoints).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [404]
+            code:
+              type: string
+              enum: [hold_not_found]
+      unevaluatedProperties: false
+    HoldCreateUnprocessableProblem:
+      description: >-
+        Problem document for POST /v1/storefront/holds that cannot be
+        processed: either request validation failed (with the errors map,
+        code request.validation_failed), or an item's ticket_type_id does
+        not belong to the given event (code ticket_type_not_in_event).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - oneOf:
+            - type: object
+              required:
+                - errors
+              properties:
+                code:
+                  type: string
+                  enum: [request.validation_failed]
+                errors:
+                  type: object
+                  additionalProperties:
+                    type: array
+                    items:
+                      type: string
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum: [ticket_type_not_in_event]
+      unevaluatedProperties: false
+    HoldCreateConflictProblem:
+      description: >-
+        Problem document for POST /v1/storefront/holds that conflicts with
+        current state: either an item's ticket type is outside its sales
+        window (code sales_window_closed), or the requested quantity
+        exceeds availability (code insufficient_inventory, with the
+        failing ticket_type_id in the errors map).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - oneOf:
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum: [sales_window_closed]
+            - type: object
+              required:
+                - errors
+              properties:
+                code:
+                  type: string
+                  enum: [insufficient_inventory]
+                errors:
+                  type: object
+                  additionalProperties:
+                    type: array
+                    items:
+                      type: string
       unevaluatedProperties: false
     RoleNameTakenProblem:
       description: >-

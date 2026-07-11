@@ -11,6 +11,7 @@ use App\Identity\Models\Customer;
 use App\Identity\Models\Membership;
 use App\Identity\Models\Role;
 use App\Identity\Support\ClaimToken;
+use App\Inventory\Models\TicketTypeInventory;
 use App\Models\User;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
@@ -89,6 +90,16 @@ afterEach(function (): void {
             // real foreign key to tenants with no cascade, so it must be
             // deleted before this tenant is deleted below.
             DB::table('media')->where('tenant_id', $tenantId)->delete();
+
+            // contractHoldBearer()'s exercisers (stage-06 plan, task
+            // breakdown item 4) write holds and hold_items scoped to a
+            // fresh contractHoldTenant() each; hold_items and holds must be
+            // deleted ahead of ticket_types and events below since
+            // hold_items.ticket_type_id and holds.event_id both reference
+            // them with no cascade.
+            DB::table('hold_items')->where('tenant_id', $tenantId)->delete();
+            DB::table('holds')->where('tenant_id', $tenantId)->delete();
+            DB::table('ticket_type_inventory')->where('tenant_id', $tenantId)->delete();
 
             // contractTicketTypeBearer()'s exercisers (stage-05a plan, task
             // breakdown item 8) write ticket_types scoped to a fresh event
@@ -447,6 +458,49 @@ function contractTicketTypeCreatePayload(array $overrides = []): array
         'sales_end' => null,
         ...$overrides,
     ];
+}
+
+/**
+ * A fresh tenant plus a resolvable tenant_domains row (stage-06 plan,
+ * task breakdown item 4), mirroring contractCustomerTenant()'s own
+ * precedent since the storefront hold endpoints resolve tenant from
+ * Host, never X-Tenant-Id.
+ *
+ * @return array{tenant: Tenant, host: string}
+ */
+function contractHoldTenant(): array
+{
+    return app(TenantTransaction::class)->asPlatform(function (): array {
+        $tenant = Tenant::factory()->create();
+        $domain = TenantDomain::factory()->create(['tenant_id' => $tenant->id]);
+
+        return ['tenant' => $tenant, 'host' => $domain->domain];
+    });
+}
+
+/**
+ * A published event with one GA ticket type and its ticket_type_inventory
+ * counter row, scoped to the given contractHoldTenant() (stage-06 plan,
+ * task breakdown item 4).
+ *
+ * @return array{event: Event, ticketType: TicketType}
+ */
+function contractHoldFixture(Tenant $tenant, int $quantity = 10): array
+{
+    return app(TenantTransaction::class)->asTenant($tenant->id, function () use ($tenant, $quantity): array {
+        $event = Event::factory()->create(['tenant_id' => $tenant->id, 'status' => EventStatus::Published]);
+        $ticketType = TicketType::factory()->create(['tenant_id' => $tenant->id, 'event_id' => $event->id]);
+
+        TicketTypeInventory::factory()->create([
+            'tenant_id' => $tenant->id,
+            'ticket_type_id' => $ticketType->id,
+            'quantity' => $quantity,
+            'held' => 0,
+            'sold' => 0,
+        ]);
+
+        return ['event' => $event, 'ticketType' => $ticketType];
+    });
 }
 
 /**
@@ -2485,6 +2539,58 @@ function documentedResponseExercisers(): array
             [, $host] = contractCustomerTenant();
 
             return test()->postJson('http://'.$host.'/v1/auth/customer/claim/confirm', ['token' => '', 'password' => '']);
+        },
+        'post /v1/storefront/holds 201' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            ['event' => $event, 'ticketType' => $ticketType] = contractHoldFixture($tenant);
+
+            return test()->postJson('http://'.$host.'/v1/storefront/holds', [
+                'event_id' => $event->id,
+                'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+            ]);
+        },
+        'post /v1/storefront/holds 404' => function (): TestResponse {
+            ['host' => $host] = contractHoldTenant();
+
+            return test()->postJson('http://'.$host.'/v1/storefront/holds', [
+                'event_id' => (string) Str::uuid7(),
+                'items' => [['ticket_type_id' => (string) Str::uuid7(), 'quantity' => 1]],
+            ]);
+        },
+        'post /v1/storefront/holds 422' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            ['event' => $event] = contractHoldFixture($tenant);
+            ['ticketType' => $foreignTicketType] = contractHoldFixture($tenant);
+
+            return test()->postJson('http://'.$host.'/v1/storefront/holds', [
+                'event_id' => $event->id,
+                'items' => [['ticket_type_id' => $foreignTicketType->id, 'quantity' => 1]],
+            ]);
+        },
+        'post /v1/storefront/holds 409' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            ['event' => $event, 'ticketType' => $ticketType] = contractHoldFixture($tenant, quantity: 1);
+
+            return test()->postJson('http://'.$host.'/v1/storefront/holds', [
+                'event_id' => $event->id,
+                'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 2]],
+            ]);
+        },
+        'get /v1/storefront/holds/{hold} 200' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            ['event' => $event, 'ticketType' => $ticketType] = contractHoldFixture($tenant);
+
+            $created = test()->postJson('http://'.$host.'/v1/storefront/holds', [
+                'event_id' => $event->id,
+                'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+            ])->json();
+
+            return test()->getJson('http://'.$host.'/v1/storefront/holds/'.$created['id']);
+        },
+        'get /v1/storefront/holds/{hold} 404' => function (): TestResponse {
+            ['host' => $host] = contractHoldTenant();
+
+            return test()->getJson('http://'.$host.'/v1/storefront/holds/'.Str::uuid7());
         },
     ];
 }

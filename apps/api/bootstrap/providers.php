@@ -2,6 +2,7 @@
 
 use App\EventCatalog\EventCatalogServiceProvider;
 use App\Identity\IdentityServiceProvider;
+use App\Inventory\InventoryServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\HorizonServiceProvider;
 use App\Providers\TypeScriptTransformerServiceProvider;
@@ -14,4 +15,5 @@ return [
     TenancyServiceProvider::class,
     IdentityServiceProvider::class,
     EventCatalogServiceProvider::class,
+    InventoryServiceProvider::class,
 ];

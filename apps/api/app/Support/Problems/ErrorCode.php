@@ -63,6 +63,10 @@ enum ErrorCode: string
     case CatalogSeatMapVirtualEvent = 'catalog.seat_map_virtual_event';
     case CatalogSeatMapInUse = 'catalog.seat_map_in_use';
     case InsufficientInventory = 'insufficient_inventory';
+    case EventNotFound = 'event_not_found';
+    case TicketTypeNotInEvent = 'ticket_type_not_in_event';
+    case SalesWindowClosed = 'sales_window_closed';
+    case HoldNotFound = 'hold_not_found';
 
     public function status(): int
     {
@@ -123,6 +127,10 @@ enum ErrorCode: string
             self::CatalogSeatMapVirtualEvent => 422,
             self::CatalogSeatMapInUse => 409,
             self::InsufficientInventory => 409,
+            self::EventNotFound => 404,
+            self::TicketTypeNotInEvent => 422,
+            self::SalesWindowClosed => 409,
+            self::HoldNotFound => 404,
         };
     }
 
@@ -185,6 +193,10 @@ enum ErrorCode: string
             self::CatalogSeatMapVirtualEvent => 'Seat map virtual event',
             self::CatalogSeatMapInUse => 'Seat map in use',
             self::InsufficientInventory => 'Insufficient inventory',
+            self::EventNotFound => 'Event not found',
+            self::TicketTypeNotInEvent => 'Ticket type not in event',
+            self::SalesWindowClosed => 'Sales window closed',
+            self::HoldNotFound => 'Hold not found',
         };
     }
 
