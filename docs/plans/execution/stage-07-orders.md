@@ -23,7 +23,7 @@
 - [x] 07-12 Promo code admin CRUD with capability gates, uniqueness, immutability after first use (plan task 12)
 - [x] 07-13 Staff order list and detail with query-builder allowlists and cursor pagination (plan slice 6, task 13)
 - [x] 07-14 Resend-tickets endpoint with audit and the Stage 8a dispatch seam (plan task 14)
-- [ ] 07-15 Registry and docs sync, status table update (plan task 15)
+- [x] 07-15 Registry and docs sync, status table update (plan task 15)
 
 ### Gate
 
@@ -241,3 +241,73 @@ request.not_found per the roles and ticket types precedent. OpenAPI
 paths, schemas, and 17 new contract exercisers. Evidence: promo suites
 28 passed, Contract 309 passed, Architecture 38 passed, Isolation 234
 passed.
+
+#### Task 07-15: registry and docs sync (2026-07-11)
+
+system-design 9.3 already lists all four Orders event types
+(OrderCreated, TicketIssued, TicketCanceled, TicketRefunded), so no
+design change was needed; the event classes exist for all four and the
+provider registers the two with producers. Master plan status table
+flipped to Done at close-out.
+
+### CI
+
+2026-07-11: pushed 2802aa8 to origin. All five workflows for that exact
+head SHA concluded success: API 29164034085, Packages 29164034115,
+Storefront 29164034130, Admin 29164034078, Checkin 29164034079.
+
+### Final summary (2026-07-11)
+
+15 of 15 tasks completed. Local gates green (lint, Larastan, all six
+suites: 2201 tests / 8806 assertions after review fixes, no generated
+TS drift, pnpm typecheck clean); CI green on the pushed HEAD. Review:
+three Codex rounds; round 1 four important (three fixed, one declined
+with reasoning: buyer per-order tickets stay an unpaginated bounded
+list per the plan's endpoint table), round 2 two important (one fixed,
+one declined: orders.customer_id/event_id FKs follow the merged
+stage-6 holds posture), round 3 one blocking (fixed: hold-liveness
+guard inside AttachHoldCustomer). No unaddressed blocking or important
+findings.
+
+Exit criteria walk:
+
+1. Met: CreateOrderEndpointTest proves 201 pending with totals from
+   ticket type prices, held counters unchanged, OrderCreated recorded
+   in-transaction with full envelope.
+2. Met: "checkout.hold_expired ... even when the sweeper lags" feature
+   case plus the ConvertHoldToOrderTest expiry unit under the fake
+   clock; hardened further by the round-3 attach guard.
+3. Met: OrderConversionContentionTest (6-way double conversion, one
+   winner; two-customer anonymous attachment race, one winner, loser
+   hold_not_found, rollback clean).
+4. Met: OrderStateMachineTest, 42 cases over every ordered pair
+   including refund states; exactly the five 7.1 arcs succeed; no
+   Action targets a refund state.
+5. Met: OrderPaidContentionTest (one status change, 3 tickets, held to
+   sold exactly once, 3 TicketIssued rows).
+6. Met: cancel feature test (counters recover exactly, hold released);
+   MarkOrderExpired/Failed release via ReleaseHold in-transaction
+   (state machine table exercises them against real holds).
+7. Met: HoldExpiredConsumerTest (cancellation, exactly-one-effect
+   duplicate delivery, awaiting_payment untouched).
+8. Met: TicketQrCodecTest (round-trip, tamper, cross-event key,
+   rotation bump) plus OrderReadEndpointsTest render coverage.
+9. Met: PromoCodeLimitContentionTest (usage_count = limit, exactly
+   limit discounted orders, losers roll back with holds active).
+10. Met: ApplyPromoCodeTest (basis-point floor, fixed cap, currency
+    mismatch, windows on the fake clock); orders_total_arithmetic and
+    non-negative CHECKs back it in the schema.
+11. Met: Orders/OrderItems/Tickets/PromoCodes isolation tests plus
+    endpoint-level foreign-id cases (staff list/detail, buyer reads).
+12. Met: every new endpoint documented in openapi.yaml with strict
+    schemas, exercised in the Contract suite (321 tests), generated TS
+    committed, drift gate green locally and on CI.
+13. Met: capability matrix cases across customers, promo CRUD, staff
+    orders, resend; resend writes an activity log entry
+    (StaffOrderEndpointsTest).
+14. Met: Architecture suite green; Orders imports no other context's
+    models; cross-context calls go through ResolveHoldForOrder,
+    AttachHoldCustomer, CommitHold, ReleaseHold,
+    ResolveTicketTypePricing, ResolveCustomerSummary.
+15. Met: Pint and Larastan clean; composer test green locally and in
+    the API CI workflow.
