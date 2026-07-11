@@ -50,6 +50,7 @@ afterEach(function (): void {
             DB::table('outbox_deliveries')->where('tenant_id', $tenantId)->delete();
             DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
             DB::table('media')->where('tenant_id', $tenantId)->delete();
+            DB::table('ticket_type_inventory')->where('tenant_id', $tenantId)->delete();
             DB::table('ticket_types')->where('tenant_id', $tenantId)->delete();
             DB::table('events')->where('tenant_id', $tenantId)->delete();
             DB::table('venues')->where('tenant_id', $tenantId)->delete();

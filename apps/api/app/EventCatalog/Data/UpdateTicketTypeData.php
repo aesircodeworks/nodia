@@ -18,7 +18,13 @@ use Spatie\LaravelData\Optional;
  * ValidatesTicketTypeInvariants::addSalesWindowErrors requires them given
  * together here (requireTogether: true) since a partial PATCH cannot
  * merge against the target TicketType's stored columns from a static Data
- * class; see that trait's own docblock.
+ * class; see that trait's own docblock. quantity is stage-06's additive
+ * field (Risks: "Quantity input ownership"); the requires_seat conflict
+ * check (rejecting quantity on a seated ticket type) cannot be fully
+ * expressed here for the same reason: a PATCH omitting requires_seat
+ * gives no signal about the ticket type's persisted value, so
+ * App\EventCatalog\Actions\UpdateTicketType re-checks against the loaded
+ * model before delegating to Inventory.
  */
 #[MapName(SnakeCaseMapper::class)]
 class UpdateTicketTypeData extends Data
@@ -31,6 +37,7 @@ class UpdateTicketTypeData extends Data
         public string|Optional|null $salesStart,
         public string|Optional|null $salesEnd,
         public bool|Optional $requiresSeat,
+        public int|Optional $quantity,
     ) {}
 
     /**
@@ -46,6 +53,7 @@ class UpdateTicketTypeData extends Data
             'sales_start' => ['sometimes', 'nullable', 'date'],
             'sales_end' => ['sometimes', 'nullable', 'date'],
             'requires_seat' => ['sometimes', 'boolean'],
+            'quantity' => ['sometimes', 'integer', 'min:0'],
         ];
     }
 

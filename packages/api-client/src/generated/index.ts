@@ -76,6 +76,7 @@ export type CreateTicketTypeData = {
   sales_start: string | null;
   sales_end: string | null;
   requires_seat?: boolean;
+  quantity?: number;
 };
 export type CreateVenueData = {
   name: string;
@@ -471,6 +472,7 @@ export type UpdateTicketTypeData = {
   sales_start?: string | null;
   sales_end?: string | null;
   requires_seat?: boolean;
+  quantity?: number;
 };
 export type UpdateVenueData = {
   name?: string;

@@ -11,8 +11,10 @@ use App\EventCatalog\Exceptions\EventImmutableException;
 use App\EventCatalog\Exceptions\EventNotFoundException;
 use App\EventCatalog\Models\Event;
 use App\EventCatalog\Models\TicketType;
+use App\Inventory\Actions\SetTicketTypeQuantity;
 use App\Support\Outbox\OutboxRecorder;
 use App\Tenancy\Actions\ResolveTenantSettlementCurrency;
+use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\Optional;
 
 /**
@@ -27,6 +29,7 @@ final class UpdateTicketType
     public function __construct(
         private readonly OutboxRecorder $outbox,
         private readonly ResolveTenantSettlementCurrency $resolveSettlementCurrency,
+        private readonly SetTicketTypeQuantity $setQuantity,
     ) {}
 
     public function __invoke(TicketType $ticketType, UpdateTicketTypeData $data): TicketTypeData
@@ -65,7 +68,23 @@ final class UpdateTicketType
             $attributes['requires_seat'] = $data->requiresSeat;
         }
 
+        // The effective requires_seat value after this PATCH: the given
+        // value, or the persisted one when the payload leaves it untouched
+        // (UpdateTicketTypeData docblock: a Data class cannot read the
+        // model, so this re-check belongs here).
+        $requiresSeat = $data->requiresSeat instanceof Optional ? $ticketType->requires_seat : $data->requiresSeat;
+
+        if ($requiresSeat && ! $data->quantity instanceof Optional) {
+            throw ValidationException::withMessages([
+                'quantity' => ['The quantity field is not allowed for a ticket type that requires seat selection.'],
+            ]);
+        }
+
         $ticketType->update($attributes);
+
+        if (! $requiresSeat && ! $data->quantity instanceof Optional) {
+            ($this->setQuantity)($ticketType->tenant_id, $ticketType->id, $data->quantity);
+        }
 
         $this->outbox->record(EventUpdated::fromEvent($event));
 

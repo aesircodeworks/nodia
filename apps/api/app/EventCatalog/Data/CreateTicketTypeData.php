@@ -26,7 +26,11 @@ use Spatie\LaravelData\Optional;
  * sales_start/sales_end are both required present keys (nullable values),
  * mirroring venue_id's own "present, nullable" precedent on
  * CreateEventData, since the ticket_types_sales_window CHECK only fires
- * when both are set (task-06 isolation suite).
+ * when both are set (task-06 isolation suite). quantity is stage-06's
+ * additive field (Risks: "Quantity input ownership"): it does not
+ * persist on TicketType at all, App\EventCatalog\Actions\CreateTicketType
+ * passes it to the Inventory context's counter Actions instead, so it is
+ * never read back through TicketTypeData::fromModel.
  */
 #[MapName(SnakeCaseMapper::class)]
 class CreateTicketTypeData extends Data
@@ -39,6 +43,7 @@ class CreateTicketTypeData extends Data
         public ?string $salesStart,
         public ?string $salesEnd,
         public bool|Optional $requiresSeat,
+        public int|Optional $quantity,
     ) {}
 
     /**
@@ -54,6 +59,7 @@ class CreateTicketTypeData extends Data
             'sales_start' => ['present', 'nullable', 'date'],
             'sales_end' => ['present', 'nullable', 'date'],
             'requires_seat' => ['sometimes', 'boolean'],
+            'quantity' => ['sometimes', 'integer', 'min:0'],
         ];
     }
 

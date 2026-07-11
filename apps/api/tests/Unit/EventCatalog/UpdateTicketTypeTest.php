@@ -6,11 +6,15 @@ use App\EventCatalog\Data\UpdateTicketTypeData;
 use App\EventCatalog\Exceptions\CurrencyMismatchException;
 use App\EventCatalog\Models\Event;
 use App\EventCatalog\Models\TicketType;
+use App\Inventory\Actions\InitializeTicketTypeInventory;
+use App\Inventory\Exceptions\InsufficientInventoryException;
+use App\Inventory\Models\TicketTypeInventory;
 use App\Support\Money\Money;
 use App\Support\Outbox\Models\OutboxEvent;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Tests\Support\MigratedDatabase;
 use Tests\Support\PostgresTestDatabase;
 
@@ -55,6 +59,7 @@ afterEach(function (): void {
         // TicketTypeEventUpdatedOutboxTest.php's own cleanup order.
         DB::table('outbox_deliveries')->where('tenant_id', $this->tenantId)->delete();
         OutboxEvent::query()->where('tenant_id', $this->tenantId)->delete();
+        DB::table('ticket_type_inventory')->where('tenant_id', $this->tenantId)->delete();
         TicketType::query()->where('tenant_id', $this->tenantId)->delete();
         Event::query()->where('tenant_id', $this->tenantId)->delete();
     });
@@ -123,4 +128,116 @@ it('records an EventUpdated outbox row for the parent event on every successful 
 
     expect($rows)->toHaveCount(1)
         ->and($rows->first()->payload)->toBe(['event_id' => $this->event->id]);
+});
+
+it('sets the counter row to the given quantity when none existed yet', function () {
+    $data = UpdateTicketTypeData::from(['quantity' => 100]);
+
+    app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(UpdateTicketType::class)($this->ticketType, $data),
+    );
+
+    $inventory = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => TicketTypeInventory::query()->where('ticket_type_id', $this->ticketType->id)->first(),
+    );
+
+    expect($inventory)->not->toBeNull()->and($inventory->quantity)->toBe(100);
+});
+
+it('adjusts an existing counter row to the given absolute quantity', function () {
+    app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(InitializeTicketTypeInventory::class)($this->tenantId, $this->ticketType->id, 50),
+    );
+
+    $data = UpdateTicketTypeData::from(['quantity' => 80]);
+
+    app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(UpdateTicketType::class)($this->ticketType, $data),
+    );
+
+    $inventory = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => TicketTypeInventory::query()->where('ticket_type_id', $this->ticketType->id)->first(),
+    );
+
+    expect($inventory->quantity)->toBe(80);
+});
+
+it('throws InsufficientInventoryException when the given quantity would undercut sold plus held', function () {
+    app(TenantTransaction::class)->asTenant($this->tenantId, function (): void {
+        app(InitializeTicketTypeInventory::class)($this->tenantId, $this->ticketType->id, 50);
+        TicketTypeInventory::query()->where('ticket_type_id', $this->ticketType->id)->update(['sold' => 40]);
+    });
+
+    $data = UpdateTicketTypeData::from(['quantity' => 10]);
+
+    $invoke = fn () => app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(UpdateTicketType::class)($this->ticketType, $data),
+    );
+
+    expect($invoke)->toThrow(InsufficientInventoryException::class);
+});
+
+it('leaves the counter row untouched when quantity is absent from the payload', function () {
+    app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(InitializeTicketTypeInventory::class)($this->tenantId, $this->ticketType->id, 50),
+    );
+
+    $data = UpdateTicketTypeData::from(['name' => 'Renamed']);
+
+    app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(UpdateTicketType::class)($this->ticketType, $data),
+    );
+
+    $inventory = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => TicketTypeInventory::query()->where('ticket_type_id', $this->ticketType->id)->first(),
+    );
+
+    expect($inventory->quantity)->toBe(50);
+});
+
+it('throws a validation exception for a quantity given on a requires_seat ticket type', function () {
+    $seatedTicketType = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => TicketType::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'event_id' => $this->event->id,
+            'requires_seat' => true,
+        ]),
+    );
+
+    $data = UpdateTicketTypeData::from(['quantity' => 100]);
+
+    $invoke = fn () => app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(UpdateTicketType::class)($seatedTicketType, $data),
+    );
+
+    expect($invoke)->toThrow(ValidationException::class);
+});
+
+it('throws a validation exception for a quantity given alongside requires_seat true in the same payload', function () {
+    $data = UpdateTicketTypeData::from(['requires_seat' => true, 'quantity' => 100]);
+
+    $invoke = fn () => app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(UpdateTicketType::class)($this->ticketType, $data),
+    );
+
+    expect($invoke)->toThrow(ValidationException::class);
+
+    $inventory = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => TicketTypeInventory::query()->where('ticket_type_id', $this->ticketType->id)->first(),
+    );
+
+    expect($inventory)->toBeNull();
 });

@@ -11,8 +11,10 @@ use App\EventCatalog\Exceptions\EventImmutableException;
 use App\EventCatalog\Exceptions\EventNotFoundException;
 use App\EventCatalog\Models\Event;
 use App\EventCatalog\Models\TicketType;
+use App\Inventory\Actions\SetTicketTypeQuantity;
 use App\Support\Outbox\OutboxRecorder;
 use App\Tenancy\Actions\ResolveTenantSettlementCurrency;
+use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\Optional;
 
 /**
@@ -29,6 +31,7 @@ final class CreateTicketType
     public function __construct(
         private readonly OutboxRecorder $outbox,
         private readonly ResolveTenantSettlementCurrency $resolveSettlementCurrency,
+        private readonly SetTicketTypeQuantity $setQuantity,
     ) {}
 
     public function __invoke(Event $event, CreateTicketTypeData $data): TicketTypeData
@@ -46,6 +49,14 @@ final class CreateTicketType
 
         $this->assertCurrencyMatchesSettlement($event->tenant_id, $data->price->currency);
 
+        $requiresSeat = $data->requiresSeat instanceof Optional ? false : $data->requiresSeat;
+
+        if ($requiresSeat && ! $data->quantity instanceof Optional) {
+            throw ValidationException::withMessages([
+                'quantity' => ['The quantity field is not allowed for a ticket type that requires seat selection.'],
+            ]);
+        }
+
         $ticketType = TicketType::create([
             'tenant_id' => $event->tenant_id,
             'event_id' => $event->id,
@@ -53,8 +64,15 @@ final class CreateTicketType
             'price' => $data->price,
             'sales_start' => $data->salesStart,
             'sales_end' => $data->salesEnd,
-            'requires_seat' => $data->requiresSeat instanceof Optional ? false : $data->requiresSeat,
+            'requires_seat' => $requiresSeat,
         ]);
+
+        // Seated counters are seeded at 0 by MaterializeEventSeats on
+        // publish (task 9), not here (Risks: "Quantity input ownership").
+        if (! $requiresSeat) {
+            $quantity = $data->quantity instanceof Optional ? 0 : $data->quantity;
+            ($this->setQuantity)($event->tenant_id, $ticketType->id, $quantity);
+        }
 
         $this->outbox->record(EventUpdated::fromEvent($event));
 

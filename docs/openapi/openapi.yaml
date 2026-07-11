@@ -2841,6 +2841,10 @@ paths:
         ({amount, currency}); its currency must match the tenant's
         settlement currency (code catalog.currency_mismatch). Rejected
         with catalog.event_immutable when the parent event is canceled.
+        quantity, given, seeds the ticket_type_inventory counter row (0
+        when omitted for a GA type); rejected with
+        request.validation_failed when requires_seat is true (stage-06
+        plan task 3).
       security:
         - BearerAuth: []
       requestBody:
@@ -2886,9 +2890,10 @@ paths:
           description: >-
             Request validation failed (code request.validation_failed,
             with the errors map): a negative price, a malformed currency
-            code, or sales_end at or before sales_start; or the price
-            currency does not match the tenant's settlement currency
-            (code catalog.currency_mismatch).
+            code, sales_end at or before sales_start, a negative
+            quantity, or a quantity given on a requires_seat ticket type;
+            or the price currency does not match the tenant's settlement
+            currency (code catalog.currency_mismatch).
           content:
             application/problem+json:
               schema:
@@ -3008,6 +3013,10 @@ paths:
         Rejected with catalog.event_immutable when the parent event is
         canceled; rejected with catalog.currency_mismatch when an updated
         price currency does not match the tenant's settlement currency.
+        quantity, given, replaces the ticket_type_inventory counter's
+        quantity (rejected with request.validation_failed on a
+        requires_seat ticket type, and with insufficient_inventory when
+        it would undercut sold plus held; stage-06 plan task 3).
       security:
         - BearerAuth: []
       requestBody:
@@ -3050,18 +3059,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/NotFoundProblem'
         '409':
-          description: The parent event is canceled and can no longer be modified.
+          description: >-
+            The parent event is canceled and can no longer be modified
+            (code catalog.event_immutable), or the given quantity would
+            undercut sold plus held (code insufficient_inventory).
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/EventImmutableProblem'
+                $ref: '#/components/schemas/TicketTypeUpdateConflictProblem'
         '422':
           description: >-
             Request validation failed (code request.validation_failed,
             with the errors map): a negative price, a malformed currency
-            code, or the sales window given only in part; or the price
-            currency does not match the tenant's settlement currency
-            (code catalog.currency_mismatch).
+            code, the sales window given only in part, a negative
+            quantity, or a quantity given on a requires_seat ticket type;
+            or the price currency does not match the tenant's settlement
+            currency (code catalog.currency_mismatch).
           content:
             application/problem+json:
               schema:
@@ -4542,6 +4555,13 @@ components:
       additionalProperties: false
     TicketTypeCreateRequest:
       type: object
+      description: >-
+        `quantity` is an additive stage-06 field (Risks: "Quantity input
+        ownership"): it does not persist on `ticket_types` itself, it
+        seeds the `ticket_type_inventory` counter row (0 when omitted for
+        a GA type) and is rejected with `request.validation_failed` when
+        `requires_seat` is true, since seated counters are seeded by
+        publish-time seat materialization instead.
       required:
         - name
         - price
@@ -4561,9 +4581,18 @@ components:
         requires_seat:
           type: boolean
           default: false
+        quantity:
+          type: integer
+          minimum: 0
       additionalProperties: false
     TicketTypeUpdateRequest:
       type: object
+      description: >-
+        `quantity`, given, replaces the ticket type's
+        `ticket_type_inventory.quantity` (stage-06 plan, task 3); rejected
+        with `request.validation_failed` when the ticket type is (or is
+        being changed to) `requires_seat`, and with `insufficient_inventory`
+        when it would undercut `sold + held`.
       properties:
         name:
           type: string
@@ -4577,6 +4606,9 @@ components:
           format: date-time
         requires_seat:
           type: boolean
+        quantity:
+          type: integer
+          minimum: 0
       additionalProperties: false
     TicketTypePage:
       type: object
@@ -5269,6 +5301,24 @@ components:
             code:
               type: string
               enum: [catalog.event_immutable]
+      unevaluatedProperties: false
+    TicketTypeUpdateConflictProblem:
+      description: >-
+        Problem document for a PATCH on a ticket type that cannot be
+        applied: either the parent event is canceled (code
+        catalog.event_immutable), or the given quantity would undercut
+        the ticket type's sold plus held counters (code
+        insufficient_inventory, stage-06 plan task 3).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [catalog.event_immutable, insufficient_inventory]
       unevaluatedProperties: false
     EventUpdateUnprocessableProblem:
       description: >-

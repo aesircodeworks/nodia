@@ -10,7 +10,7 @@
 ### Task checklist
 
 - [x] 06-01 Counters: ticket_type_inventory migration, model, InitializeTicketTypeInventory and AdjustInventoryQuantity Actions, isolation probe (plan slice 1, task 2)
-- [ ] 06-02 Catalog quantity contract: additive quantity on ticket type Data objects, delegation to Inventory Actions, requires_seat rejection (plan task 3)
+- [x] 06-02 Catalog quantity contract: additive quantity on ticket type Data objects, delegation to Inventory Actions, requires_seat rejection (plan task 3)
 - [ ] 06-03 GA hold creation: holds and hold_items migrations, HoldStatus, CreateHold, HoldCreated, POST and GET endpoints, GA oversell simulation green (plan slice 2, task 4)
 - [ ] 06-04 Release and expiry: ReleaseHold, DELETE endpoint, HoldReleased, ReleaseExpiredHolds sweeper, HoldExpired, expiry recovery simulation green (plan slice 3, tasks 5 and 6)
 - [ ] 06-05 Availability reads: storefront availability endpoint and admin inventory read with contracts (plan slice 3, task 7)
@@ -107,3 +107,96 @@ No deviations from the plan beyond the two documented above (explicit
 `held`/`sold` seeding on create, and the `pg_constraint`-existence
 substitute for the unreachable-in-isolation `quantity_non_negative`
 insert test).
+
+#### Task 06-02: Catalog quantity contract change (2026-07-11)
+
+Landed the additive `quantity` field on the Stage 5a ticket type Data
+objects and wired both Catalog Actions to Inventory, per plan task 3 and
+the Risks note "Quantity input ownership":
+
+- `App\EventCatalog\Data\CreateTicketTypeData` and `UpdateTicketTypeData`
+  gain `public int|Optional $quantity` with rule `['sometimes',
+  'integer', 'min:0']`. `quantity` never lands on `ticket_types` or on
+  `TicketTypeData`'s response shape (unchanged); it is read only by the
+  two Catalog Actions and handed to Inventory.
+- New `App\Inventory\Actions\SetTicketTypeQuantity`: locks the counter
+  row (`lockForUpdate`), seeds one via `InitializeTicketTypeInventory` if
+  none exists yet, otherwise computes the delta against the locked
+  quantity and calls `AdjustInventoryQuantity`, so Catalog never reads or
+  writes `App\Inventory\Models\TicketTypeInventory` directly. Chosen over
+  making `AdjustInventoryQuantity` itself accept an absolute value
+  because that Action's contract (delta, guarded decrease) is already
+  proven by task 06-01's tests and is reused unchanged by the future
+  hold-creation guard; `SetTicketTypeQuantity` is Catalog's translation
+  layer, not a new primitive.
+- `CreateTicketType`: resolves effective `requiresSeat` (existing
+  Optional-default-false pattern), throws `Illuminate\Validation\
+  ValidationException` on `quantity` given with `requires_seat` true
+  (renders as the generic `request.validation_failed`, matching
+  `ProblemRenderer`'s existing handling for every `ValidationException`),
+  otherwise calls `SetTicketTypeQuantity` with the given quantity or `0`
+  when omitted. Seated types get no counter row here; task 9's
+  `MaterializeEventSeats` seeds theirs at publish.
+- `UpdateTicketType`: resolves effective `requiresSeat` as the given
+  value or, when the payload omits `requires_seat`, the ticket type's
+  persisted value (a Data class cannot read the model, so this re-check
+  could not live in `UpdateTicketTypeData`, mirroring
+  `ValidatesTicketTypeInvariants`'s own documented limitation for the
+  sales-window pair). Same `quantity`+`requires_seat` guard, evaluated
+  before `$ticketType->update()` so a request that fails the guard leaves
+  no partial write. When `quantity` is given and the effective type is
+  GA, calls `SetTicketTypeQuantity` after the model update.
+- OpenAPI: `TicketTypeCreateRequest`/`TicketTypeUpdateRequest` gain
+  `quantity` (integer, `minimum: 0`); a new
+  `TicketTypeUpdateConflictProblem` schema covers the PATCH endpoint's
+  409, now either `catalog.event_immutable` or `insufficient_inventory`;
+  both endpoints' 422 descriptions mention the new quantity failure
+  modes. `composer types:generate` run; `packages/api-client/src/generated/
+  index.ts` and the manifest regenerated with `quantity?: number` on both
+  request types.
+- Test-first, per the master plan double loop: added the requires_seat
+  rejection, quantity-seeding, and quantity-update feature tests to
+  `tests/Feature/EventCatalog/TicketTypeEndpointsTest.php` before writing
+  the Data/Action changes, watched them fail (`Undefined property
+  $quantity`, then 500s once the field existed but nothing consumed it),
+  then implemented. Same order for the unit suites below.
+- Unit: extended `tests/Unit/EventCatalog/CreateTicketTypeTest.php` and
+  `UpdateTicketTypeTest.php` with quantity-seeding, zero-default,
+  seated-rejection, and (update-only) existing-row-adjustment and
+  insufficient-inventory cases; new
+  `tests/Unit/Inventory/SetTicketTypeQuantityTest.php` mirrors
+  `InitializeTicketTypeInventoryTest.php`'s structure for the new Action
+  directly (create-when-absent, increase, guarded decrease, no-op).
+- Cleanup fix, not itself part of task 3's contract but required for
+  every affected suite to pass once `ticket_type_inventory` rows started
+  being created: every Feature and Unit test file whose `afterEach`
+  deletes `ticket_types` for a tenant needed a `ticket_type_inventory`
+  delete first (the new table's FK to `ticket_types.id` has no cascade).
+  Touched `tests/Feature/EventCatalog/{TicketTypeEndpointsTest,
+  TicketTypeEventUpdatedOutboxTest, EventEndpointsTest,
+  StorefrontEventEndpointsTest, CatalogPublishSequenceTest}.php`,
+  `tests/Feature/Identity/ActivityLogCoverageTest.php`, and
+  `tests/Unit/EventCatalog/{CreateTicketTypeTest,UpdateTicketTypeTest}.php`.
+  Left uncaught this surfaced only as cascading failures several files
+  later in a full-suite run (an aborted `afterEach` from an FK violation
+  skips the platform-tenant delete that follows it, so the orphaned
+  tenant and its rows then broke unrelated tests, e.g.
+  `tests/Unit/Tenancy/CreateTenantTest.php`'s tenant-count assertions);
+  traced by bisecting with `git stash` against the same polluted database
+  to confirm the baseline was clean and the diff was the cause.
+
+Test evidence (run from `apps/api`):
+
+- `php artisan test --filter="TicketTypeEndpointsTest"`: 44 passed, 192 assertions.
+- `php artisan test --filter="TicketTypeEventUpdatedOutboxTest"`: included above, passing.
+- `php artisan test --filter="CreateTicketTypeTest|UpdateTicketTypeTest|SetTicketTypeQuantityTest|InitializeTicketTypeInventoryTest|AdjustInventoryQuantityTest"`: 71 passed, 256 assertions.
+- `php artisan test --testsuite=Architecture`: 38 passed, 94 assertions (Catalog reaches Inventory only through `SetTicketTypeQuantity`/`InitializeTicketTypeInventory`, no direct model or table access; the boundary and preset suites both pass unchanged).
+- `php artisan test --testsuite=Feature --filter="EventCatalog|Identity"`: 517 passed, 2517 assertions.
+- `php artisan test --testsuite=Unit`: 557 passed, 1331 assertions (unchanged count from task 06-01, confirming the cleanup fix above did not add or drop any Unit test).
+- `php artisan test --testsuite=Isolation`: 189 passed, 413 assertions.
+- `composer analyse`: passed (0 errors).
+- `composer lint`: passed.
+
+No deviations from the plan beyond the two documented above (the
+cleanup-fix scope and the `SetTicketTypeQuantity`-vs-absolute-
+`AdjustInventoryQuantity` design choice).

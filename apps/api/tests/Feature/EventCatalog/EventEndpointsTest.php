@@ -40,6 +40,7 @@ afterEach(function (): void {
             DB::table('outbox_deliveries')->where('tenant_id', $tenantId)->delete();
             DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
             DB::table('memberships')->where('tenant_id', $tenantId)->delete();
+            DB::table('ticket_type_inventory')->where('tenant_id', $tenantId)->delete();
             DB::table('ticket_types')->where('tenant_id', $tenantId)->delete();
             // events before seat_maps: events.seat_map_id is on delete
             // restrict, so a seat map still referenced by an event cannot

@@ -4,6 +4,7 @@ use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Models\Event;
 use App\EventCatalog\Models\TicketType;
 use App\Identity\Capability;
+use App\Inventory\Models\TicketTypeInventory;
 use App\Models\User;
 use App\Support\Money\Money;
 use App\Support\Tenancy\TenantTransaction;
@@ -42,6 +43,7 @@ afterEach(function (): void {
             DB::table('outbox_deliveries')->where('tenant_id', $tenantId)->delete();
             DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
             DB::table('memberships')->where('tenant_id', $tenantId)->delete();
+            DB::table('ticket_type_inventory')->where('tenant_id', $tenantId)->delete();
             DB::table('ticket_types')->where('tenant_id', $tenantId)->delete();
             DB::table('events')->where('tenant_id', $tenantId)->delete();
             DB::table('venues')->where('tenant_id', $tenantId)->delete();
@@ -424,5 +426,159 @@ describe('PATCH /v1/ticket-types/{ticket_type}', function () {
             ->assertForbidden()
             ->assertConformsToOpenApi()
             ->assertJsonPath('code', 'missing_capability');
+    });
+});
+
+/*
+ * Stage-06 plan, task breakdown item 3: the additive `quantity` field on
+ * the create/update Data objects, delegated to
+ * App\Inventory\Actions\SetTicketTypeQuantity rather than any column on
+ * ticket_types itself (task-06 plan, Risks: "Quantity input ownership").
+ * TicketTypeData's own response shape is untouched by this task (no
+ * `quantity` key on the wire yet; the admin inventory read arrives in
+ * task 7), so these tests assert against the `ticket_type_inventory`
+ * table directly, mirroring TicketTypeInventoryIsolationTest's own
+ * ownership of that table's assertions.
+ */
+describe('ticket type quantity (stage-06 task 3)', function () {
+    it('creates the ticket_type_inventory counter row for a GA ticket type given a quantity', function () {
+        $event = makeTicketTypeEvent($this->tenantId);
+
+        $response = $this->postJson(
+            "/v1/events/{$event->id}/ticket-types",
+            ticketTypePayload(['quantity' => 250]),
+        );
+
+        $response->assertCreated()->assertConformsToOpenApi();
+
+        $ticketTypeId = $response->json('id');
+
+        $inventory = app(TenantTransaction::class)->asTenant(
+            $this->tenantId,
+            fn () => TicketTypeInventory::query()->where('ticket_type_id', $ticketTypeId)->first(),
+        );
+
+        expect($inventory)->not->toBeNull()
+            ->and($inventory->quantity)->toBe(250)
+            ->and($inventory->held)->toBe(0)
+            ->and($inventory->sold)->toBe(0);
+    });
+
+    it('creates a zero-quantity counter row for a GA ticket type given no quantity', function () {
+        $event = makeTicketTypeEvent($this->tenantId);
+
+        $response = $this->postJson("/v1/events/{$event->id}/ticket-types", ticketTypePayload());
+
+        $response->assertCreated()->assertConformsToOpenApi();
+
+        $ticketTypeId = $response->json('id');
+
+        $inventory = app(TenantTransaction::class)->asTenant(
+            $this->tenantId,
+            fn () => TicketTypeInventory::query()->where('ticket_type_id', $ticketTypeId)->first(),
+        );
+
+        expect($inventory)->not->toBeNull()->and($inventory->quantity)->toBe(0);
+    });
+
+    it('rejects a quantity on a requires_seat ticket type with request.validation_failed', function () {
+        $event = makeTicketTypeEvent($this->tenantId);
+
+        $response = $this->postJson(
+            "/v1/events/{$event->id}/ticket-types",
+            ticketTypePayload(['requires_seat' => true, 'quantity' => 100]),
+        );
+
+        $response->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.validation_failed');
+
+        expect($response->json('errors'))->toHaveKey('quantity');
+    });
+
+    it('does not create a counter row for a requires_seat ticket type', function () {
+        $event = makeTicketTypeEvent($this->tenantId);
+
+        $response = $this->postJson(
+            "/v1/events/{$event->id}/ticket-types",
+            ticketTypePayload(['requires_seat' => true]),
+        );
+
+        $response->assertCreated()->assertConformsToOpenApi();
+
+        $ticketTypeId = $response->json('id');
+
+        $inventory = app(TenantTransaction::class)->asTenant(
+            $this->tenantId,
+            fn () => TicketTypeInventory::query()->where('ticket_type_id', $ticketTypeId)->first(),
+        );
+
+        expect($inventory)->toBeNull();
+    });
+
+    it('adjusts the counter row to the given quantity on update', function () {
+        $event = makeTicketTypeEvent($this->tenantId);
+
+        $ticketTypeId = $this->postJson(
+            "/v1/events/{$event->id}/ticket-types",
+            ticketTypePayload(['quantity' => 100]),
+        )->json('id');
+
+        $this->patchJson("/v1/ticket-types/{$ticketTypeId}", ['quantity' => 150])
+            ->assertOk()
+            ->assertConformsToOpenApi();
+
+        $inventory = app(TenantTransaction::class)->asTenant(
+            $this->tenantId,
+            fn () => TicketTypeInventory::query()->where('ticket_type_id', $ticketTypeId)->first(),
+        );
+
+        expect($inventory->quantity)->toBe(150);
+    });
+
+    it('returns insufficient_inventory when the updated quantity would undercut sold plus held', function () {
+        $event = makeTicketTypeEvent($this->tenantId);
+
+        $ticketTypeId = $this->postJson(
+            "/v1/events/{$event->id}/ticket-types",
+            ticketTypePayload(['quantity' => 10]),
+        )->json('id');
+
+        app(TenantTransaction::class)->asTenant($this->tenantId, function () use ($ticketTypeId): void {
+            TicketTypeInventory::query()->where('ticket_type_id', $ticketTypeId)->update(['sold' => 8]);
+        });
+
+        $this->patchJson("/v1/ticket-types/{$ticketTypeId}", ['quantity' => 5])
+            ->assertStatus(409)
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'insufficient_inventory');
+    });
+
+    it('rejects a quantity update on a requires_seat ticket type', function () {
+        $event = makeTicketTypeEvent($this->tenantId);
+        $ticketType = makeTicketTypeRow($this->tenantId, $event->id, ['requires_seat' => true]);
+
+        $response = $this->patchJson("/v1/ticket-types/{$ticketType->id}", ['quantity' => 50]);
+
+        $response->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.validation_failed');
+
+        expect($response->json('errors'))->toHaveKey('quantity');
+    });
+
+    it('rejects a negative quantity', function () {
+        $event = makeTicketTypeEvent($this->tenantId);
+
+        $response = $this->postJson(
+            "/v1/events/{$event->id}/ticket-types",
+            ticketTypePayload(['quantity' => -1]),
+        );
+
+        $response->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.validation_failed');
+
+        expect($response->json('errors'))->toHaveKey('quantity');
     });
 });
