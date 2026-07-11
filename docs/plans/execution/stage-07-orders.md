@@ -10,7 +10,7 @@
 ### Task checklist
 
 - [x] 07-01 Error code registry additions plus OrderStatus, TicketStatus, PromoCodeDiscountType enums with unit tests (plan task 1)
-- [ ] 07-02 orders and order_items migration with RLS, models, factories, isolation tests (plan task 2)
+- [x] 07-02 orders and order_items migration with RLS, models, factories, isolation tests (plan task 2)
 - [ ] 07-03 ConvertHoldToOrder plus POST /v1/storefront/orders end to end, OrderCreated producer, double-conversion and anonymous-hold attachment races (plan slice 1, task 3)
 - [ ] 07-04 Transition Actions and the state machine table test (plan slice 2, task 4)
 - [ ] 07-05 Buyer cancel endpoint plus hold release wiring (plan task 5)
@@ -42,3 +42,19 @@ before the implementation). Allowlisted the three enums in
 `PresetTest` following the HoldStatus precedent. Regenerated TS types
 (ErrorCode union grew). Evidence: `php artisan test
 --filter='OrdersEnums|ErrorCode|Preset'` 87 passed.
+
+#### Task 07-02: orders and order_items tables (2026-07-11)
+
+Migrations `2026_07_11_000035_create_orders_table` and
+`000036_create_order_items_table` with `Rls::applyTenantPolicies` in the
+same files, all plan indexes (unique `hold_id`, cursor index
+`(tenant_id, created_at, id)`, partial open-status index) and CHECK
+constraints (amounts non-negative, `total = subtotal - discount +
+fees`, `quantity > 0`). `Order` and `OrderItem` models with MoneyCast
+virtual attributes over the shared `currency` column, factories, and
+isolation tests written first (13 tests failed before the migration,
+green after). Deviation: `orders.promo_code_id` ships as a plain
+nullable uuid; the FK constraint is added by the promo_codes migration
+in task 07-11, since merged migrations are never edited and the tables
+land in different slices. Evidence: Isolation suite 221 passed,
+Architecture suite 38 passed.

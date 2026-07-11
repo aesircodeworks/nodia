@@ -266,6 +266,8 @@ arch()->preset()->laravel()->ignoring([
     'App\Inventory\Models',
     'App\Inventory\Http\Controllers',
     InventoryServiceProvider::class,
+    'App\Orders\Models',
+    'App\Orders\Http\Controllers',
     'App\Support\Audit\Models',
     'App\Support\Outbox\Models',
     'App\Support\Media\Models',
