@@ -423,3 +423,98 @@ No deviations from the plan beyond the two documented above (the 204
 exerciser omission from the contract coverage gate, and the
 `findCandidates()` typing fix), both mechanical consequences of the
 codebase's existing conventions rather than scope changes.
+
+#### Task 06-05: Availability reads, storefront and admin (2026-07-11)
+
+Landed Slice 3, task breakdown item 7: the database-backed storefront
+availability read and the admin ticket-type inventory read.
+
+- `GET /v1/storefront/events/{event}/availability`
+  (`App\Inventory\Http\Controllers\AvailabilityController`,
+  `App\Inventory\Actions\GetEventAvailability`): reuses
+  `App\EventCatalog\Actions\ResolveEventForHold`, the same read-only
+  cross-context seam `CreateHold` already depends on, so Inventory never
+  touches `App\EventCatalog\Models\Event` or `TicketType` directly
+  (system-design 3.1 boundary rule); a nonexistent or unpublished event
+  id renders the same `event_not_found` code either way, reusing
+  `App\Inventory\Exceptions\HoldEventNotFoundException` rather than
+  minting a duplicate exception, since the code, status, and unpublished-
+  existence posture are identical. Returns `EventAvailabilityData`: per
+  ticket type `{ticket_type_id, available, on_sale}`, `available =
+  quantity - sold - held` (defensively floored at 0, though the
+  `ticket_type_inventory_no_oversell` CHECK constraint makes a negative
+  value unreachable in practice), `on_sale` true when `now` falls inside
+  the ticket type's own `sales_start`/`sales_end` window (inclusive at
+  both bounds, mirroring `CreateHold::assertHoldable`'s own comparison
+  operators). Database-backed and authoritative per the plan; a later
+  stage fronts this with a cache without changing the contract.
+- `GET /v1/ticket-types/{ticket_type}/inventory`
+  (`App\Inventory\Http\Controllers\TicketTypeInventoryController`, new
+  `app/Inventory/Http/routes/admin.php` mounted under `tenancy.admin` in
+  `InventoryServiceProvider`, gated by the `events.view` capability like
+  `TicketTypeController`'s own read routes): returns
+  `TicketTypeInventoryData` (`quantity`, `sold`, `held`) read directly
+  off the tenant-scoped `ticket_type_inventory` row, no cross-context
+  reach needed since Inventory already owns that table. A missing row
+  (nonexistent or foreign-tenant ticket type; every real ticket type
+  always has one, seeded by `InitializeTicketTypeInventory` at creation)
+  throws the new `App\Inventory\Exceptions\TicketTypeInventoryNotFoundException`,
+  mapped to the generic `request.not_found` code, mirroring
+  `App\EventCatalog\Exceptions\TicketTypeNotFoundException`'s own
+  precedent so existence never leaks across tenants.
+- OpenAPI: `GET /v1/storefront/events/{event}/availability` (200/404,
+  the 404 sharing the existing `HoldEventNotFoundProblem` schema rather
+  than a duplicate, since status and code are identical to the hold
+  endpoint's own) and `GET /v1/ticket-types/{ticket_type}/inventory`
+  (200/401/403/404, reusing `TicketTypeForbiddenProblem` and
+  `NotFoundProblem` per `getTicketType`'s own precedent), plus the new
+  `EventAvailability`, `TicketTypeAvailability`, and `TicketTypeInventory`
+  schemas. `composer types:generate` run;
+  `packages/api-client/src/generated/index.ts` and the manifest
+  regenerated with `EventAvailabilityData`, `TicketTypeAvailabilityData`,
+  and `TicketTypeInventoryData`.
+- Test-first per the master plan double loop:
+  `tests/Feature/Inventory/AvailabilityEndpointsTest.php` (written and
+  watched fail on the missing routes before either controller existed)
+  covers the arithmetic and `on_sale` shape, the unknown/draft-event
+  404, the admin staff-bearer-plus-X-Tenant-Id 200, and unknown/cross-
+  tenant ticket type 404s, plus an expiry-recovery case reusing
+  `ReleaseExpiredHolds` to show availability returns to `quantity`
+  exactly. `tests/Unit/Inventory/GetEventAvailabilityTest.php` isolates
+  `GetEventAvailability`'s own invariants: the arithmetic, the
+  sales-window boundary inclusive at both `sales_start` and `sales_end`,
+  a fully-exhausted-inventory zero case, and both `HoldEventNotFoundException`
+  branches (unknown, draft). `tests/Contract/DocumentedResponseCoverageTest.php`
+  gained exercisers for both new paths' documented response triples
+  (200/404 for availability; 200/401/403/404 for the admin inventory
+  read). `tests/Architecture/PresetTest.php` gained
+  `TicketTypeInventoryNotFoundException::class` in the ignore-list
+  (implements `Throwable`, same as every other `HasErrorCode` exception
+  already there).
+
+Test evidence (run from `apps/api`):
+
+- `php artisan test --filter=AvailabilityEndpointsTest`: 8 passed, 31
+  assertions.
+- `php artisan test --filter=GetEventAvailabilityTest`: 6 passed, 7
+  assertions.
+- `php artisan test --filter=DocumentedResponseCoverageTest`: 250
+  passed, 1245 assertions.
+- `php artisan test --testsuite=Architecture`: 38 passed, 94 assertions.
+- `php artisan test --testsuite=Unit,Contract,Isolation,Architecture,Concurrency`
+  (combined): 1121 passed, 3706 assertions.
+- `php artisan test --testsuite=Feature`: 746 passed, 3673 assertions.
+- `composer analyse`: passed (0 errors).
+- `composer lint`: passed, no changes needed.
+- `composer types:generate`: run;
+  `packages/api-client/src/generated/index.ts` and the manifest
+  regenerated.
+
+No deviations from the plan. One design choice not spelled out in the
+plan text: the availability 404 problem document reuses
+`HoldEventNotFoundProblem`/`HoldEventNotFoundException` verbatim rather
+than introducing an availability-specific pair, since the status, code,
+and unpublished-existence posture are identical to the hold-creation
+endpoint's own `event_not_found` case; this keeps one source of truth
+for that shape rather than two schemas that would need to stay in sync
+by hand.
