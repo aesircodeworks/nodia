@@ -55,6 +55,7 @@ use App\Identity\Mail\StaffInvitationMail;
 use App\Inventory\Enums\HoldStatus;
 use App\Inventory\Exceptions\HoldEventNotFoundException;
 use App\Inventory\Exceptions\HoldNotFoundException;
+use App\Inventory\Exceptions\HoldNotReleasableException;
 use App\Inventory\Exceptions\InsufficientHoldInventoryException;
 use App\Inventory\Exceptions\InsufficientInventoryException;
 use App\Inventory\Exceptions\SalesWindowClosedException;
@@ -216,6 +217,7 @@ arch()->preset()->laravel()->ignoring([
     SalesWindowClosedException::class,
     InsufficientHoldInventoryException::class,
     HoldNotFoundException::class,
+    HoldNotReleasableException::class,
     MissingTenantHeaderException::class,
     InvalidTenantHeaderException::class,
     TenantAccessDeniedException::class,

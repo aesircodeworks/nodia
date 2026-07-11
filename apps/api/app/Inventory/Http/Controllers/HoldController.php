@@ -3,12 +3,14 @@
 namespace App\Inventory\Http\Controllers;
 
 use App\Inventory\Actions\CreateHold;
+use App\Inventory\Actions\ReleaseHold;
 use App\Inventory\Data\CreateHoldData;
 use App\Inventory\Data\HoldData;
 use App\Inventory\Exceptions\HoldNotFoundException;
 use App\Inventory\Models\Hold;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
 /**
  * The storefront hold surface (stage-06 plan, Endpoints "Storefront").
@@ -28,6 +30,19 @@ class HoldController
     public function show(string $hold): HoldData
     {
         return HoldData::fromModel($this->holdOrFail($hold));
+    }
+
+    /**
+     * 204 on release and on repeated release of an already-released or
+     * already-expired hold (idempotent DELETE); ReleaseHold itself throws
+     * hold_not_found or hold_not_releasable for the other two cases
+     * (stage-06 plan, Endpoints "DELETE /v1/storefront/holds/{hold}").
+     */
+    public function destroy(string $hold, ReleaseHold $releaseHold): Response
+    {
+        $releaseHold($hold);
+
+        return response()->noContent();
     }
 
     /**

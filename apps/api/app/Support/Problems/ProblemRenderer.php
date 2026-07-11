@@ -152,6 +152,7 @@ class ProblemRenderer
             ErrorCode::TicketTypeNotInEvent => 'This ticket type does not belong to the given event.',
             ErrorCode::SalesWindowClosed => "This ticket type's sales window is not currently open.",
             ErrorCode::HoldNotFound => 'No hold has this id for the resolved tenant.',
+            ErrorCode::HoldNotReleasable => 'This hold is committed and cannot be released.',
         };
     }
 }

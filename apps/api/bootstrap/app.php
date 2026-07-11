@@ -22,6 +22,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // Stage-04 plan task 8: reconciliation sweeper every minute
         // against config/outbox.php grace and stability windows.
         $schedule->command('outbox:sweep')->everyMinute();
+
+        // Stage-06 plan, Slice 3, task breakdown item 6: expire active
+        // holds past their expires_at every minute.
+        $schedule->command('holds:release-expired')->everyMinute();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

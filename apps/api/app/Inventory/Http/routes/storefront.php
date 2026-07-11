@@ -10,3 +10,4 @@ use Illuminate\Support\Facades\Route;
 // authentication is required to create or read a hold.
 Route::post('/storefront/holds', [HoldController::class, 'store']);
 Route::get('/storefront/holds/{hold}', [HoldController::class, 'show'])->whereUuid('hold');
+Route::delete('/storefront/holds/{hold}', [HoldController::class, 'destroy'])->whereUuid('hold');

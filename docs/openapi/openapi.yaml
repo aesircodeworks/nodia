@@ -3466,6 +3466,33 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/HoldNotFoundProblem'
+    delete:
+      operationId: releaseStorefrontHold
+      summary: Release a hold
+      description: >-
+        Storefront surface: guest checkout, no authentication required
+        (stage-06 plan, Endpoints "DELETE /v1/storefront/holds/{hold}").
+        Idempotent: releasing an already-released hold, or one the expiry
+        sweeper already expired, returns 204 again rather than an error.
+      responses:
+        '204':
+          description: >-
+            The hold is released (or was already released or expired).
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+        '404':
+          description: No hold has this id for the resolved tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/HoldNotFoundProblem'
+        '409':
+          description: The hold is committed and cannot be released.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/HoldNotReleasableProblem'
 components:
   securitySchemes:
     BearerAuth:
@@ -5276,6 +5303,22 @@ components:
             code:
               type: string
               enum: [hold_not_found]
+      unevaluatedProperties: false
+    HoldNotReleasableProblem:
+      description: >-
+        Problem document for DELETE /v1/storefront/holds/{hold} when the
+        hold is committed and so cannot be released (stage-06 plan,
+        Endpoints).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [hold_not_releasable]
       unevaluatedProperties: false
     HoldCreateUnprocessableProblem:
       description: >-

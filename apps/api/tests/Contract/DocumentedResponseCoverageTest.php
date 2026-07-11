@@ -2592,6 +2592,32 @@ function documentedResponseExercisers(): array
 
             return test()->getJson('http://'.$host.'/v1/storefront/holds/'.Str::uuid7());
         },
+        // No exerciser for the 204 response: it carries no content, so
+        // OpenApiSpec::documentedResponseSchemas() (content-keyed) never
+        // lists it as a documented response triple in the first place,
+        // mirroring every other 204 DELETE in this suite (e.g. seat maps,
+        // roles, memberships). HoldEndpointsTest's own DELETE describe
+        // block covers the 204 shape instead.
+        'delete /v1/storefront/holds/{hold} 404' => function (): TestResponse {
+            ['host' => $host] = contractHoldTenant();
+
+            return test()->deleteJson('http://'.$host.'/v1/storefront/holds/'.Str::uuid7());
+        },
+        'delete /v1/storefront/holds/{hold} 409' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            ['event' => $event, 'ticketType' => $ticketType] = contractHoldFixture($tenant);
+
+            $created = test()->postJson('http://'.$host.'/v1/storefront/holds', [
+                'event_id' => $event->id,
+                'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+            ])->json();
+
+            app(TenantTransaction::class)->asTenant($tenant->id, function () use ($created): void {
+                DB::table('holds')->where('id', $created['id'])->update(['status' => 'committed']);
+            });
+
+            return test()->deleteJson('http://'.$host.'/v1/storefront/holds/'.$created['id']);
+        },
     ];
 }
 

@@ -318,3 +318,108 @@ given task 06-03's own instructions restrict this task to the GA path:
   create-side oversubscription matrix (exact-fit, 2x, 10x, and a
   multi-unit-per-request case) and defers the release interleaving
   case to the task that ships `ReleaseHold`.
+
+#### Task 06-04: Release, expiry sweeper, hold lifecycle events (2026-07-11)
+
+Landed Slice 3, task breakdown items 5 and 6: explicit hold release,
+the expiry sweeper, and the `HoldReleased`/`HoldExpired` outbox events,
+turning the exactly-one-of race and the expiry-recovery simulation
+green.
+
+- `App\Inventory\Actions\ReleaseHold` (DELETE /v1/storefront/holds/{hold}):
+  the active -> released transition is a conditional UPDATE checked by
+  affected-row count, never read-then-write. A hold found already
+  released or expired is an idempotent no-op (204, no second event); a
+  committed hold throws `HoldNotReleasableException` (409
+  `hold_not_releasable`, new `ErrorCode` member); an unknown or
+  cross-tenant id throws the existing `HoldNotFoundException` (404,
+  RLS makes cross-tenant a natural miss). Losing the transition race
+  (the sweeper or another release request won it first) re-checks the
+  current status rather than erroring: committed still refuses, anything
+  else is the same idempotent no-op.
+- `App\Inventory\Actions\ReleaseExpiredHolds`: the sweeper. Candidate
+  discovery is a cross-tenant platform SELECT of active holds past
+  `expires_at` (mirrors `App\Support\Outbox\OutboxSweeper`'s own
+  precedent), but the active -> expired conditional UPDATE, counter
+  release, and `HoldExpired` recording for each candidate run inside
+  that hold's own tenant transaction, one hold at a time. A hold an
+  explicit release already claimed makes the sweeper's own UPDATE
+  affect zero rows, so it is simply skipped: this conditional-UPDATE
+  pairing is what guarantees exactly one of `HoldReleased`/`HoldExpired`
+  is ever recorded per hold, never both, never zero. Wired onto the
+  scheduler as `holds:release-expired`
+  (`App\Console\Commands\ReleaseExpiredHoldsCommand`), every minute
+  (`bootstrap/app.php`), mirroring `outbox:sweep`'s own precedent.
+- Counter reconciliation (`held = held - n WHERE held >= n`, the mirror
+  image of `CreateHold::claim`'s held-increment guard) is shared by both
+  Actions through a new `App\Inventory\Actions\Concerns\
+  ReleasesHoldInventory` trait rather than duplicated, since the two
+  Actions differ only in how they win their own conditional transition,
+  not in what happens once they have.
+- `HoldReleased` and `HoldExpired` events, each carrying `hold_id`,
+  `event_id`, `items`, `seat_ids` (always empty in this task, same as
+  `HoldCreated`'s own precedent) per the Domain events table.
+  `HoldCreatedItemPayload` renamed to `HoldItemPayload` and shared by
+  all three payload classes rather than three near-identical item
+  classes. Both event types registered in
+  `InventoryServiceProvider::boot()` alongside `HoldCreated`.
+- OpenAPI: `DELETE /v1/storefront/holds/{hold}` (204/404/409) and the
+  new `HoldNotReleasableProblem` schema. `composer types:generate` run
+  (the new `ErrorCode::HoldNotReleasable` member is `#[TypeScript]`);
+  `packages/api-client/src/generated/index.ts` and the manifest
+  regenerated.
+- Test-first per the master plan double loop: `tests/Unit/Inventory/
+  {ReleaseHoldTest,ReleaseExpiredHoldsTest}.php` (the fake-clock TTL
+  matrix: well before `expires_at` untouched, exactly at `expires_at`
+  expires, long past expires, a second sweeper run is a no-op, a
+  sweeper run skips a hold an explicit release already claimed;
+  idempotent re-release with no second event; a rollback probe mirroring
+  `CreateHoldTest`'s own) were written and watched fail on the missing
+  `ReleaseHold`/`ReleaseExpiredHolds` classes before either existed.
+  `tests/Concurrency/HoldExpiryRecoveryContentionTest.php` adds two
+  simulations: an explicit release racing the sweeper for the same hold
+  (`ParallelRunner::runEach`, asserting the hold ends in exactly one
+  terminal status and exactly one of `HoldReleased`/`HoldExpired` is
+  recorded), and the expiry-recovery simulation itself (a stale
+  eight-unit hold, the sweeper racing three new three-unit hold
+  requests through the real HTTP kernel; the invariant asserted is
+  interleaving-independent: `sold + held <= quantity` always holds, and
+  once every worker has joined, `held` exactly equals `3 *
+  successCount`, i.e. availability recovers to exactly `quantity - sold`
+  for whatever surviving holds remain, not a fixed success count, since
+  the new-hold workers legitimately see `insufficient_inventory` for
+  any of them that lands before the sweeper's own commit frees the
+  stale hold's units). `tests/Feature/Inventory/HoldEndpointsTest.php`
+  gained a `DELETE /v1/storefront/holds/{hold}` describe block covering
+  every endpoint-table row (idempotent 204, `hold_not_releasable` 409,
+  `hold_not_found` 404 for unknown and cross-tenant, and an
+  expiry-then-release no-op showing availability recovers exactly to
+  `quantity`).
+- `tests/Contract/DocumentedResponseCoverageTest.php` gained 404 and 409
+  exercisers for the new DELETE path; no 204 exerciser was added, since
+  `OpenApiSpec::documentedResponseSchemas()` only indexes responses that
+  carry a `content` block and a 204 carries none, so a 204 exerciser
+  would never match a documented triple (this mirrors the existing
+  204-DELETE endpoints elsewhere in the suite, e.g. seat maps, roles,
+  memberships, none of which have one either); the feature suite's own
+  DELETE describe block is the 204 shape's coverage instead.
+  `tests/Architecture/PresetTest.php` gained
+  `HoldNotReleasableException::class` in the ignore-list (implements
+  `Throwable`, same as every other `HasErrorCode` exception already
+  there). `tests/Unit/Problems/ErrorCodeTest.php` gained the new
+  `hold_not_releasable` registry and status/title/type-slug rows.
+
+Test evidence (run from `apps/api`):
+
+- `php artisan test --filter="ReleaseHoldTest|ReleaseExpiredHoldsTest|HoldExpiryRecoveryContentionTest|HoldEndpointsTest|CreateHoldTest|GaHoldContentionTest|ErrorCodeTest"`: 48 passed, 184 assertions (plus a further combined run including `ErrorCodeTest` at 97 passed, 385 assertions once the registry fixture was updated).
+- `php artisan test --testsuite=Unit,Contract,Isolation,Architecture,Concurrency` (combined): 1109 passed, 3656 assertions.
+- `php artisan test --testsuite=Feature`: 738 passed, 3642 assertions on a clean rerun; an earlier run in the same session showed 12 failures, all in `tests/Feature/Tenancy/*`, none touching Inventory, and gone on rerun in isolation (`php artisan test --filter=Tenancy --testsuite=Feature`: 143 passed) and on a full clean rerun, confirming pre-existing cross-test pollution rather than a regression from this task.
+- `HoldExpiryRecoveryContentionTest` run three additional times back to back with no failures, confirming the race and recovery assertions are not flaky under the chosen invariants.
+- `composer analyse`: passed (0 errors) after fixing two findings the first run surfaced: `ProblemRenderer::detailFor()`'s match needed the new `ErrorCode::HoldNotReleasable` arm, and `ReleaseExpiredHolds::findCandidates()` was typed to return `object{id, tenant_id}` but a `DB::table('holds')->get()` actually returns `stdClass` rows under Larastan's type inference; switched the query to `Hold::query()->select(...)->get()` so the return type is a real `Collection<int, Hold>`.
+- `composer lint`: passed (Pint auto-fixed import ordering and a redundant closure-parameter import in the two new test files on first run).
+- `composer types:generate`: run; `packages/api-client/src/generated/index.ts` and the manifest regenerated with the new `HoldNotReleasable` `ErrorCode` member.
+
+No deviations from the plan beyond the two documented above (the 204
+exerciser omission from the contract coverage gate, and the
+`findCandidates()` typing fix), both mechanical consequences of the
+codebase's existing conventions rather than scope changes.

@@ -4,6 +4,7 @@ use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Models\Event;
 use App\EventCatalog\Models\TicketType;
 use App\Identity\Models\Customer;
+use App\Inventory\Actions\ReleaseExpiredHolds;
 use App\Inventory\Models\Hold;
 use App\Inventory\Models\TicketTypeInventory;
 use App\Support\Tenancy\TenantTransaction;
@@ -348,5 +349,118 @@ describe('GET /v1/storefront/holds/{hold}', function (): void {
         $this->getJson('http://'.$hostB.'/v1/storefront/holds/'.$created['id'])
             ->assertStatus(404)
             ->assertJsonPath('code', 'hold_not_found');
+    });
+});
+
+describe('DELETE /v1/storefront/holds/{hold}', function (): void {
+    it('releases an active hold and returns 204, freeing its held inventory', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10);
+
+        $created = $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 3]],
+        ])->json();
+
+        $this->deleteJson('http://'.$host.'/v1/storefront/holds/'.$created['id'])
+            ->assertStatus(204)
+            ->assertConformsToOpenApi();
+
+        $this->getJson('http://'.$host.'/v1/storefront/holds/'.$created['id'])
+            ->assertJsonPath('status', 'released');
+
+        $inventory = app(TenantTransaction::class)->asTenant(
+            $tenant->id,
+            fn () => TicketTypeInventory::query()->where('ticket_type_id', $ticketType->id)->first(),
+        );
+
+        expect($inventory->held)->toBe(0);
+    });
+
+    it('is idempotent: releasing an already-released hold returns 204 again', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10);
+
+        $created = $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+        ])->json();
+
+        $this->deleteJson('http://'.$host.'/v1/storefront/holds/'.$created['id'])->assertStatus(204);
+        $this->deleteJson('http://'.$host.'/v1/storefront/holds/'.$created['id'])->assertStatus(204);
+    });
+
+    it('returns hold_not_releasable 409 for a committed hold', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10);
+
+        $created = $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+        ])->json();
+
+        app(TenantTransaction::class)->asTenant($tenant->id, function () use ($created): void {
+            DB::table('holds')->where('id', $created['id'])->update(['status' => 'committed']);
+        });
+
+        $this->deleteJson('http://'.$host.'/v1/storefront/holds/'.$created['id'])
+            ->assertStatus(409)
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'hold_not_releasable');
+    });
+
+    it('returns hold_not_found for an unknown hold', function (): void {
+        ['host' => $host] = holdTenant();
+
+        $this->deleteJson('http://'.$host.'/v1/storefront/holds/'.Str::uuid7())
+            ->assertStatus(404)
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'hold_not_found');
+    });
+
+    it('returns hold_not_found for a cross-tenant hold', function (): void {
+        ['tenant' => $tenantA, 'host' => $hostA] = holdTenant();
+        ['host' => $hostB] = holdTenant();
+
+        $event = holdEvent($tenantA->id);
+        $ticketType = holdTicketType($tenantA->id, $event->id, 10);
+
+        $created = $this->postJson('http://'.$hostA.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+        ])->json();
+
+        $this->deleteJson('http://'.$hostB.'/v1/storefront/holds/'.$created['id'])
+            ->assertStatus(404)
+            ->assertJsonPath('code', 'hold_not_found');
+    });
+
+    it('is a no-op 204 for an already-expired hold, availability recovers exactly', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10);
+
+        $created = $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 4]],
+        ])->json();
+
+        $this->travelTo(now()->addMinutes(11));
+
+        app(ReleaseExpiredHolds::class)();
+
+        $this->deleteJson('http://'.$host.'/v1/storefront/holds/'.$created['id'])
+            ->assertStatus(204);
+
+        $inventory = app(TenantTransaction::class)->asTenant(
+            $tenant->id,
+            fn () => TicketTypeInventory::query()->where('ticket_type_id', $ticketType->id)->first(),
+        );
+
+        expect($inventory->sold + $inventory->held)->toBe(0)
+            ->and($inventory->quantity - $inventory->sold - $inventory->held)->toBe(10);
     });
 });

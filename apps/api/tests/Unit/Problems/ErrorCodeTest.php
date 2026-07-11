@@ -64,6 +64,7 @@ test('the registry holds exactly the known codes', function () {
         'ticket_type_not_in_event',
         'sales_window_closed',
         'hold_not_found',
+        'hold_not_releasable',
     ]);
 });
 
@@ -132,6 +133,7 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'ticket_type_not_in_event' => [ErrorCode::TicketTypeNotInEvent, 422, 'Ticket type not in event', '/problems/ticket-type-not-in-event'],
     'sales_window_closed' => [ErrorCode::SalesWindowClosed, 409, 'Sales window closed', '/problems/sales-window-closed'],
     'hold_not_found' => [ErrorCode::HoldNotFound, 404, 'Hold not found', '/problems/hold-not-found'],
+    'hold_not_releasable' => [ErrorCode::HoldNotReleasable, 409, 'Hold not releasable', '/problems/hold-not-releasable'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

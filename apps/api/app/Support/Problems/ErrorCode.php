@@ -67,6 +67,7 @@ enum ErrorCode: string
     case TicketTypeNotInEvent = 'ticket_type_not_in_event';
     case SalesWindowClosed = 'sales_window_closed';
     case HoldNotFound = 'hold_not_found';
+    case HoldNotReleasable = 'hold_not_releasable';
 
     public function status(): int
     {
@@ -131,6 +132,7 @@ enum ErrorCode: string
             self::TicketTypeNotInEvent => 422,
             self::SalesWindowClosed => 409,
             self::HoldNotFound => 404,
+            self::HoldNotReleasable => 409,
         };
     }
 
@@ -197,6 +199,7 @@ enum ErrorCode: string
             self::TicketTypeNotInEvent => 'Ticket type not in event',
             self::SalesWindowClosed => 'Sales window closed',
             self::HoldNotFound => 'Hold not found',
+            self::HoldNotReleasable => 'Hold not releasable',
         };
     }
 

@@ -191,7 +191,8 @@ export type ErrorCode =
   | 'event_not_found'
   | 'ticket_type_not_in_event'
   | 'sales_window_closed'
-  | 'hold_not_found';
+  | 'hold_not_found'
+  | 'hold_not_releasable';
 export type EventData = {
   id: string;
   tenant_id: string;
