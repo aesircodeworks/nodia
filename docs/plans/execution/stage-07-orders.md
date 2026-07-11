@@ -61,6 +61,25 @@ Four important findings, no blocking. Applied:
    cleared on the flip to percentage, and a flip to fixed_amount
    without a currency is a validation failure.
 
+#### Round 2 (2026-07-11, Codex)
+
+Two important findings, no blocking. Disposition:
+
+1. orders.customer_id and orders.event_id database FKs flagged as
+   context-boundary violations: declined. The merged stage-6 holds
+   migration deliberately established this exact posture ("real FKs to
+   events and customers respectively, the same cross-context FK
+   posture"), and the stage-07 plan forbids an FK only for hold_id and
+   the snapshot references (order_items.ticket_type_id, tickets); the
+   "resolved through Actions, never joined" language governs
+   application-level access, not referential integrity, and the arch
+   suite covers the model-import rule.
+2. UpdatePromoCode immutability was a read-then-write against
+   usage_count: confirmed and fixed (test first: a stale admin update
+   racing a first redemption). Locked-field changes now ride a
+   conditional UPDATE with usage_count = 0 checked by affected-row
+   count.
+
 ### Decisions and deviations
 
 #### Task 07-01: error codes and Orders enums (2026-07-11)
