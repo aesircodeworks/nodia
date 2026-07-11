@@ -39,6 +39,7 @@ return new class extends Migration
             $table->bigInteger('commission_amount')->default(0);
             $table->string('status')->default('initiated');
             $table->string('failure_code')->nullable();
+            $table->jsonb('next_action')->nullable();
             $table->timestampTz('expires_at')->nullable();
             $table->timestampTz('confirmed_at')->nullable();
             $table->timestampTz('failed_at')->nullable();

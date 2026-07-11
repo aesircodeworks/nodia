@@ -49,7 +49,9 @@ class ProblemRenderer
                 return ValidationProblemData::fromErrors($e->errors(), $detail, $correlationId, $code)->toProblemResponse();
             }
 
-            return ProblemData::fromErrorCode($code, $detail, $correlationId)->toProblemResponse();
+            $headers = $e instanceof HasProblemHeaders ? $e->problemHeaders() : [];
+
+            return ProblemData::fromErrorCode($code, $detail, $correlationId)->toProblemResponse($headers);
         }
 
         // The query-builder allowlist exceptions are vendor classes, so they

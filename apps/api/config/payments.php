@@ -43,4 +43,17 @@ return [
 
     'low_inventory_cutoff' => (int) env('PAYMENTS_LOW_INVENTORY_CUTOFF', 10),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Gateway Retry-After
+    |--------------------------------------------------------------------------
+    |
+    | Seconds advertised in the Retry-After header of gateway_unavailable
+    | problems (api-conventions Errors; system-design 7.6: no automatic
+    | retry on the interactive path, the buyer is told when to try again).
+    |
+    */
+
+    'gateway_retry_after_seconds' => (int) env('PAYMENTS_GATEWAY_RETRY_AFTER_SECONDS', 30),
+
 ];

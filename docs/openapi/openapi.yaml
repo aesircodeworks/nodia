@@ -4597,6 +4597,115 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/OrderNotPayableProblem'
+  /v1/storefront/orders/{order}/payments:
+    parameters:
+      - name: order
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: initiatePayment
+      summary: Initiate a payment for a pending order
+      description: >-
+        Storefront surface, customer bearer token and Idempotency-Key
+        header required (stage-08a plan, Endpoints; system-design 7.5).
+        Synchronous approval pays the order within this request; a
+        synchronous decline returns 402 with the order still pending and
+        the hold intact; async methods return next_action and move the
+        order to awaiting_payment with the hold extended to the method's
+        confirmation window. Replays with the same key return the
+        original body with 200.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitiatePaymentRequest'
+      responses:
+        '201':
+          description: The initiated payment.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '200':
+          description: Replay of a previous initiation with the same key.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '400':
+          description: Missing Idempotency-Key header.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/IdempotencyKeyMissingProblem'
+        '401':
+          description: Missing or invalid customer bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '402':
+          description: Synchronous decline; the order stays pending with the hold intact.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/PaymentDeclinedProblem'
+        '404':
+          description: >-
+            Missing, other tenant (via RLS), or other customer (code
+            request.not_found).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '409':
+          description: >-
+            The order is not pending (code order_not_payable) or the key
+            was reused with a different payload (code
+            idempotency_key_reuse_mismatch).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/PaymentInitiationConflictProblem'
+        '422':
+          description: >-
+            Validation failure, or the method is outside the current
+            offer (code payment_method_not_available).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/PaymentMethodNotAvailableProblem'
+        '503':
+          description: >-
+            Open circuit breaker or gateway transport failure; carries
+            Retry-After.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: string
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/GatewayUnavailableProblem'
 components:
   securitySchemes:
     BearerAuth:
@@ -6508,6 +6617,171 @@ components:
           items:
             $ref: '#/components/schemas/PaymentMethodOffer'
       additionalProperties: false
+    InitiatePaymentRequest:
+      type: object
+      description: >-
+        POST /v1/storefront/orders/{order}/payments request body
+        (stage-08a plan, Endpoints). details carries method-specific
+        fields the gateway defines; for cards this is the gateway token
+        from hosted fields, never PAN data (system-design 7.5).
+      required:
+        - method
+      properties:
+        method:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+      additionalProperties: false
+    NextAction:
+      type: object
+      description: >-
+        What the buyer must do next to complete the payment (stage-08a
+        plan, Endpoints). type none needs nothing, redirect carries
+        redirect_url, display_code carries code (e.g. the Pix code).
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [none, redirect, display_code]
+        redirect_url:
+          oneOf:
+            - type: string
+            - type: 'null'
+        code:
+          oneOf:
+            - type: string
+            - type: 'null'
+      additionalProperties: false
+    Payment:
+      type: object
+      description: >-
+        One payment attempt against an order (stage-08a plan,
+        Endpoints). expires_at is the end of the method's confirmation
+        window, null for synchronous methods; next_action is re-served
+        byte-identically on replay and polling.
+      required:
+        - id
+        - order_id
+        - status
+        - gateway
+        - method
+        - amount
+        - expires_at
+        - next_action
+        - failure_code
+      properties:
+        id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [initiated, confirmed, failed, expired]
+        gateway:
+          type: string
+        method:
+          type: string
+        amount:
+          $ref: '#/components/schemas/Money'
+        expires_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+        next_action:
+          $ref: '#/components/schemas/NextAction'
+        failure_code:
+          oneOf:
+            - type: string
+            - type: 'null'
+      additionalProperties: false
+    IdempotencyKeyMissingProblem:
+      description: >-
+        Problem document for payment initiation without the required
+        Idempotency-Key header (api-conventions "Idempotency and
+        Correlation").
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [400]
+            code:
+              type: string
+              enum: [idempotency_key_missing]
+      unevaluatedProperties: false
+    PaymentDeclinedProblem:
+      description: >-
+        Problem document for a synchronous decline (stage-08a plan,
+        Endpoints): the order stays pending with the hold intact so the
+        buyer retries with another method until the hold expires
+        (system-design 7.6).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [402]
+            code:
+              type: string
+              enum: [payment_declined]
+      unevaluatedProperties: false
+    PaymentInitiationConflictProblem:
+      description: >-
+        Problem document for payment initiation conflicts (stage-08a
+        plan, Endpoints): the order is not pending, or the
+        Idempotency-Key was reused with a different payload.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [order_not_payable, idempotency_key_reuse_mismatch]
+      unevaluatedProperties: false
+    PaymentMethodNotAvailableProblem:
+      description: >-
+        Problem document for a method outside the order's current offer,
+        including slow-method policy and low-inventory exclusions
+        (stage-08a plan, Endpoints).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [422]
+            code:
+              type: string
+              enum: [payment_method_not_available, request.validation_failed]
+            errors:
+              type: object
+      unevaluatedProperties: false
+    GatewayUnavailableProblem:
+      description: >-
+        Problem document for an open circuit breaker or an adapter
+        transport failure (stage-08a plan, Endpoints; system-design 13).
+        Carries Retry-After; nothing about the attempt persists.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [503]
+            code:
+              type: string
+              enum: [gateway_unavailable]
+      unevaluatedProperties: false
     OrderNotPayableProblem:
       description: >-
         Problem document for the payment surface when the order is not

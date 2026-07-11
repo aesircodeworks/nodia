@@ -89,7 +89,10 @@ use App\Orders\OrdersServiceProvider;
 use App\Payments\Enums\PaymentMethodConfirmation;
 use App\Payments\Enums\PaymentStatus;
 use App\Payments\Exceptions\GatewayUnavailableException;
+use App\Payments\Exceptions\IdempotencyKeyMissingException;
+use App\Payments\Exceptions\IdempotencyKeyReuseMismatchException;
 use App\Payments\Exceptions\OrderNotPayableException;
+use App\Payments\Exceptions\PaymentMethodNotAvailableException;
 use App\Payments\Exceptions\PaymentOrderNotFoundException;
 use App\Payments\Exceptions\WebhookSignatureInvalidException;
 use App\Payments\Exceptions\WebhookUnparseableException;
@@ -303,6 +306,9 @@ arch()->preset()->laravel()->ignoring([
     WebhookUnparseableException::class,
     PaymentOrderNotFoundException::class,
     OrderNotPayableException::class,
+    IdempotencyKeyMissingException::class,
+    IdempotencyKeyReuseMismatchException::class,
+    PaymentMethodNotAvailableException::class,
     OrderHoldExpiredException::class,
     HoldAlreadyConvertedException::class,
     OrderNotFoundException::class,

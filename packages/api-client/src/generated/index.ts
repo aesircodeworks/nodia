@@ -328,6 +328,10 @@ export type HoldItemInputData = {
   quantity: number;
 };
 export type HoldStatus = 'active' | 'released' | 'expired' | 'committed';
+export type InitiatePaymentData = {
+  method: string;
+  details: Record<string, any>;
+};
 export type InviteUserData = {
   email: string;
   name: string;
@@ -447,6 +451,17 @@ export type OrderStatus =
   | 'partially_refunded'
   | 'refunded';
 export type PaginatedDataCollection<TKey, TValue> = LengthAwarePaginator<TKey, TValue>;
+export type PaymentData = {
+  id: string;
+  order_id: string;
+  status: PaymentStatus;
+  gateway: string;
+  method: string;
+  amount: Money;
+  expires_at: string | null;
+  next_action: NextActionData;
+  failure_code: string | null;
+};
 export type PaymentMethodConfirmation = 'sync' | 'async';
 export type PaymentMethodOfferData = {
   method: string;

@@ -1,5 +1,6 @@
 <?php
 
+use App\Payments\Http\Controllers\PaymentController;
 use App\Payments\Http\Controllers\PaymentMethodOfferController;
 use Illuminate\Support\Facades\Route;
 
@@ -11,4 +12,5 @@ use Illuminate\Support\Facades\Route;
  */
 Route::middleware('auth:customer')->group(function (): void {
     Route::get('/storefront/orders/{order}/payment-methods', PaymentMethodOfferController::class)->whereUuid('order');
+    Route::post('/storefront/orders/{order}/payments', [PaymentController::class, 'store'])->whereUuid('order');
 });

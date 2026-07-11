@@ -3,7 +3,9 @@
 namespace App\Payments\Actions;
 
 use App\Payments\Enums\PaymentStatus;
+use App\Payments\Events\PaymentFailed;
 use App\Payments\Models\Payment;
+use App\Support\Outbox\OutboxRecorder;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 
@@ -13,6 +15,10 @@ use Illuminate\Support\Facades\DB;
  */
 final class FailPayment
 {
+    public function __construct(
+        private readonly OutboxRecorder $outbox,
+    ) {}
+
     public function __invoke(string $paymentId, string $failureCode): ?Payment
     {
         $affected = DB::table('payments')
@@ -25,6 +31,14 @@ final class FailPayment
                 'updated_at' => Date::now(),
             ]);
 
-        return $affected === 1 ? Payment::query()->findOrFail($paymentId) : null;
+        if ($affected !== 1) {
+            return null;
+        }
+
+        $payment = Payment::query()->findOrFail($paymentId);
+
+        $this->outbox->record(PaymentFailed::fromPayment($payment));
+
+        return $payment;
     }
 }

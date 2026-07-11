@@ -35,6 +35,7 @@ use Illuminate\Support\Carbon;
  * @property int $commission_amount
  * @property PaymentStatus $status
  * @property string|null $failure_code
+ * @property array<string, mixed>|null $next_action
  * @property Carbon|null $expires_at
  * @property Carbon|null $confirmed_at
  * @property Carbon|null $failed_at
@@ -52,6 +53,7 @@ use Illuminate\Support\Carbon;
     'money',
     'status',
     'failure_code',
+    'next_action',
     'expires_at',
 ])]
 class Payment extends Model
@@ -67,6 +69,7 @@ class Payment extends Model
         return [
             'status' => PaymentStatus::class,
             'money' => MoneyCast::class.':amount',
+            'next_action' => 'array',
             'expires_at' => 'datetime',
             'confirmed_at' => 'datetime',
             'failed_at' => 'datetime',

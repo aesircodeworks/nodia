@@ -3,9 +3,11 @@
 namespace App\Payments\Actions;
 
 use App\Payments\Enums\PaymentStatus;
+use App\Payments\Events\PaymentConfirmed;
 use App\Payments\Models\Payment;
 use App\Payments\Support\CommissionResolver;
 use App\Support\Money\Money;
+use App\Support\Outbox\OutboxRecorder;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +26,7 @@ final class ConfirmPayment
 {
     public function __construct(
         private readonly CommissionResolver $commission,
+        private readonly OutboxRecorder $outbox,
     ) {}
 
     public function __invoke(string $paymentId, Money $fee): ?Payment
@@ -48,6 +51,14 @@ final class ConfirmPayment
                 'updated_at' => Date::now(),
             ]);
 
-        return $affected === 1 ? $payment->fresh() : null;
+        if ($affected !== 1) {
+            return null;
+        }
+
+        $payment = $payment->fresh();
+
+        $this->outbox->record(PaymentConfirmed::fromPayment($payment));
+
+        return $payment;
     }
 }
