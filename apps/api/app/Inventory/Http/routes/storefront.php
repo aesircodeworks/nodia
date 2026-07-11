@@ -2,6 +2,7 @@
 
 use App\Inventory\Http\Controllers\AvailabilityController;
 use App\Inventory\Http\Controllers\HoldController;
+use App\Inventory\Http\Controllers\StorefrontEventSeatController;
 use Illuminate\Support\Facades\Route;
 
 // Registered under the tenancy.storefront group (Host resolution;
@@ -17,3 +18,8 @@ Route::delete('/storefront/holds/{hold}', [HoldController::class, 'destroy'])->w
 // read, database-authoritative and unauthenticated like every other
 // storefront route in this file.
 Route::get('/storefront/events/{event}/availability', [AvailabilityController::class, 'index'])->whereUuid('event');
+
+// Task breakdown item 11 (TDD Slice 7): the storefront seat read, database-
+// backed and unauthenticated like every other storefront route in this
+// file.
+Route::get('/storefront/events/{event}/seats', [StorefrontEventSeatController::class, 'index'])->whereUuid('event');

@@ -21,7 +21,8 @@ export type Capability =
   | 'orders.refund'
   | 'payouts.view'
   | 'checkin.scan'
-  | 'seat_maps.manage';
+  | 'seat_maps.manage'
+  | 'events.manage_seating';
 export type CapabilityData = {
   name: string;
   is_financially_privileged: boolean;
@@ -201,7 +202,9 @@ export type ErrorCode =
   | 'hold_not_extendable'
   | 'hold_not_committable'
   | 'seat_selection_invalid'
-  | 'seat_unavailable';
+  | 'seat_unavailable'
+  | 'event_not_seated'
+  | 'seat_not_modifiable';
 export type EventAvailabilityData = {
   event_id: string;
   ticket_types: TicketTypeAvailabilityData[];
@@ -231,6 +234,17 @@ export type EventMediaListData = {
 export type EventMediaUploadData = {
   file: File;
   collection: string;
+};
+export type EventSeatBatchData = {
+  seats: EventSeatData[];
+};
+export type EventSeatData = {
+  event_seat_id: string;
+  event_id: string;
+  seat_id: string;
+  ticket_type_id: string | null;
+  status: string;
+  hold_id: string | null;
 };
 export type EventSeatStatus = 'available' | 'held' | 'sold' | 'blocked';
 export type EventStatus = 'draft' | 'published' | 'canceled';
@@ -435,6 +449,19 @@ export type StorefrontEventData = {
 export type StorefrontEventSearchQueryData = {
   q: string | null;
 };
+export type StorefrontEventSeatData = {
+  event_seat_id: string;
+  seat_id: string;
+  section: string;
+  row: string;
+  number: string;
+  ticket_type_id: string | null;
+  status: string;
+};
+export type StorefrontEventSeatMapData = {
+  event_id: string;
+  seats: StorefrontEventSeatData[];
+};
 export type StorefrontTicketTypeData = {
   id: string;
   name: string;
@@ -504,6 +531,14 @@ export type UpdateEventData = {
   timezone?: string;
   async_payment_policy?: AsyncPaymentPolicyData;
   seat_map_id?: string | null;
+};
+export type UpdateEventSeatOperationData = {
+  event_seat_id: string;
+  op: string;
+  ticket_type_id: string | null;
+};
+export type UpdateEventSeatsData = {
+  operations: UpdateEventSeatOperationData[];
 };
 export type UpdateRoleData = {
   name?: string;

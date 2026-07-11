@@ -73,6 +73,8 @@ enum ErrorCode: string
     case HoldNotCommittable = 'hold_not_committable';
     case SeatSelectionInvalid = 'seat_selection_invalid';
     case SeatUnavailable = 'seat_unavailable';
+    case EventNotSeated = 'event_not_seated';
+    case SeatNotModifiable = 'seat_not_modifiable';
 
     public function status(): int
     {
@@ -143,6 +145,8 @@ enum ErrorCode: string
             self::HoldNotCommittable => 409,
             self::SeatSelectionInvalid => 422,
             self::SeatUnavailable => 409,
+            self::EventNotSeated => 409,
+            self::SeatNotModifiable => 409,
         };
     }
 
@@ -215,6 +219,8 @@ enum ErrorCode: string
             self::HoldNotCommittable => 'Hold not committable',
             self::SeatSelectionInvalid => 'Seat selection invalid',
             self::SeatUnavailable => 'Seat unavailable',
+            self::EventNotSeated => 'Event not seated',
+            self::SeatNotModifiable => 'Seat not modifiable',
         };
     }
 

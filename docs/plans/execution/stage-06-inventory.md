@@ -857,3 +857,116 @@ Deviations from the plan: none. Template-role assignment (`Owner` and
 task resolves it by following the existing `seat_maps.manage` grant
 pattern, since both capabilities gate seating-adjacent admin operations
 and no prior stage-06 task committed to a different split.
+
+## Task 06-10: Seat management and read surfaces (2026-07-11 08:17 UTC)
+
+Landed the three Slice 7 endpoints (task breakdown item 11): the
+storefront seat map read, the admin seats list, and the admin PATCH bulk
+seat operations.
+
+- `App\EventCatalog\Actions\ResolveSeatsById`: the read-only Catalog seam
+  that composes seat metadata (section, row, number) from `SeatData` by
+  id, used by both the storefront read and (indirectly, via the same
+  `event_seats` rows) the admin read, so seat metadata is never joined
+  from Inventory's own queries (system-design 3.1 boundary rule).
+- `App\Inventory\Actions\GetStorefrontEventSeats`: reuses
+  `ResolveEventForHold` (the same published-event seam `CreateHold` and
+  `GetEventAvailability` already depend on) for the event lookup and
+  `event_not_found`; throws the new `EventNotSeatedException` when the
+  event resolves but its own `event_seats` table has no rows for it,
+  the reliable Inventory-only signal for "GA-only" without asking
+  Catalog for `seat_map_id` directly. Collapses `held`/`sold` to
+  `unavailable` on `StorefrontEventSeatData`, sorts by
+  (section, row, number) in PHP since ordering by Catalog's own columns
+  would require a join.
+- `App\Inventory\Actions\UpdateEventSeats`: every operation in a PATCH
+  batch runs inside one transaction as its own conditional UPDATE
+  (`block`: `available -> blocked`; `unblock`: `blocked -> available`;
+  `assign_ticket_type`: guarded on `available`, rezones or unzones),
+  checked by affected-row count; a `lockForUpdate()` read precedes each
+  guarded UPDATE only to capture the seat's prior `ticket_type_id` for
+  the paired `AdjustInventoryQuantity` counter call (mirroring
+  `SetTicketTypeQuantity`'s own `lockForUpdate` precedent), never as the
+  eligibility guard itself. Every operation still runs even after one
+  fails, so `SeatNotModifiableException` reports every offending
+  `event_seat_id` together; the whole transaction, including any counter
+  adjustments already applied earlier in the batch, rolls back if the
+  offending list is non-empty. `assign_ticket_type` also rejects a
+  `ticket_type_id` that does not belong to the same event or is not
+  `requires_seat`, folded into the same offending-seat outcome rather
+  than a separate 422, since it is still a per-seat guard failure.
+- `App\Inventory\Http\Controllers\StorefrontEventSeatController` and
+  `EventSeatController` (admin), the latter gated by
+  `events.manage_seating` (task 06-09) via the existing
+  `RequireCapability` middleware pattern, mirroring
+  `TicketTypeInventoryController`'s own `events.view`-gated precedent.
+  The admin list uses `QueryBuilder` with an explicit
+  `filter[status]`/`filter[ticket_type_id]` allowlist and page
+  pagination, mirroring `EventController::index`.
+- Two new stable codes: `event_not_seated` (409,
+  `EventNotSeatedException`) and `seat_not_modifiable` (409,
+  `SeatNotModifiableException implements HasValidationErrors`,
+  `errors.event_seat_ids`). New Data objects:
+  `StorefrontEventSeatData`/`StorefrontEventSeatMapData`,
+  `EventSeatData`/`EventSeatBatchData` (the admin PATCH response, see
+  deviation below), `UpdateEventSeatOperationData`/`UpdateEventSeatsData`.
+  OpenAPI: the three new paths plus
+  `StorefrontEventSeat(Map)`, `EventSeat`, `EventSeatPage`,
+  `EventSeatBatch`, `UpdateEventSeatOperation`/`UpdateEventSeatsRequest`,
+  and `EventNotSeatedProblem`/`EventSeatForbiddenProblem`/
+  `SeatNotModifiableProblem`. `composer types:generate` run;
+  `packages/api-client/src/generated/` regenerated.
+- Test-first per the master plan double loop:
+  `tests/Feature/Inventory/EventSeatEndpointsTest.php` (storefront read
+  including the `unavailable` collapse, `event_not_found`,
+  `event_not_seated`; admin list including the filter allowlist
+  rejection, capability denial, cross-tenant `event_not_found`; PATCH
+  operations matrix including the counter-adjustment happy path,
+  all-or-nothing rollback with the offending `event_seat_ids` listed,
+  unknown-op 422, capability denial, cross-tenant `event_not_found`) and
+  `tests/Unit/Inventory/UpdateEventSeatsTest.php` (block/unblock/rezone/
+  unzone counter arithmetic, "blocking a held seat affects zero rows",
+  rejecting a non-`requires_seat` or foreign-event ticket type) were
+  written and watched fail on the missing routes, Actions, and
+  exceptions before they existed.
+
+Test evidence (all from `apps/api`):
+
+- `php artisan test --filter="EventSeatEndpointsTest|UpdateEventSeatsTest"`:
+  20 passed, 76 assertions.
+- `php artisan test --testsuite=Architecture`: 38 passed, 94 assertions
+  (after adding the two new exceptions to `PresetTest`'s ignore list,
+  the same treatment every other `HasErrorCode` exception in
+  `App\Inventory\Exceptions` already has).
+- `php artisan test --testsuite=Contract`: 269 passed, 1719 assertions
+  (after registering exercisers for all three endpoints' documented
+  responses, including a new `contractSeatedEvent` fixture, and
+  extending the suite's own tenant-teardown ordering for `event_seats`).
+- `php artisan test --testsuite=Unit,Feature,Isolation,Architecture --filter="Inventory|EventCatalog|Identity"`:
+  974 passed, 3676 assertions.
+- `vendor/bin/phpstan analyse app/Inventory app/EventCatalog/Actions/ResolveSeatsById.php`
+  (isolated run, `--memory-limit=1G`; the default 128M crashes on this
+  machine regardless of this task's changes): 0 errors, after fixing one
+  genuine `nullsafe.neverNull` finding in `EventSeatController::eventIdOrFail`.
+- `vendor/bin/pint` (targeted paths): fixed import ordering in two new
+  test files; clean on rerun.
+- `composer types:generate`: run; `packages/api-client/src/generated/`
+  regenerated.
+
+Deviations from the plan: two, both self-authored resolutions of shapes
+the endpoint table states only loosely, following the precedent task
+06-08 already set for `CreateHoldData.seat_ids`:
+1. The PATCH request's polymorphic `op` shape (`block`, `unblock`, or
+   `{assign_ticket_type: uuid|null}`) is flattened to two fields on
+   `UpdateEventSeatOperationData`, `op` (a string enum) plus
+   `ticket_type_id` (used only when `op` is `assign_ticket_type`,
+   ignored otherwise), since a nested discriminated union has no direct
+   laravel-data representation.
+2. The PATCH response, unspecified by the endpoint table beyond
+   "`EventSeatData[]`" prose, is object-wrapped as `EventSeatBatchData
+   { seats: EventSeatData[] }` rather than shipped as a bare JSON array:
+   `tests/Contract/ResponseSchemaStrictnessTest.php` (ADR 019) requires
+   every documented response schema to declare
+   `additionalProperties`/`unevaluatedProperties: false`, which a
+   top-level `type: array` schema cannot express, so a bare-array
+   response would be permanently unable to satisfy that gate.

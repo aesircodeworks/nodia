@@ -3138,6 +3138,167 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/NotFoundProblem'
+  /v1/events/{event}/seats:
+    parameters:
+      - name: event
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: listEventSeats
+      summary: List one event's seats with full admin statuses
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id
+        membership validation, plus the events.manage_seating capability
+        (stage-06 plan, Endpoints "GET /v1/events/{event}/seats").
+        Statuses are never collapsed here (unlike the storefront seat
+        read) and hold_id is exposed. Allowed query-builder parameters
+        are filter[status] and filter[ticket_type_id] (both exact match);
+        unknown filters are rejected with 400 invalid_query_parameter,
+        never ignored. A well-formed but nonexistent, unpublished, or
+        foreign-tenant event id renders event_not_found, since
+        materialized seats only ever exist on a published event.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          style: deepObject
+          explode: true
+          description: >-
+            Allowed filters: filter[status], filter[ticket_type_id] (both
+            exact match).
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              ticket_type_id:
+                type: string
+            additionalProperties:
+              type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: One page of the event's seats.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSeatPage'
+        '400':
+          description: An unknown filter parameter was given.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/InvalidQueryParameterProblem'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.manage_seating (code missing_capability), or the
+            acting membership mandates confirmed MFA and has not
+            confirmed it (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EventSeatForbiddenProblem'
+        '404':
+          description: No published event is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/HoldEventNotFoundProblem'
+    patch:
+      operationId: updateEventSeats
+      summary: Apply bulk seat operations (block, unblock, zoning)
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id
+        membership validation, plus the events.manage_seating capability
+        (stage-06 plan, Endpoints "PATCH /v1/events/{event}/seats"). Every
+        operation in the request runs in one transaction: block and
+        unblock each guard on the seat's current status
+        (available<->blocked only; held or sold seats are never
+        blockable), and assign_ticket_type rezones an available seat to a
+        requires_seat ticket type of the same event (or null to unzone),
+        adjusting the affected ticket_type_inventory counters in the same
+        transaction. Any operation's guard failure rolls back the whole
+        batch with 409 seat_not_modifiable, listing every offending
+        event_seat_id.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEventSeatsRequest'
+      responses:
+        '200':
+          description: The seats affected by the applied operations.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSeatBatch'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.manage_seating (code missing_capability), or the
+            acting membership mandates confirmed MFA and has not
+            confirmed it (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EventSeatForbiddenProblem'
+        '404':
+          description: No published event is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/HoldEventNotFoundProblem'
+        '409':
+          description: >-
+            One or more operations' guards failed (code
+            seat_not_modifiable, with the offending event_seat_ids in the
+            errors map).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SeatNotModifiableProblem'
+        '422':
+          description: >-
+            Request validation failed, including an unknown op (code
+            request.validation_failed, with the errors map).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
   /v1/events/{event}/media:
     parameters:
       - name: event
@@ -3477,6 +3638,52 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/HoldEventNotFoundProblem'
+  /v1/storefront/events/{event}/seats:
+    parameters:
+      - name: event
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getStorefrontEventSeats
+      summary: Fetch the per-seat map for a published, seated event
+      description: >-
+        Storefront surface: unauthenticated, tenant resolved from the Host
+        header (stage-06 plan, Endpoints "GET
+        /v1/storefront/events/{event}/seats"). held and sold both render
+        as status unavailable on this wire (buyers never need the
+        distinction, and it avoids leaking sales pace). Seat metadata
+        (section, row, number) is composed from Catalog's seats template,
+        never joined. A draft, canceled, foreign-tenant, or nonexistent
+        event id all render the same event_not_found problem, so
+        unpublished existence never leaks; a published GA-only event
+        (carrying no materialized seats) renders event_not_seated.
+      responses:
+        '200':
+          description: The event's per-seat map.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StorefrontEventSeatMap'
+        '404':
+          description: >-
+            No published event is visible with this id for the resolved
+            tenant (drafts, canceled, and foreign-tenant events included).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/HoldEventNotFoundProblem'
+        '409':
+          description: The event is published but carries no seat map (GA only).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EventNotSeatedProblem'
   /v1/storefront/holds:
     post:
       operationId: createHold
@@ -4898,6 +5105,159 @@ components:
           items:
             $ref: '#/components/schemas/TicketTypeAvailability'
       additionalProperties: false
+    StorefrontEventSeat:
+      type: object
+      description: >-
+        One seat inside a StorefrontEventSeatMap response (stage-06 plan,
+        Endpoints "GET /v1/storefront/events/{event}/seats"). status
+        collapses held and sold to unavailable; section/row/number come
+        from Catalog's own seat template.
+      required:
+        - event_seat_id
+        - seat_id
+        - section
+        - row
+        - number
+        - ticket_type_id
+        - status
+      properties:
+        event_seat_id:
+          type: string
+          format: uuid
+        seat_id:
+          type: string
+          format: uuid
+        section:
+          type: string
+        row:
+          type: string
+        number:
+          type: string
+        ticket_type_id:
+          type: [string, 'null']
+          format: uuid
+        status:
+          type: string
+          enum: [available, unavailable, blocked]
+      additionalProperties: false
+    StorefrontEventSeatMap:
+      type: object
+      description: >-
+        GET /v1/storefront/events/{event}/seats response shape (stage-06
+        plan, Endpoints). Unpaginated: a seat map is only useful whole.
+      required:
+        - event_id
+        - seats
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        seats:
+          type: array
+          items:
+            $ref: '#/components/schemas/StorefrontEventSeat'
+      additionalProperties: false
+    EventSeat:
+      type: object
+      description: >-
+        One row of GET /v1/events/{event}/seats and one element of PATCH
+        /v1/events/{event}/seats's response (stage-06 plan, Endpoints):
+        the admin-only shape, statuses never collapsed, hold_id exposed.
+      required:
+        - event_seat_id
+        - event_id
+        - seat_id
+        - ticket_type_id
+        - status
+        - hold_id
+      properties:
+        event_seat_id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        seat_id:
+          type: string
+          format: uuid
+        ticket_type_id:
+          type: [string, 'null']
+          format: uuid
+        status:
+          type: string
+          enum: [available, held, sold, blocked]
+        hold_id:
+          type: [string, 'null']
+          format: uuid
+      additionalProperties: false
+    EventSeatPage:
+      type: object
+      description: >-
+        Laravel standard paginator envelope (data, links, meta) per
+        docs/api-conventions.md.
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventSeat'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageLink'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      additionalProperties: false
+    UpdateEventSeatOperation:
+      type: object
+      description: >-
+        One operation inside an UpdateEventSeatsRequest (stage-06 plan,
+        Endpoints "PATCH /v1/events/{event}/seats"). ticket_type_id is
+        used only when op is assign_ticket_type (null unzones the seat);
+        it is ignored for block and unblock.
+      required:
+        - event_seat_id
+        - op
+      properties:
+        event_seat_id:
+          type: string
+          format: uuid
+        op:
+          type: string
+          enum: [block, unblock, assign_ticket_type]
+        ticket_type_id:
+          type: [string, 'null']
+          format: uuid
+      additionalProperties: false
+    EventSeatBatch:
+      type: object
+      description: >-
+        PATCH /v1/events/{event}/seats response shape (stage-06 plan,
+        Endpoints): the seats affected by the applied operations, in
+        request order.
+      required:
+        - seats
+      properties:
+        seats:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventSeat'
+      additionalProperties: false
+    UpdateEventSeatsRequest:
+      type: object
+      description: PATCH /v1/events/{event}/seats request body (stage-06 plan, Endpoints).
+      required:
+        - operations
+      properties:
+        operations:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/UpdateEventSeatOperation'
+      additionalProperties: false
     CreateHoldRequest:
       type: object
       description: >-
@@ -5465,6 +5825,71 @@ components:
             code:
               type: string
               enum: [event_not_found]
+      unevaluatedProperties: false
+    EventNotSeatedProblem:
+      description: >-
+        Problem document for GET /v1/storefront/events/{event}/seats when
+        the published event carries no materialized seats, i.e. it is
+        GA-only (stage-06 plan, Endpoints).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [event_not_seated]
+      unevaluatedProperties: false
+    EventSeatForbiddenProblem:
+      description: >-
+        Problem document for a 403 on the admin seat endpoints, reading or
+        mutating alike (both require events.manage_seating, stage-06
+        plan, task breakdown item 11): either the caller has no
+        membership in the asserted tenant (code tenant_access_denied,
+        raised by ResolveTenantFromHeader before the handler is reached),
+        the acting membership does not hold events.manage_seating (code
+        missing_capability), or the acting membership mandates confirmed
+        MFA and has not confirmed it (code mfa_enforcement_required).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [403]
+            code:
+              type: string
+              enum: [tenant_access_denied, missing_capability, mfa_enforcement_required]
+      unevaluatedProperties: false
+    SeatNotModifiableProblem:
+      description: >-
+        Problem document for PATCH /v1/events/{event}/seats when any
+        operation's own conditional-UPDATE guard fails (stage-06 plan,
+        Endpoints): the offending event_seat_ids are listed in the errors
+        map.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          required:
+            - errors
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [seat_not_modifiable]
+            errors:
+              type: object
+              properties:
+                event_seat_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+              additionalProperties: false
       unevaluatedProperties: false
     HoldNotFoundProblem:
       description: >-

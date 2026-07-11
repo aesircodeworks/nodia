@@ -10,9 +10,18 @@
 
 use App\Http\Middleware\RequireCapability;
 use App\Identity\Capability;
+use App\Inventory\Http\Controllers\EventSeatController;
 use App\Inventory\Http\Controllers\TicketTypeInventoryController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(RequireCapability::class.':'.Capability::EventsView->value)->group(function (): void {
     Route::get('/ticket-types/{ticket_type}/inventory', [TicketTypeInventoryController::class, 'show'])->whereUuid('ticket_type');
+});
+
+// Task breakdown item 11 (TDD Slice 7): the admin seat management surface,
+// gated by events.manage_seating (task breakdown item 10a) rather than
+// events.view, since it mutates seat state.
+Route::middleware(RequireCapability::class.':'.Capability::EventsManageSeating->value)->group(function (): void {
+    Route::get('/events/{event}/seats', [EventSeatController::class, 'index'])->whereUuid('event');
+    Route::patch('/events/{event}/seats', [EventSeatController::class, 'update'])->whereUuid('event');
 });

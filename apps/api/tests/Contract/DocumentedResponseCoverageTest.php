@@ -2,6 +2,7 @@
 
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Models\Event;
+use App\EventCatalog\Models\Seat;
 use App\EventCatalog\Models\SeatMap;
 use App\EventCatalog\Models\TicketType;
 use App\EventCatalog\Models\Venue;
@@ -11,6 +12,8 @@ use App\Identity\Models\Customer;
 use App\Identity\Models\Membership;
 use App\Identity\Models\Role;
 use App\Identity\Support\ClaimToken;
+use App\Inventory\Enums\EventSeatStatus;
+use App\Inventory\Models\EventSeat;
 use App\Inventory\Models\TicketTypeInventory;
 use App\Models\User;
 use App\Support\Tenancy\TenantTransaction;
@@ -99,6 +102,13 @@ afterEach(function (): void {
             // them with no cascade.
             DB::table('hold_items')->where('tenant_id', $tenantId)->delete();
             DB::table('holds')->where('tenant_id', $tenantId)->delete();
+
+            // contractSeatedEvent()'s exercisers (stage-06 plan, task
+            // breakdown item 11) materialize event_seats scoped to a fresh
+            // seated event; event_seats must be deleted ahead of
+            // ticket_types below since event_seats.ticket_type_id
+            // references them with no cascade.
+            DB::table('event_seats')->where('tenant_id', $tenantId)->delete();
             DB::table('ticket_type_inventory')->where('tenant_id', $tenantId)->delete();
 
             // contractTicketTypeBearer()'s exercisers (stage-05a plan, task
@@ -444,6 +454,42 @@ function contractTicketType(Tenant $tenant, string $eventId, array $attributes =
         $tenant->id,
         fn () => TicketType::factory()->create(['tenant_id' => $tenant->id, 'event_id' => $eventId, ...$attributes]),
     );
+}
+
+/**
+ * A published, seated event with one materialized, available,
+ * requires_seat event_seat (stage-06 plan, task breakdown item 11),
+ * mirroring tests/Feature/Inventory/HoldEndpointsTest.php's own
+ * holdSeatedTicketType fixture.
+ *
+ * @return array{event: Event, ticketType: TicketType, eventSeatId: string}
+ */
+function contractSeatedEvent(Tenant $tenant): array
+{
+    return app(TenantTransaction::class)->asTenant($tenant->id, function () use ($tenant): array {
+        $venue = Venue::factory()->create(['tenant_id' => $tenant->id]);
+        $seatMap = SeatMap::factory()->create(['tenant_id' => $tenant->id, 'venue_id' => $venue->id]);
+        $event = Event::factory()->create([
+            'tenant_id' => $tenant->id,
+            'status' => EventStatus::Published,
+            'venue_id' => $venue->id,
+            'seat_map_id' => $seatMap->id,
+            'is_virtual' => false,
+            'virtual_event_url' => null,
+        ]);
+        $ticketType = TicketType::factory()->create(['tenant_id' => $tenant->id, 'event_id' => $event->id, 'requires_seat' => true]);
+        TicketTypeInventory::factory()->create(['tenant_id' => $tenant->id, 'ticket_type_id' => $ticketType->id, 'quantity' => 1, 'held' => 0, 'sold' => 0]);
+        $templateSeat = Seat::factory()->create(['tenant_id' => $tenant->id, 'seat_map_id' => $seatMap->id, 'section' => 'A', 'row' => '1', 'number' => '1']);
+        $eventSeat = EventSeat::factory()->create([
+            'tenant_id' => $tenant->id,
+            'event_id' => $event->id,
+            'seat_id' => $templateSeat->id,
+            'ticket_type_id' => $ticketType->id,
+            'status' => EventSeatStatus::Available,
+        ]);
+
+        return ['event' => $event, 'ticketType' => $ticketType, 'eventSeatId' => $eventSeat->id];
+    });
 }
 
 /**
@@ -1917,6 +1963,127 @@ function documentedResponseExercisers(): array
                 'Authorization' => 'Bearer '.contractTicketTypeBearer($tenant),
                 'X-Tenant-Id' => $tenant->id,
             ]);
+        },
+        'get /v1/storefront/events/{event}/seats 200' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $domain = app(TenantTransaction::class)->asPlatform(fn () => TenantDomain::factory()->create(['tenant_id' => $tenant->id]));
+            ['event' => $event] = contractSeatedEvent($tenant);
+
+            return test()->getJson('http://'.$domain->domain.'/v1/storefront/events/'.$event->id.'/seats');
+        },
+        'get /v1/storefront/events/{event}/seats 404' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $domain = app(TenantTransaction::class)->asPlatform(fn () => TenantDomain::factory()->create(['tenant_id' => $tenant->id]));
+
+            return test()->getJson('http://'.$domain->domain.'/v1/storefront/events/'.Str::uuid7().'/seats');
+        },
+        'get /v1/storefront/events/{event}/seats 409' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $domain = app(TenantTransaction::class)->asPlatform(fn () => TenantDomain::factory()->create(['tenant_id' => $tenant->id]));
+            $event = contractEvent($tenant, ['status' => EventStatus::Published]);
+
+            return test()->getJson('http://'.$domain->domain.'/v1/storefront/events/'.$event->id.'/seats');
+        },
+        'get /v1/events/{event}/seats 200' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            ['event' => $event] = contractSeatedEvent($tenant);
+
+            return test()->getJson('/v1/events/'.$event->id.'/seats', [
+                'Authorization' => 'Bearer '.contractTicketTypeBearer($tenant, ['events.manage_seating']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/events/{event}/seats 400' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            ['event' => $event] = contractSeatedEvent($tenant);
+
+            return test()->getJson('/v1/events/'.$event->id.'/seats?filter[unknown]=x', [
+                'Authorization' => 'Bearer '.contractTicketTypeBearer($tenant, ['events.manage_seating']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/events/{event}/seats 401' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            ['event' => $event] = contractSeatedEvent($tenant);
+
+            return test()->getJson('/v1/events/'.$event->id.'/seats', ['X-Tenant-Id' => $tenant->id]);
+        },
+        'get /v1/events/{event}/seats 403' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            ['event' => $event] = contractSeatedEvent($tenant);
+
+            return test()->getJson('/v1/events/'.$event->id.'/seats', [
+                'Authorization' => 'Bearer '.contractTicketTypeBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/events/{event}/seats 404' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+
+            return test()->getJson('/v1/events/'.Str::uuid7().'/seats', [
+                'Authorization' => 'Bearer '.contractTicketTypeBearer($tenant, ['events.manage_seating']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'patch /v1/events/{event}/seats 200' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            ['event' => $event, 'eventSeatId' => $eventSeatId] = contractSeatedEvent($tenant);
+
+            return test()->patchJson(
+                '/v1/events/'.$event->id.'/seats',
+                ['operations' => [['event_seat_id' => $eventSeatId, 'op' => 'block']]],
+                ['Authorization' => 'Bearer '.contractTicketTypeBearer($tenant, ['events.manage_seating']), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/events/{event}/seats 401' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            ['event' => $event, 'eventSeatId' => $eventSeatId] = contractSeatedEvent($tenant);
+
+            return test()->patchJson(
+                '/v1/events/'.$event->id.'/seats',
+                ['operations' => [['event_seat_id' => $eventSeatId, 'op' => 'block']]],
+                ['X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/events/{event}/seats 403' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            ['event' => $event, 'eventSeatId' => $eventSeatId] = contractSeatedEvent($tenant);
+
+            return test()->patchJson(
+                '/v1/events/'.$event->id.'/seats',
+                ['operations' => [['event_seat_id' => $eventSeatId, 'op' => 'block']]],
+                ['Authorization' => 'Bearer '.contractTicketTypeBearer($tenant, ['events.view']), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/events/{event}/seats 404' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+
+            return test()->patchJson(
+                '/v1/events/'.Str::uuid7().'/seats',
+                ['operations' => [['event_seat_id' => Str::uuid7()->toString(), 'op' => 'block']]],
+                ['Authorization' => 'Bearer '.contractTicketTypeBearer($tenant, ['events.manage_seating']), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/events/{event}/seats 409' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            ['event' => $event, 'eventSeatId' => $eventSeatId] = contractSeatedEvent($tenant);
+            app(TenantTransaction::class)->asTenant($tenant->id, fn () => EventSeat::query()->whereKey($eventSeatId)->update(['status' => EventSeatStatus::Held->value]));
+
+            return test()->patchJson(
+                '/v1/events/'.$event->id.'/seats',
+                ['operations' => [['event_seat_id' => $eventSeatId, 'op' => 'block']]],
+                ['Authorization' => 'Bearer '.contractTicketTypeBearer($tenant, ['events.manage_seating']), 'X-Tenant-Id' => $tenant->id],
+            );
+        },
+        'patch /v1/events/{event}/seats 422' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            ['event' => $event, 'eventSeatId' => $eventSeatId] = contractSeatedEvent($tenant);
+
+            return test()->patchJson(
+                '/v1/events/'.$event->id.'/seats',
+                ['operations' => [['event_seat_id' => $eventSeatId, 'op' => 'melt']]],
+                ['Authorization' => 'Bearer '.contractTicketTypeBearer($tenant, ['events.manage_seating']), 'X-Tenant-Id' => $tenant->id],
+            );
         },
         'patch /v1/ticket-types/{ticket_type} 200' => function (): TestResponse {
             $tenant = contractTicketTypeTenant();

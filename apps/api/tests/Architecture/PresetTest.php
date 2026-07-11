@@ -55,6 +55,7 @@ use App\Identity\Mail\PasswordResetMail;
 use App\Identity\Mail\StaffInvitationMail;
 use App\Inventory\Enums\EventSeatStatus;
 use App\Inventory\Enums\HoldStatus;
+use App\Inventory\Exceptions\EventNotSeatedException;
 use App\Inventory\Exceptions\HoldEventNotFoundException;
 use App\Inventory\Exceptions\HoldNotCommittableException;
 use App\Inventory\Exceptions\HoldNotExtendableException;
@@ -63,6 +64,7 @@ use App\Inventory\Exceptions\HoldNotReleasableException;
 use App\Inventory\Exceptions\InsufficientHoldInventoryException;
 use App\Inventory\Exceptions\InsufficientInventoryException;
 use App\Inventory\Exceptions\SalesWindowClosedException;
+use App\Inventory\Exceptions\SeatNotModifiableException;
 use App\Inventory\Exceptions\SeatSelectionInvalidException;
 use App\Inventory\Exceptions\SeatUnavailableException;
 use App\Inventory\Exceptions\TicketTypeInventoryNotFoundException;
@@ -231,6 +233,8 @@ arch()->preset()->laravel()->ignoring([
     HoldNotCommittableException::class,
     SeatSelectionInvalidException::class,
     SeatUnavailableException::class,
+    EventNotSeatedException::class,
+    SeatNotModifiableException::class,
     TicketTypeInventoryNotFoundException::class,
     MissingTenantHeaderException::class,
     InvalidTenantHeaderException::class,
