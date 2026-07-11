@@ -290,6 +290,7 @@ export type ExtendHoldData = {
   expiresAt: string;
 };
 export type GatewayPaymentOutcome = 'approved' | 'declined' | 'pending';
+export type GatewayWebhookStatus = 'received' | 'processed' | 'ignored';
 export type HealthChecksData = {
   database: CheckResult;
   redis: CheckResult;

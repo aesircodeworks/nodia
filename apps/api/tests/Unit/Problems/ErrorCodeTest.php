@@ -83,6 +83,14 @@ test('the registry holds exactly the known codes', function () {
         'promo_code_exhausted',
         'promo_code_currency_mismatch',
         'promo_code_immutable_field',
+        'idempotency_key_missing',
+        'idempotency_key_reuse_mismatch',
+        'order_not_payable',
+        'payment_method_not_available',
+        'payment_declined',
+        'gateway_unavailable',
+        'webhook_signature_invalid',
+        'webhook_unparseable',
     ]);
 });
 
@@ -170,6 +178,14 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'promo_code_exhausted' => [ErrorCode::PromoCodeExhausted, 422, 'Promo code exhausted', '/problems/promo-code-exhausted'],
     'promo_code_currency_mismatch' => [ErrorCode::PromoCodeCurrencyMismatch, 422, 'Promo code currency mismatch', '/problems/promo-code-currency-mismatch'],
     'promo_code_immutable_field' => [ErrorCode::PromoCodeImmutableField, 422, 'Promo code immutable field', '/problems/promo-code-immutable-field'],
+    'idempotency_key_missing' => [ErrorCode::IdempotencyKeyMissing, 400, 'Idempotency key missing', '/problems/idempotency-key-missing'],
+    'idempotency_key_reuse_mismatch' => [ErrorCode::IdempotencyKeyReuseMismatch, 409, 'Idempotency key reuse mismatch', '/problems/idempotency-key-reuse-mismatch'],
+    'order_not_payable' => [ErrorCode::OrderNotPayable, 409, 'Order not payable', '/problems/order-not-payable'],
+    'payment_method_not_available' => [ErrorCode::PaymentMethodNotAvailable, 422, 'Payment method not available', '/problems/payment-method-not-available'],
+    'payment_declined' => [ErrorCode::PaymentDeclined, 402, 'Payment declined', '/problems/payment-declined'],
+    'gateway_unavailable' => [ErrorCode::GatewayUnavailable, 503, 'Gateway unavailable', '/problems/gateway-unavailable'],
+    'webhook_signature_invalid' => [ErrorCode::WebhookSignatureInvalid, 401, 'Webhook signature invalid', '/problems/webhook-signature-invalid'],
+    'webhook_unparseable' => [ErrorCode::WebhookUnparseable, 422, 'Webhook unparseable', '/problems/webhook-unparseable'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

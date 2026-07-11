@@ -17,6 +17,8 @@ final class ResolveAsyncPaymentPolicy
 {
     public function __invoke(string $eventId): AsyncPaymentPolicyData
     {
-        return Event::query()->find($eventId)?->async_payment_policy ?? new AsyncPaymentPolicyData;
+        $event = Event::query()->find($eventId);
+
+        return $event === null ? new AsyncPaymentPolicyData : $event->async_payment_policy;
     }
 }

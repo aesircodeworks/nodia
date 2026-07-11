@@ -34,6 +34,11 @@ afterEach(function (): void {
 
     foreach ($tenantIds as $tenantId) {
         app(TenantTransaction::class)->asTenant($tenantId, function () use ($tenantId): void {
+            DB::table('outbox_deliveries')->where('tenant_id', $tenantId)->delete();
+            DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
+            DB::table('media')->where('tenant_id', $tenantId)->delete();
+            DB::table('tickets')->where('tenant_id', $tenantId)->delete();
+            DB::table('order_items')->where('tenant_id', $tenantId)->delete();
             DB::table('payments')->where('tenant_id', $tenantId)->delete();
             DB::table('orders')->where('tenant_id', $tenantId)->delete();
             DB::table('customers')->where('tenant_id', $tenantId)->delete();
