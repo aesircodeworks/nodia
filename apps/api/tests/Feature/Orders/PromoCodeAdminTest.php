@@ -2,6 +2,10 @@
 
 use App\Identity\Capability;
 use App\Models\User;
+use App\Orders\Actions\UpdatePromoCode;
+use App\Orders\Data\UpsertPromoCodeData;
+use App\Orders\Exceptions\PromoCodeImmutableFieldException;
+use App\Orders\Models\PromoCode;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use Illuminate\Support\Facades\DB;
@@ -159,6 +163,36 @@ it('renders request.not_found for an unknown id, mirroring roles and ticket type
 
     $response->assertStatus(404);
     $response->assertJsonPath('code', 'request.not_found');
+});
+
+it('rejects a locked-field change that raced a first redemption', function (): void {
+    $id = $this->postJson('/v1/promo-codes', promoPayload(['code' => 'RACED']), $this->headers)->json('id');
+
+    $stale = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => PromoCode::query()->findOrFail($id),
+    );
+
+    // A redemption lands after the admin request loaded the row: the
+    // conditional usage_count = 0 guard must win over the stale read.
+    app(TenantTransaction::class)->asTenant($this->tenantId, function () use ($id): void {
+        DB::table('promo_codes')->where('id', $id)->update(['usage_count' => 1]);
+    });
+
+    expect(fn () => app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(UpdatePromoCode::class)(
+            $stale,
+            UpsertPromoCodeData::from(['code' => 'RENAMED']),
+        ),
+    ))->toThrow(PromoCodeImmutableFieldException::class);
+
+    $code = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => DB::table('promo_codes')->where('id', $id)->value('code'),
+    );
+
+    expect($code)->toBe('RACED');
 });
 
 it('clears the currency when an unused fixed code becomes percentage', function (): void {

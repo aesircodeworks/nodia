@@ -67,8 +67,21 @@ final class UpdatePromoCode
         }
 
         if ($changes !== []) {
+            $lockedFields = array_intersect(array_keys($changes), array_keys($locked));
+
             try {
-                $promoCode->update($changes);
+                // A locked-field change rides a conditional UPDATE checked
+                // by affected-row count: a redemption racing this request
+                // flips usage_count first and the stale admin write loses.
+                $query = PromoCode::query()->whereKey($promoCode->id);
+
+                if ($lockedFields !== []) {
+                    $query->where('usage_count', 0);
+                }
+
+                if ($query->update($changes) !== 1) {
+                    throw PromoCodeImmutableFieldException::forField((string) reset($lockedFields));
+                }
             } catch (UniqueConstraintViolationException) {
                 throw ValidationException::withMessages(['code' => ['A promo code with this code already exists.']]);
             }
