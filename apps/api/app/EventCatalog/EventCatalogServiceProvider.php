@@ -3,10 +3,14 @@
 namespace App\EventCatalog;
 
 use App\EventCatalog\Jobs\RefreshSearchIndex;
+use App\EventCatalog\Support\Search\EventSearcher;
+use App\EventCatalog\Support\Search\PostgresEventSearcher;
 use App\Support\Outbox\EventTypeRegistry;
 use App\Support\Outbox\SubscriberRegistry;
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use InvalidArgumentException;
 
 /**
  * The Event Catalog bounded context's own service provider (system-design
@@ -45,9 +49,37 @@ use Illuminate\Support\ServiceProvider;
  * (App\Providers\AppServiceProvider's own docblock), and this is the
  * context that owns both `events` and the `event_search_documents`
  * projection it maintains.
+ *
+ * App\EventCatalog\Support\Search\EventSearcher is bound here, in
+ * register() rather than boot() (the standard Laravel place for
+ * container bindings), keyed off config('search.driver') (stage-05c
+ * plan, task breakdown item 8): postgres resolves to
+ * App\EventCatalog\Support\Search\PostgresEventSearcher, the only driver
+ * this stage implements; any other configured value fails loudly at
+ * resolution time rather than silently falling back, since a
+ * misconfigured driver has no safe default. This is the one place in the
+ * codebase permitted to reference PostgresEventSearcher directly
+ * (tests/Architecture/SearchSeamTest.php); every consumer, including the
+ * storefront search controller a later task in this stage adds, depends
+ * on the EventSearcher interface only, so swapping in a Meilisearch
+ * driver later (system-design 15.3) is a change to this binding alone.
  */
 class EventCatalogServiceProvider extends ServiceProvider
 {
+    public function register(): void
+    {
+        $this->app->bind(EventSearcher::class, function (Application $app): EventSearcher {
+            $driver = config()->string('search.driver');
+
+            return match ($driver) {
+                'postgres' => $app->make(PostgresEventSearcher::class),
+                default => throw new InvalidArgumentException(
+                    "Unsupported search.driver [{$driver}]; only postgres is implemented.",
+                ),
+            };
+        });
+    }
+
     public function boot(EventTypeRegistry $registry, SubscriberRegistry $subscribers): void
     {
         $registry->register('EventCreated');
