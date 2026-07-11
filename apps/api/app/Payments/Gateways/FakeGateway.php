@@ -122,13 +122,27 @@ final class FakeGateway implements GatewayAdapter
         }
 
         return match ($payload['type'] ?? null) {
-            'payment.confirmed' => NormalizedPaymentEvent::confirmed($reference, Money::of(
-                (int) ($payload['fee']['amount'] ?? 0),
-                (string) ($payload['fee']['currency'] ?? 'BRL'),
-            )),
+            'payment.confirmed' => $this->normalizedConfirmation($reference, $payload),
             'payment.failed' => NormalizedPaymentEvent::failed($reference, (string) ($payload['failure_code'] ?? 'unknown')),
             default => null,
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function normalizedConfirmation(string $reference, array $payload): ?NormalizedPaymentEvent
+    {
+        $amount = $payload['fee']['amount'] ?? null;
+        $currency = $payload['fee']['currency'] ?? null;
+
+        // A fee that is not integer minor units with a valid currency is
+        // never coerced; the event routes to the ignored path instead.
+        if (! is_int($amount) || ! is_string($currency) || preg_match('/^[A-Z]{3}$/', $currency) !== 1) {
+            return null;
+        }
+
+        return NormalizedPaymentEvent::confirmed($reference, Money::of($amount, $currency));
     }
 
     public function queryPayment(string $gatewayReference): ?NormalizedPaymentEvent

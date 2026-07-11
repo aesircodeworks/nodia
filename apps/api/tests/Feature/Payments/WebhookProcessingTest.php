@@ -266,6 +266,22 @@ describe('webhook-driven payment processing', function (): void {
             ->and($row->status)->toBe(GatewayWebhookStatus::Ignored->value);
     });
 
+    it('ignores a confirmation whose fee currency differs from the payment currency', function (): void {
+        $fixture = processingFixture();
+
+        deliverWebhook(app(FakeGateway::class)->confirmationWebhook($fixture['reference'], Money::of(250, 'BRL')))->assertStatus(200);
+
+        [$payment, $order, $row] = app(TenantTransaction::class)->asPlatform(fn (): array => [
+            Payment::query()->findOrFail($fixture['paymentId']),
+            Order::query()->findOrFail($fixture['orderId']),
+            DB::table('gateway_webhook_events')->first(),
+        ]);
+
+        expect($payment->status)->toBe(PaymentStatus::Initiated)
+            ->and($order->status)->toBe(OrderStatus::AwaitingPayment)
+            ->and($row->status)->toBe(GatewayWebhookStatus::Ignored->value);
+    });
+
     it('marks an unmatched gateway reference ignored', function (): void {
         processingFixture();
 

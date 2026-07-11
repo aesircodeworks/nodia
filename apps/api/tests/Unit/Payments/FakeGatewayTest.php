@@ -151,6 +151,16 @@ it('normalizes confirmation and failure webhooks into payment events', function 
         ->and($this->gateway->normalizeWebhook(['type' => 'payment.unknown']))->toBeNull();
 });
 
+it('refuses to normalize a confirmation fee that is not integer minor units with a valid currency', function (): void {
+    $base = ['type' => 'payment.confirmed', 'reference' => 'fake_abc'];
+
+    expect($this->gateway->normalizeWebhook($base + ['fee' => ['amount' => 3.63, 'currency' => 'BRL']]))->toBeNull()
+        ->and($this->gateway->normalizeWebhook($base + ['fee' => ['amount' => '363', 'currency' => 'BRL']]))->toBeNull()
+        ->and($this->gateway->normalizeWebhook($base + ['fee' => ['amount' => 363]]))->toBeNull()
+        ->and($this->gateway->normalizeWebhook($base + ['fee' => ['amount' => 363, 'currency' => 'reais']]))->toBeNull()
+        ->and($this->gateway->normalizeWebhook($base))->toBeNull();
+});
+
 it('answers poller queries only from the scripted scenario store', function (): void {
     expect($this->gateway->queryPayment('fake_abc'))->toBeNull();
 

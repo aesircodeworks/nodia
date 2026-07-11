@@ -92,6 +92,12 @@ final class ProcessGatewayWebhook implements ShouldQueue
 
     private function apply(Payment $payment, NormalizedPaymentEvent $normalized): GatewayWebhookStatus
     {
+        // A fee in another currency would be silently relabeled with the
+        // payment currency when persisted, so the event is ignored instead.
+        if ($normalized->kind === WebhookKind::Confirmed && $normalized->fee?->currency !== $payment->currency) {
+            return GatewayWebhookStatus::Ignored;
+        }
+
         $applied = match ($normalized->kind) {
             WebhookKind::Confirmed => app(ConfirmPayment::class)($payment->id, $normalized->fee),
             WebhookKind::Failed => app(FailPayment::class)($payment->id, (string) $normalized->failureCode),
