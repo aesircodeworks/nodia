@@ -11,7 +11,7 @@
 
 - [x] 07-01 Error code registry additions plus OrderStatus, TicketStatus, PromoCodeDiscountType enums with unit tests (plan task 1)
 - [x] 07-02 orders and order_items migration with RLS, models, factories, isolation tests (plan task 2)
-- [ ] 07-03 ConvertHoldToOrder plus POST /v1/storefront/orders end to end, OrderCreated producer, double-conversion and anonymous-hold attachment races (plan slice 1, task 3)
+- [x] 07-03 ConvertHoldToOrder plus POST /v1/storefront/orders end to end, OrderCreated producer, double-conversion and anonymous-hold attachment races (plan slice 1, task 3)
 - [ ] 07-04 Transition Actions and the state machine table test (plan slice 2, task 4)
 - [ ] 07-05 Buyer cancel endpoint plus hold release wiring (plan task 5)
 - [ ] 07-06 HoldExpired subscriber with the duplicate-delivery test (plan task 6)
@@ -58,3 +58,26 @@ nullable uuid; the FK constraint is added by the promo_codes migration
 in task 07-11, since merged migrations are never edited and the tables
 land in different slices. Evidence: Isolation suite 221 passed,
 Architecture suite 38 passed.
+
+#### Task 07-03: hold conversion end to end (2026-07-11)
+
+Failing tests first (committed separately as the plan requires): the
+double-conversion race (6 workers, one winner via the unique hold_id
+index, losers roll back clean), the anonymous-hold attachment race (two
+customers, one winner via the conditional UPDATE), the full endpoint
+feature spread (201 shape, held counters unchanged, OrderCreated
+envelope, hold_not_found, checkout.hold_expired,
+hold_already_converted, 401, 422, attendee names), and pricing units
+(multi-line minor-unit math, mixed-currency rejection, expired and
+released holds). Implementation: `ConvertHoldToOrder` with the
+customer-attachment conditional UPDATE behind Inventory's new
+`AttachHoldCustomer` seam, hold facts through Inventory's new
+`ResolveHoldForOrder` read model, prices through EventCatalog's new
+`ResolveTicketTypePricing` (no price seam existed; Orders never touches
+TicketType), `OrderCreated` producer registered by the new
+`OrdersServiceProvider`, OpenAPI path plus Order/OrderItem/
+CreateOrderRequest schemas, contract exercisers for all five documented
+responses, regenerated TS. Deviation: the contract suite's afterEach
+now deletes customers after holds and orders, since conversion
+attaches customers to holds (FK order). Evidence: 19 task tests green,
+Contract suite 274 passed, Architecture 38 passed.
