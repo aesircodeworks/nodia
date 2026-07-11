@@ -38,6 +38,29 @@ TS workspaces.
 
 ### Review rounds
 
+#### Round 1 (2026-07-11, Codex)
+
+Four important findings, no blocking. Applied:
+
+1. order_items.ticket_type_id carried a cross-context FK into
+   EventCatalog; the plan's Data model says plain reference. Dropped
+   (migration edited in place: the branch is unpushed, so nothing is
+   merged).
+2. tickets.ticket_type_id and tickets.event_id likewise; dropped. Only
+   tenant_id and order_id keep FKs on both tables, verified against the
+   rebuilt schema (pg_constraint shows exactly those four).
+3. Buyer GET /orders/{order}/tickets without cursor pagination:
+   declined. The plan's endpoint table specifies a plain list of
+   TicketData for one order, and the collection is bounded by the
+   order's own item quantities; api-conventions' "tickets" bullet
+   targets tenant-wide ticket collections (the Stage 9 manifest), not a
+   single order's.
+4. Flipping an unused fixed_amount code to percentage left the stale
+   currency behind and tripped the promo_codes_currency_by_type CHECK
+   as a 500. Fixed in UpdatePromoCode (tests first): the currency is
+   cleared on the flip to percentage, and a flip to fixed_amount
+   without a currency is a validation failure.
+
 ### Decisions and deviations
 
 #### Task 07-01: error codes and Orders enums (2026-07-11)
