@@ -14,7 +14,7 @@
 - [ ] 06-03 GA hold creation: holds and hold_items migrations, HoldStatus, CreateHold, HoldCreated, POST and GET endpoints, GA oversell simulation green (plan slice 2, task 4)
 - [ ] 06-04 Release and expiry: ReleaseHold, DELETE endpoint, HoldReleased, ReleaseExpiredHolds sweeper, HoldExpired, expiry recovery simulation green (plan slice 3, tasks 5 and 6)
 - [ ] 06-05 Availability reads: storefront availability endpoint and admin inventory read with contracts (plan slice 3, task 7)
-- [ ] 06-06 ExtendHold and CommitHold internal Actions with commit-versus-expiry race (plan slice 4, task 8)
+- [x] 06-06 ExtendHold and CommitHold internal Actions with commit-versus-expiry race (plan slice 4, task 8)
 - [ ] 06-07 Seat materialization on publish: event_seats migration, MaterializeEventSeats, requires_seat publish validation, seat_map_in_use extension (plan slice 5, task 9)
 - [ ] 06-08 Seated holds through CreateHold, ReleaseHold, CommitHold, sweeper; double-booking simulation green (plan slice 6, task 10)
 - [ ] 06-09 events.manage_seating capability registry addition and role wiring (plan task 10a)
@@ -518,3 +518,75 @@ and unpublished-existence posture are identical to the hold-creation
 endpoint's own `event_not_found` case; this keeps one source of truth
 for that shape rather than two schemas that would need to stay in sync
 by hand.
+
+#### Task 06-06: ExtendHold and CommitHold internal Actions (2026-07-11)
+
+Landed Slice 4, task breakdown item 8: the two internal-only Actions
+Stage 8a (payment-window extension) and Stage 7 (order-paid commit)
+will call in-process. No HTTP surface, no OpenAPI, no request-facing
+Data objects, per the plan.
+
+- `App\Inventory\Actions\ExtendHold` (`App\Inventory\Data\ExtendHoldData`
+  input, holdId plus a `CarbonImmutable` `expiresAt`): a single
+  conditional UPDATE, `status = 'active' AND expires_at > now() AND
+  :new > expires_at`, checked by affected-row count exactly as
+  system-design 6.1 specifies, so extension can never resurrect an
+  expired or released hold and never shortens `expires_at`. Zero
+  affected rows throws the new `HoldNotExtendableException`
+  (`hold_not_extendable`, 409); an unknown hold id throws the existing
+  `HoldNotFoundException` first.
+- `App\Inventory\Actions\CommitHold` (`App\Inventory\Data\CommitHoldData`
+  input, holdId only): the hold's own active -> committed transition is
+  a conditional UPDATE guarded by `status = 'active' AND expires_at >
+  now()`, so an expired-but-unswept hold, a double commit, and a
+  released hold all fail this one guard with the same
+  `HoldNotCommittableException` (`hold_not_committable`, 409). Each
+  item's held -> sold move is its own guarded conditional UPDATE
+  (`held >= quantity`), so a failure partway rolls the whole commit
+  back with the caller's transaction. No outbox event is recorded:
+  there is no `HoldCommitted` event per the plan's exit criteria; the
+  commit rides inside whatever transaction and event the caller (Stage
+  7's order-paid path) owns.
+- Two new `ErrorCode` members, `HoldNotExtendable` and
+  `HoldNotCommittable`, both 409: required even though these Actions
+  have no HTTP surface in this stage, because the global exception
+  handler renders any `HasErrorCode` exception regardless of which
+  endpoint raised it, and a future caller (Stage 7, Stage 8a) may let
+  either exception bubble to its own HTTP response.
+- `tests/Architecture/PresetTest.php`: added the two new exception
+  classes to the existing allowlist of domain exceptions permitted to
+  implement `Throwable`, mirroring the other Inventory exceptions
+  already listed there.
+
+Test evidence (all from `apps/api`):
+
+- `php artisan test --filter=ExtendHoldTest`: 5 passed, 9 assertions.
+- `php artisan test --filter=CommitHoldTest`: 6 passed, 15 assertions.
+- `php artisan test --filter=HoldCommitExpiryContentionTest`: 1 passed,
+  6 assertions; repeated 5 times to check for race flakiness, stable
+  every run.
+- `php artisan test --testsuite=Unit --filter=Inventory`: 55 passed,
+  129 assertions.
+- `php artisan test --testsuite=Concurrency`: 23 passed, 105
+  assertions.
+- `php artisan test --testsuite=Isolation --filter=Hold`: 12 passed,
+  20 assertions (no new tenant-scoped table in this task, so no new
+  probe needed).
+- `php artisan test --testsuite=Architecture`: 38 passed, 94
+  assertions (green only after the PresetTest allowlist update above).
+- `php artisan test --testsuite=Feature --filter=Inventory`: 30
+  passed, 115 assertions.
+- `./vendor/bin/pint --test` on all changed files: passed (one
+  auto-fix applied to `ExtendHoldTest.php`'s import ordering before
+  the final run).
+- `./vendor/bin/phpstan analyse --memory-limit=1G` on all changed
+  files: passed, 0 errors.
+- `composer types:generate`: run; `packages/api-client/src/generated/index.ts`
+  and the manifest regenerated with the two new `ErrorCode` members.
+
+Commit: `9970af3` (`feat(inventory): ExtendHold and CommitHold internal
+Actions`).
+
+No deviations from the plan beyond the PresetTest allowlist addition,
+a mechanical consequence of adding new domain exceptions under the
+codebase's existing architecture rule.
