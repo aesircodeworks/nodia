@@ -63,6 +63,8 @@ use App\Inventory\Exceptions\HoldNotReleasableException;
 use App\Inventory\Exceptions\InsufficientHoldInventoryException;
 use App\Inventory\Exceptions\InsufficientInventoryException;
 use App\Inventory\Exceptions\SalesWindowClosedException;
+use App\Inventory\Exceptions\SeatSelectionInvalidException;
+use App\Inventory\Exceptions\SeatUnavailableException;
 use App\Inventory\Exceptions\TicketTypeInventoryNotFoundException;
 use App\Inventory\Exceptions\TicketTypeNotInEventException;
 use App\Inventory\InventoryServiceProvider;
@@ -227,6 +229,8 @@ arch()->preset()->laravel()->ignoring([
     HoldNotReleasableException::class,
     HoldNotExtendableException::class,
     HoldNotCommittableException::class,
+    SeatSelectionInvalidException::class,
+    SeatUnavailableException::class,
     TicketTypeInventoryNotFoundException::class,
     MissingTenantHeaderException::class,
     InvalidTenantHeaderException::class,

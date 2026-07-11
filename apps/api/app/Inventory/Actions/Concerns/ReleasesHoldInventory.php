@@ -2,6 +2,8 @@
 
 namespace App\Inventory\Actions\Concerns;
 
+use App\Inventory\Enums\EventSeatStatus;
+use App\Inventory\Models\EventSeat;
 use App\Inventory\Models\Hold;
 use App\Inventory\Models\HoldItem;
 use App\Inventory\Models\TicketTypeInventory;
@@ -10,20 +12,57 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Shared by App\Inventory\Actions\ReleaseHold and
- * App\Inventory\Actions\ReleaseExpiredHolds: the counter-reconciliation
- * half of a released or expired hold (stage-06 plan, Domain events
- * "counter and seat reconciliation amounts"), run only after the caller's
- * own conditional active -> released/expired UPDATE has already affected
- * exactly one row, so this never double-decrements a hold whose
- * transition another process already won.
+ * App\Inventory\Actions\ReleaseExpiredHolds: the counter and seat
+ * reconciliation half of a released or expired hold (stage-06 plan,
+ * Domain events "counter and seat reconciliation amounts"; event_seats
+ * section: "release and expiry decrement held per item and flip held
+ * seats back to available"), run only after the caller's own conditional
+ * active -> released/expired UPDATE has already affected exactly one
+ * row, so this never double-decrements a hold whose transition another
+ * process already won. Selecting this hold's own held seat ids before
+ * flipping them is safe despite the read-then-write rule against bare
+ * conditional guards: hold_id already scopes every row to the single
+ * winner of that conditional UPDATE, so no other process can contend for
+ * the same rows.
  */
 trait ReleasesHoldInventory
 {
-    private function releaseHeldInventory(Hold $hold): void
+    /**
+     * @return list<string> the event_seats ids returned to available
+     */
+    private function releaseHeldInventory(Hold $hold): array
     {
         foreach ($hold->items as $item) {
             $this->releaseHeldQuantity($item);
         }
+
+        return $this->releaseHeldSeats($hold);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function releaseHeldSeats(Hold $hold): array
+    {
+        $seatIds = EventSeat::query()
+            ->where('hold_id', $hold->id)
+            ->where('status', EventSeatStatus::Held->value)
+            ->pluck('id')
+            ->all();
+
+        if ($seatIds !== []) {
+            EventSeat::query()
+                ->whereIn('id', $seatIds)
+                ->where('hold_id', $hold->id)
+                ->where('status', EventSeatStatus::Held->value)
+                ->update([
+                    'status' => EventSeatStatus::Available->value,
+                    'hold_id' => null,
+                    'updated_at' => Date::now(),
+                ]);
+        }
+
+        return $seatIds;
     }
 
     /**

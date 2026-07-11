@@ -2,9 +2,14 @@
 
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Models\Event;
+use App\EventCatalog\Models\Seat;
+use App\EventCatalog\Models\SeatMap;
 use App\EventCatalog\Models\TicketType;
+use App\EventCatalog\Models\Venue;
 use App\Identity\Models\Customer;
 use App\Inventory\Actions\ReleaseExpiredHolds;
+use App\Inventory\Enums\EventSeatStatus;
+use App\Inventory\Models\EventSeat;
 use App\Inventory\Models\Hold;
 use App\Inventory\Models\TicketTypeInventory;
 use App\Support\Tenancy\TenantTransaction;
@@ -39,11 +44,15 @@ afterEach(function (): void {
             DB::table('outbox_deliveries')->where('tenant_id', $tenantId)->delete();
             DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
             DB::table('hold_items')->where('tenant_id', $tenantId)->delete();
+            DB::table('event_seats')->where('tenant_id', $tenantId)->delete();
             DB::table('holds')->where('tenant_id', $tenantId)->delete();
             DB::table('customers')->where('tenant_id', $tenantId)->delete();
             DB::table('ticket_type_inventory')->where('tenant_id', $tenantId)->delete();
             DB::table('ticket_types')->where('tenant_id', $tenantId)->delete();
             DB::table('events')->where('tenant_id', $tenantId)->delete();
+            DB::table('seats')->where('tenant_id', $tenantId)->delete();
+            DB::table('seat_maps')->where('tenant_id', $tenantId)->delete();
+            DB::table('venues')->where('tenant_id', $tenantId)->delete();
         });
     }
 
@@ -94,6 +103,50 @@ function holdTicketType(string $tenantId, string $eventId, int $quantity, array 
         ]);
 
         return $ticketType;
+    });
+}
+
+/**
+ * A seated, zoned ticket type with `$seatCount` available, materialized
+ * event_seats rows already assigned to it (mirroring the post-zoning
+ * state, stage-06 plan Slice 6, task breakdown item 10).
+ *
+ * @return array{ticketType: TicketType, seatIds: list<string>}
+ */
+function holdSeatedTicketType(string $tenantId, string $eventId, int $seatCount): array
+{
+    return app(TenantTransaction::class)->asTenant($tenantId, function () use ($tenantId, $eventId, $seatCount): array {
+        $venue = Venue::factory()->create(['tenant_id' => $tenantId]);
+        $seatMap = SeatMap::factory()->create(['tenant_id' => $tenantId, 'venue_id' => $venue->id]);
+        $ticketType = TicketType::factory()->create(['tenant_id' => $tenantId, 'event_id' => $eventId, 'requires_seat' => true]);
+
+        DB::table('events')->where('id', $eventId)->update(['venue_id' => $venue->id, 'seat_map_id' => $seatMap->id, 'is_virtual' => false, 'virtual_event_url' => null]);
+
+        TicketTypeInventory::factory()->create([
+            'tenant_id' => $tenantId,
+            'ticket_type_id' => $ticketType->id,
+            'quantity' => $seatCount,
+            'held' => 0,
+            'sold' => 0,
+        ]);
+
+        $seatIds = [];
+
+        for ($i = 0; $i < $seatCount; $i++) {
+            $templateSeat = Seat::factory()->create(['tenant_id' => $tenantId, 'seat_map_id' => $seatMap->id, 'section' => 'A', 'row' => '1', 'number' => (string) ($i + 1)]);
+
+            $eventSeat = EventSeat::factory()->create([
+                'tenant_id' => $tenantId,
+                'event_id' => $eventId,
+                'seat_id' => $templateSeat->id,
+                'ticket_type_id' => $ticketType->id,
+                'status' => EventSeatStatus::Available,
+            ]);
+
+            $seatIds[] = $eventSeat->id;
+        }
+
+        return ['ticketType' => $ticketType, 'seatIds' => $seatIds];
     });
 }
 
@@ -303,6 +356,151 @@ describe('POST /v1/storefront/holds', function (): void {
         ])
             ->assertStatus(422)
             ->assertJsonPath('code', 'request.validation_failed');
+    });
+
+    it('creates a seated hold, flipping the selected seats to held', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        ['ticketType' => $ticketType, 'seatIds' => $seatIds] = holdSeatedTicketType($tenant->id, $event->id, 2);
+
+        $response = $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 2]],
+            'seat_ids' => $seatIds,
+        ]);
+
+        $response->assertStatus(201)->assertConformsToOpenApi();
+        expect($response->json('seat_ids'))->toEqualCanonicalizing($seatIds);
+
+        $seats = app(TenantTransaction::class)->asTenant(
+            $tenant->id,
+            fn () => EventSeat::query()->whereIn('id', $seatIds)->get(),
+        );
+
+        foreach ($seats as $seat) {
+            expect($seat->status)->toBe(EventSeatStatus::Held);
+        }
+    });
+
+    it('creates a mixed GA-plus-seated hold', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        $gaTicketType = holdTicketType($tenant->id, $event->id, 10);
+        ['ticketType' => $seatedTicketType, 'seatIds' => $seatIds] = holdSeatedTicketType($tenant->id, $event->id, 1);
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [
+                ['ticket_type_id' => $gaTicketType->id, 'quantity' => 3],
+                ['ticket_type_id' => $seatedTicketType->id, 'quantity' => 1],
+            ],
+            'seat_ids' => $seatIds,
+        ])->assertStatus(201)->assertJsonPath('seat_ids', $seatIds);
+    });
+
+    it('returns seat_selection_invalid when a requires_seat item has no matching seat_ids', function (string $seatIdsKey, array $seatIds): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        ['ticketType' => $ticketType] = holdSeatedTicketType($tenant->id, $event->id, 2);
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 2]],
+            'seat_ids' => $seatIds,
+        ])
+            ->assertStatus(422)
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'seat_selection_invalid');
+    })->with([
+        'no seat_ids at all' => ['none', []],
+        'fewer seat_ids than quantity' => ['one', [(string) Str::uuid7()]],
+    ]);
+
+    it('returns seat_selection_invalid when seat_ids are given for a GA-only request', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10);
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+            'seat_ids' => [(string) Str::uuid7()],
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'seat_selection_invalid');
+    });
+
+    it('returns seat_unavailable with the offending seat_ids when a seat is already held', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        ['ticketType' => $ticketType, 'seatIds' => $seatIds] = holdSeatedTicketType($tenant->id, $event->id, 2);
+
+        app(TenantTransaction::class)->asTenant($tenant->id, function () use ($tenant, $event, $seatIds): void {
+            $blocker = Hold::factory()->create(['tenant_id' => $tenant->id, 'event_id' => $event->id]);
+            EventSeat::query()->whereKey($seatIds[0])->update(['status' => EventSeatStatus::Held->value, 'hold_id' => $blocker->id]);
+        });
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 2]],
+            'seat_ids' => $seatIds,
+        ])
+            ->assertStatus(409)
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'seat_unavailable')
+            ->assertJsonPath('errors.seat_ids.0', $seatIds[0]);
+    });
+});
+
+describe('DELETE /v1/storefront/holds/{hold} releases seats', function (): void {
+    it('returns a seated hold to available on release', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        ['ticketType' => $ticketType, 'seatIds' => $seatIds] = holdSeatedTicketType($tenant->id, $event->id, 2);
+
+        $created = $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 2]],
+            'seat_ids' => $seatIds,
+        ])->json();
+
+        $this->deleteJson('http://'.$host.'/v1/storefront/holds/'.$created['id'])->assertStatus(204);
+
+        $seats = app(TenantTransaction::class)->asTenant(
+            $tenant->id,
+            fn () => EventSeat::query()->whereIn('id', $seatIds)->get(),
+        );
+
+        foreach ($seats as $seat) {
+            expect($seat->status)->toBe(EventSeatStatus::Available)
+                ->and($seat->hold_id)->toBeNull();
+        }
+    });
+
+    it('returns a seated hold to available on expiry', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        ['ticketType' => $ticketType, 'seatIds' => $seatIds] = holdSeatedTicketType($tenant->id, $event->id, 2);
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 2]],
+            'seat_ids' => $seatIds,
+        ])->assertStatus(201);
+
+        $this->travelTo(now()->addMinutes(11));
+
+        app(ReleaseExpiredHolds::class)();
+
+        $seats = app(TenantTransaction::class)->asTenant(
+            $tenant->id,
+            fn () => EventSeat::query()->whereIn('id', $seatIds)->get(),
+        );
+
+        foreach ($seats as $seat) {
+            expect($seat->status)->toBe(EventSeatStatus::Available)
+                ->and($seat->hold_id)->toBeNull();
+        }
     });
 });
 

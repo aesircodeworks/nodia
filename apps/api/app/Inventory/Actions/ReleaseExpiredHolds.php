@@ -86,9 +86,9 @@ final readonly class ReleaseExpiredHolds
 
             $hold = Hold::query()->with('items')->findOrFail($holdId);
 
-            $this->releaseHeldInventory($hold);
+            $seatIds = $this->releaseHeldInventory($hold);
 
-            $this->outbox->record(HoldExpired::fromHold($hold));
+            $this->outbox->record(HoldExpired::fromHold($hold, $seatIds));
 
             return true;
         });

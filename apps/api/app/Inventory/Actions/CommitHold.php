@@ -4,9 +4,11 @@ namespace App\Inventory\Actions;
 
 use App\Inventory\Data\CommitHoldData;
 use App\Inventory\Data\HoldData;
+use App\Inventory\Enums\EventSeatStatus;
 use App\Inventory\Enums\HoldStatus;
 use App\Inventory\Exceptions\HoldNotCommittableException;
 use App\Inventory\Exceptions\HoldNotFoundException;
+use App\Inventory\Models\EventSeat;
 use App\Inventory\Models\Hold;
 use App\Inventory\Models\HoldItem;
 use App\Inventory\Models\TicketTypeInventory;
@@ -49,7 +51,42 @@ final class CommitHold
             $this->commitItem($item);
         }
 
-        return HoldData::fromModel($hold->fresh('items'));
+        $seatIds = $this->commitSeats($hold);
+
+        return HoldData::fromModel($hold->fresh('items'), $seatIds);
+    }
+
+    /**
+     * The seat side of a commit (stage-06 plan, event_seats section:
+     * "commit moves held to sold per item and flips seats held -> sold").
+     * Scoped by hold_id, which the earlier active -> committed conditional
+     * UPDATE has already made exclusive to this call, so a plain
+     * hold_id-guarded UPDATE is sufficient here, mirroring
+     * App\Inventory\Actions\Concerns\ReleasesHoldInventory::
+     * releaseHeldSeats's own posture.
+     *
+     * @return list<string>
+     */
+    private function commitSeats(Hold $hold): array
+    {
+        $seatIds = EventSeat::query()
+            ->where('hold_id', $hold->id)
+            ->where('status', EventSeatStatus::Held->value)
+            ->pluck('id')
+            ->all();
+
+        if ($seatIds !== []) {
+            EventSeat::query()
+                ->whereIn('id', $seatIds)
+                ->where('hold_id', $hold->id)
+                ->where('status', EventSeatStatus::Held->value)
+                ->update([
+                    'status' => EventSeatStatus::Sold->value,
+                    'updated_at' => Date::now(),
+                ]);
+        }
+
+        return $seatIds;
     }
 
     private function commitItem(HoldItem $item): void

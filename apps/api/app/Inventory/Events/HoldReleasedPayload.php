@@ -32,13 +32,16 @@ class HoldReleasedPayload extends Data
         public array $seatIds,
     ) {}
 
-    public static function fromHold(Hold $hold): self
+    /**
+     * @param  list<string>  $seatIds
+     */
+    public static function fromHold(Hold $hold, array $seatIds = []): self
     {
         return new self(
             $hold->id,
             $hold->event_id,
             $hold->items->map(fn (HoldItem $item): HoldItemPayload => new HoldItemPayload($item->ticket_type_id, $item->quantity))->all(),
-            [],
+            $seatIds,
         );
     }
 }

@@ -68,6 +68,8 @@ test('the registry holds exactly the known codes', function () {
         'hold_not_releasable',
         'hold_not_extendable',
         'hold_not_committable',
+        'seat_selection_invalid',
+        'seat_unavailable',
     ]);
 });
 
@@ -138,6 +140,10 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'sales_window_closed' => [ErrorCode::SalesWindowClosed, 409, 'Sales window closed', '/problems/sales-window-closed'],
     'hold_not_found' => [ErrorCode::HoldNotFound, 404, 'Hold not found', '/problems/hold-not-found'],
     'hold_not_releasable' => [ErrorCode::HoldNotReleasable, 409, 'Hold not releasable', '/problems/hold-not-releasable'],
+    'hold_not_extendable' => [ErrorCode::HoldNotExtendable, 409, 'Hold not extendable', '/problems/hold-not-extendable'],
+    'hold_not_committable' => [ErrorCode::HoldNotCommittable, 409, 'Hold not committable', '/problems/hold-not-committable'],
+    'seat_selection_invalid' => [ErrorCode::SeatSelectionInvalid, 422, 'Seat selection invalid', '/problems/seat-selection-invalid'],
+    'seat_unavailable' => [ErrorCode::SeatUnavailable, 409, 'Seat unavailable', '/problems/seat-unavailable'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

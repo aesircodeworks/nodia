@@ -7,6 +7,7 @@ use App\Inventory\Actions\ReleaseHold;
 use App\Inventory\Data\CreateHoldData;
 use App\Inventory\Data\HoldData;
 use App\Inventory\Exceptions\HoldNotFoundException;
+use App\Inventory\Models\EventSeat;
 use App\Inventory\Models\Hold;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,7 +30,11 @@ class HoldController
 
     public function show(string $hold): HoldData
     {
-        return HoldData::fromModel($this->holdOrFail($hold));
+        $model = $this->holdOrFail($hold);
+
+        $seatIds = EventSeat::query()->where('hold_id', $model->id)->pluck('id')->all();
+
+        return HoldData::fromModel($model, $seatIds);
     }
 
     /**

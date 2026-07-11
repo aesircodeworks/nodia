@@ -52,12 +52,15 @@ final readonly class HoldExpired implements DomainEvent
         return $this->payload;
     }
 
-    public static function fromHold(Hold $hold): self
+    /**
+     * @param  list<string>  $seatIds
+     */
+    public static function fromHold(Hold $hold, array $seatIds = []): self
     {
         return new self(
             $hold->tenant_id,
             $hold->id,
-            HoldExpiredPayload::fromHold($hold),
+            HoldExpiredPayload::fromHold($hold, $seatIds),
         );
     }
 }

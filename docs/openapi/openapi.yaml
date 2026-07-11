@@ -3486,9 +3486,10 @@ paths:
         (stage-06 plan, Endpoints "POST /v1/storefront/holds"). customer_id
         is never accepted in the request body; it is derived from an
         optional customer bearer token and stays null for anonymous
-        guests. GA ticket types only in this task; seated selection
-        (seat_ids) lands in a later stage-06 task. expires_at is 10
-        minutes from creation.
+        guests. seat_ids is a flat, top-level list, partitioned
+        positionally across the requires_seat items in the order they
+        appear in items: each such item's own quantity claims the next
+        slice. expires_at is 10 minutes from creation.
       requestBody:
         required: true
         content:
@@ -3516,8 +3517,12 @@ paths:
         '422':
           description: >-
             Request validation failed (code request.validation_failed, with
-            the errors map), or an item's ticket_type_id does not belong to
-            the given event (code ticket_type_not_in_event).
+            the errors map), an item's ticket_type_id does not belong to
+            the given event (code ticket_type_not_in_event), or the
+            seat_ids do not match the requested items: a requires_seat
+            item is missing seats, the seat count does not match its
+            quantity, or seats were given for a GA item (code
+            seat_selection_invalid).
           content:
             application/problem+json:
               schema:
@@ -3525,9 +3530,12 @@ paths:
         '409':
           description: >-
             An item's ticket type is outside its sales window (code
-            sales_window_closed), or the requested quantity exceeds
+            sales_window_closed), the requested quantity exceeds
             availability (code insufficient_inventory, with the failing
-            ticket_type_id in the errors map).
+            ticket_type_id in the errors map), or one or more requested
+            seats are held, sold, blocked, or belong to the wrong zone or
+            event (code seat_unavailable, with the offending seat_ids in
+            the errors map).
           content:
             application/problem+json:
               schema:
@@ -4799,7 +4807,11 @@ components:
       additionalProperties: false
     HoldItemInput:
       type: object
-      description: One GA line item of a CreateHoldRequest (stage-06 plan, Endpoints).
+      description: >-
+        One line item of a CreateHoldRequest (stage-06 plan, Endpoints).
+        Seat selection for a requires_seat item is not carried here: it
+        is CreateHoldRequest's own top-level seat_ids, partitioned
+        positionally across the requires_seat items in request order.
       required:
         - ticket_type_id
         - quantity
@@ -4815,8 +4827,9 @@ components:
       type: object
       description: >-
         POST and GET /v1/storefront/holds/{hold} response shape (stage-06
-        plan, Endpoints). seat_ids is always an empty array in this task:
-        seated hold wiring lands in a later stage-06 task.
+        plan, Endpoints). seat_ids is the full set of seats currently held
+        (or, once committed, sold) for this hold; empty for a GA-only
+        hold.
       required:
         - id
         - event_id
@@ -4891,6 +4904,9 @@ components:
         POST /v1/storefront/holds request body (stage-06 plan, Endpoints).
         customer_id is never accepted here: it is derived from an optional
         customer bearer token server-side, never trusted from the body.
+        seat_ids is a flat, top-level list, partitioned positionally
+        across the requires_seat items in items in request order (each
+        such item's own quantity claims the next slice).
       required:
         - event_id
         - items
@@ -4903,6 +4919,11 @@ components:
           minItems: 1
           items:
             $ref: '#/components/schemas/HoldItemInput'
+        seat_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
       additionalProperties: false
     TicketTypeCreateRequest:
       type: object
@@ -5480,8 +5501,10 @@ components:
       description: >-
         Problem document for POST /v1/storefront/holds that cannot be
         processed: either request validation failed (with the errors map,
-        code request.validation_failed), or an item's ticket_type_id does
-        not belong to the given event (code ticket_type_not_in_event).
+        code request.validation_failed), an item's ticket_type_id does
+        not belong to the given event (code ticket_type_not_in_event), or
+        the seat_ids do not match the requested items (code
+        seat_selection_invalid).
       allOf:
         - $ref: '#/components/schemas/Problem'
         - oneOf:
@@ -5503,14 +5526,21 @@ components:
                 code:
                   type: string
                   enum: [ticket_type_not_in_event]
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum: [seat_selection_invalid]
       unevaluatedProperties: false
     HoldCreateConflictProblem:
       description: >-
         Problem document for POST /v1/storefront/holds that conflicts with
-        current state: either an item's ticket type is outside its sales
-        window (code sales_window_closed), or the requested quantity
-        exceeds availability (code insufficient_inventory, with the
-        failing ticket_type_id in the errors map).
+        current state: an item's ticket type is outside its sales window
+        (code sales_window_closed), the requested quantity exceeds
+        availability (code insufficient_inventory, with the failing
+        ticket_type_id in the errors map), or one or more requested seats
+        are unavailable (code seat_unavailable, with the offending
+        seat_ids in the errors map).
       allOf:
         - $ref: '#/components/schemas/Problem'
         - oneOf:
@@ -5526,6 +5556,19 @@ components:
                 code:
                   type: string
                   enum: [insufficient_inventory]
+                errors:
+                  type: object
+                  additionalProperties:
+                    type: array
+                    items:
+                      type: string
+            - type: object
+              required:
+                - errors
+              properties:
+                code:
+                  type: string
+                  enum: [seat_unavailable]
                 errors:
                   type: object
                   additionalProperties:

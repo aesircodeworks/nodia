@@ -64,6 +64,7 @@ export type CreateEventData = {
 export type CreateHoldData = {
   event_id: string;
   items: HoldItemInputData[];
+  seat_ids?: string[];
 };
 export type CreateRoleData = {
   name: string;
@@ -198,7 +199,9 @@ export type ErrorCode =
   | 'hold_not_found'
   | 'hold_not_releasable'
   | 'hold_not_extendable'
-  | 'hold_not_committable';
+  | 'hold_not_committable'
+  | 'seat_selection_invalid'
+  | 'seat_unavailable';
 export type EventAvailabilityData = {
   event_id: string;
   ticket_types: TicketTypeAvailabilityData[];

@@ -47,6 +47,14 @@ class Hold extends Model
     }
 
     /**
+     * @return HasMany<EventSeat, $this>
+     */
+    public function eventSeats(): HasMany
+    {
+        return $this->hasMany(EventSeat::class);
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

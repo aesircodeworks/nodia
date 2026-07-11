@@ -16,7 +16,7 @@
 - [ ] 06-05 Availability reads: storefront availability endpoint and admin inventory read with contracts (plan slice 3, task 7)
 - [x] 06-06 ExtendHold and CommitHold internal Actions with commit-versus-expiry race (plan slice 4, task 8)
 - [ ] 06-07 Seat materialization on publish: event_seats migration, MaterializeEventSeats, requires_seat publish validation, seat_map_in_use extension (plan slice 5, task 9)
-- [ ] 06-08 Seated holds through CreateHold, ReleaseHold, CommitHold, sweeper; double-booking simulation green (plan slice 6, task 10)
+- [x] 06-08 Seated holds through CreateHold, ReleaseHold, CommitHold, sweeper; double-booking simulation green (plan slice 6, task 10)
 - [ ] 06-09 events.manage_seating capability registry addition and role wiring (plan task 10a)
 - [ ] 06-10 Seat management and read surfaces: storefront seats, admin seats list, admin PATCH, contracts (plan slice 7, task 11)
 - [ ] 06-11 Exit sweep: status table flip to done, OpenAPI consolidation check, full gate run (plan task 12, exit criteria)
@@ -696,3 +696,114 @@ through the Slice 5 feature suite).
 Deviations from the plan: none beyond the two pre-existing ErrorCode
 gaps fixed above, which were mechanical consequences of phpstan's
 exhaustive-match check rather than new scope.
+
+#### Task 06-08: Seated holds and double-booking simulation (2026-07-11)
+
+Landed Slice 6, task breakdown item 10: seat handling inside `CreateHold`,
+`ReleaseHold`, `CommitHold`, and the expiry sweeper, plus the seat
+double-booking concurrency simulation.
+
+- `seat_ids` on `CreateHoldData` is a flat, top-level list (Endpoints:
+  "items as [{ticket_type_id, quantity}], optional seat_ids"), `Optional`
+  so an all-GA request omits it entirely. `CreateHold` partitions it
+  positionally across the `requires_seat` items in request order (each
+  such item's own quantity claims the next slice): a structural check
+  (`partitionSeatIds`) validates only that the partition adds up (every
+  `requires_seat` item gets exactly `quantity` seat ids, no GA item gets
+  any, no duplicates), using nothing but the request and Catalog's
+  `requires_seat` flags, before any `event_seats` row is read. This is a
+  deliberate, self-authored resolution of the endpoint table's own
+  ambiguity between the structural `seat_selection_invalid` (422) failure
+  mode and the per-seat `seat_unavailable` (409) one ("wrong zone" is
+  explicitly listed under the latter): `seat_selection_invalid` is
+  therefore pure arithmetic against the request shape, and
+  `seat_unavailable` is everything the per-item conditional UPDATE can
+  still refuse (held, sold, blocked, wrong zone, wrong event, or an
+  unknown seat id).
+- `CreateHold::claimSeats`: one conditional UPDATE per `requires_seat`
+  item (`available -> held`, guarded by `event_id`, `status`, and
+  `ticket_type_id`, matching the plan's own "one statement per ticket
+  type in the selection"), affected-row count compared to the requested
+  slice's count, never a read-then-write existence check. A
+  `requires_seat` item still runs through the existing GA `claim()`
+  counter guard too, in the same transaction, so a seated hold performs
+  both the counter UPDATE and the seat UPDATEs and both must succeed or
+  roll back together (event_seats section). The offending seat ids for
+  `SeatUnavailableException`'s errors extension are read back by
+  elimination (which of the requested ids now show `hold_id` = this
+  hold), still inside the same transaction, never from stale data.
+- `App\Inventory\Actions\Concerns\ReleasesHoldInventory::
+  releaseHeldInventory` now also flips this hold's own held seats back to
+  `available` (clearing `hold_id`) and returns the freed seat ids, shared
+  by `ReleaseHold` and `ReleaseExpiredHolds` exactly as the counter
+  decrement already was; `CommitHold` gained the parallel `held -> sold`
+  seat flip. All three read this hold's own `hold_id`-scoped seat rows
+  before writing them, which the docblocks argue is safe despite the
+  read-then-write rule: `hold_id` already made those rows exclusive to
+  the single winner of the row's own conditional transition, so no other
+  process can contend for them.
+- `HoldData::fromModel`, `HoldCreatedPayload::fromHold`,
+  `HoldReleasedPayload::fromHold`, and `HoldExpiredPayload::fromHold` all
+  gained an explicit `$seatIds` parameter (default `[]`, so every
+  existing GA-only caller is unaffected); `Hold` gained an `eventSeats()`
+  `HasMany` relation (same-context, unlike the plain-FK cross-context
+  columns) so `HoldController::show` and the three Actions can pass real
+  seat ids through instead of always shipping the empty array Slice 2
+  shipped as a placeholder.
+- Two new stable codes: `seat_selection_invalid` (422,
+  `SeatSelectionInvalidException`) and `seat_unavailable` (409,
+  `SeatUnavailableException implements HasValidationErrors`, `errors.
+  seat_ids`). OpenAPI: `POST /v1/storefront/holds`'s 422/409 responses,
+  `CreateHoldRequest.seat_ids`, `Hold`'s description, and both
+  `HoldCreateUnprocessableProblem`/`HoldCreateConflictProblem` oneOf
+  branches extended (no new schemas, matching the existing combined-enum
+  precedent from earlier stage-06 tasks). `composer types:generate` run;
+  `packages/api-client/src/generated/` regenerated with
+  `CreateHoldData.seat_ids` and the two new `ErrorCode` members.
+- Test-first per the master plan double loop:
+  `tests/Concurrency/SeatDoubleBookingContentionTest.php` (two
+  simulations, driven through the real HTTP kernel in forked workers: 8
+  workers racing one contested seat, asserting exactly one 201 and every
+  seat_unavailable/insufficient_inventory loser fully rolled back with no
+  counter drift; four workers each requesting an overlapping pair from a
+  4-seat pool, asserting held-seat count equals `2 * successCount` and
+  the counter matches the seat table exactly) was written and watched
+  fail on the missing `seat_ids` request field before `CreateHold` read
+  it. `tests/Unit/Inventory/CreateHoldSeatsTest.php` (per-type seat
+  UPDATE affected-row-count checks; a mixed GA-plus-seated hold touching
+  both mechanisms atomically; the full `seat_selection_invalid` matrix:
+  missing seats, count mismatch, seats on a GA item, duplicates; the
+  `seat_unavailable` cases: already-held seat naming the exact offender
+  and rolling the counter back, wrong event, unknown id) and feature
+  coverage appended to `tests/Feature/Inventory/HoldEndpointsTest.php`
+  (seated-hold happy path, mixed hold, the `seat_selection_invalid` and
+  `seat_unavailable` matrix through the real endpoint, release and
+  expiry returning seats to `available`) were written and watched fail
+  on the missing seat classes and fields before they existed.
+
+Test evidence (all from `apps/api`):
+
+- `php artisan test --filter="CreateHoldSeatsTest|SeatDoubleBookingContentionTest|HoldEndpointsTest|CreateHoldTest|ReleaseHoldTest|ReleaseExpiredHoldsTest|MaterializeEventSeatsTest|ErrorCodeTest"`:
+  164 passed, 674 assertions.
+- `php artisan test --testsuite=Architecture`: 38 passed, 94 assertions.
+- `php artisan test --testsuite=Unit,Feature,Isolation,Architecture,Concurrency`
+  (combined): 1663 tests, 1662 passed; the one failure
+  (`StaffAuthenticationTest`'s `expires_in` assertion, off by one second)
+  is a pre-existing clock-drift flake unrelated to this task's scope,
+  confirmed green on an isolated rerun.
+- `php artisan test --testsuite=Contract`: 255 passed, 1629 assertions
+  (proves every new and changed OpenAPI schema, including the extended
+  `HoldCreateUnprocessableProblem`/`HoldCreateConflictProblem` oneOf
+  branches and `CreateHoldRequest.seat_ids`, matches the implementation).
+- `composer analyse`: passed (0 errors).
+- `composer lint`: passed.
+- `composer types:generate`: run; `packages/api-client/src/generated/`
+  regenerated.
+
+Deviations from the plan: the endpoint table's `seat_ids` shape is
+stated only loosely ("items as [{ticket_type_id, quantity}], optional
+seat_ids"); this task resolves it as a flat, top-level, request-order
+positional partition across `requires_seat` items rather than a
+per-item nested field, and documents that choice in `CreateHoldData`'s
+own docblock and the OpenAPI description, since no prior stage-06 task
+committed to either shape.

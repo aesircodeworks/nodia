@@ -47,12 +47,15 @@ final readonly class HoldCreated implements DomainEvent
         return $this->payload;
     }
 
-    public static function fromHold(Hold $hold): self
+    /**
+     * @param  list<string>  $seatIds
+     */
+    public static function fromHold(Hold $hold, array $seatIds = []): self
     {
         return new self(
             $hold->tenant_id,
             $hold->id,
-            HoldCreatedPayload::fromHold($hold),
+            HoldCreatedPayload::fromHold($hold, $seatIds),
         );
     }
 }

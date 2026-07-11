@@ -59,9 +59,9 @@ final class ReleaseHold
             return;
         }
 
-        $this->releaseHeldInventory($hold);
+        $seatIds = $this->releaseHeldInventory($hold);
 
-        $this->outbox->record(HoldReleased::fromHold($hold));
+        $this->outbox->record(HoldReleased::fromHold($hold, $seatIds));
     }
 
     /**

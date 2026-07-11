@@ -156,6 +156,8 @@ class ProblemRenderer
             ErrorCode::HoldNotReleasable => 'This hold is committed and cannot be released.',
             ErrorCode::HoldNotExtendable => 'This hold is expired, released, or committed and cannot be extended.',
             ErrorCode::HoldNotCommittable => 'This hold is expired, released, or already committed and cannot be committed.',
+            ErrorCode::SeatSelectionInvalid => 'The seat_ids do not match the requested items: a requires_seat item is missing seats, the seat count does not match its quantity, or seats were given for a GA item.',
+            ErrorCode::SeatUnavailable => 'One or more of the requested seats are held, sold, blocked, or do not belong to the given event and ticket type.',
         };
     }
 }
