@@ -12,9 +12,9 @@
 - [x] 07-01 Error code registry additions plus OrderStatus, TicketStatus, PromoCodeDiscountType enums with unit tests (plan task 1)
 - [x] 07-02 orders and order_items migration with RLS, models, factories, isolation tests (plan task 2)
 - [x] 07-03 ConvertHoldToOrder plus POST /v1/storefront/orders end to end, OrderCreated producer, double-conversion and anonymous-hold attachment races (plan slice 1, task 3)
-- [ ] 07-04 Transition Actions and the state machine table test (plan slice 2, task 4)
-- [ ] 07-05 Buyer cancel endpoint plus hold release wiring (plan task 5)
-- [ ] 07-06 HoldExpired subscriber with the duplicate-delivery test (plan task 6)
+- [x] 07-04 Transition Actions and the state machine table test (plan slice 2, task 4)
+- [x] 07-05 Buyer cancel endpoint plus hold release wiring (plan task 5)
+- [x] 07-06 HoldExpired subscriber with the duplicate-delivery test (plan task 6)
 - [ ] 07-07 Paid path: MarkOrderPaid exactly-once simulation, tickets migration with RLS, IssueTickets, CommitHold wiring, TicketIssued (plan slice 3, task 7)
 - [ ] 07-08 Buyer order status and tickets endpoints with contract coverage (plan task 8)
 - [ ] 07-09 QR codec, key provider, render integration, rotation invalidation tests (plan slice 4, task 9)
@@ -81,3 +81,31 @@ responses, regenerated TS. Deviation: the contract suite's afterEach
 now deletes customers after holds and orders, since conversion
 attaches customers to holds (FK order). Evidence: 19 task tests green,
 Contract suite 274 passed, Architecture 38 passed.
+
+#### Tasks 07-04 to 07-06: state machine, cancel, HoldExpired consumer (2026-07-11)
+
+07-04: five transition Actions (`MarkOrderAwaitingPayment`,
+`MarkOrderPaid` guard-only, `MarkOrderExpired`, `MarkOrderFailed`,
+`CancelOrder`) over a shared `TransitionsOrderStatus` conditional-UPDATE
+concern; the data-driven table test (42 cases, written first and
+failing) proves exactly the five system-design 7.1 arcs succeed, every
+other ordered pair including the refund states raises with zero rows
+affected, and no Action targets a refund state. `MarkOrderExpired`,
+`MarkOrderFailed`, and `CancelOrder` release the hold through
+Inventory's `ReleaseHold` in the same transaction.
+
+07-05: POST /v1/storefront/orders/{order}/cancel with ownership scoping
+(order_not_found for foreign customers), OpenAPI path, contract
+exercisers, and the cancel-versus-awaiting-payment race (exactly one
+winner; hold released only on the cancel outcome). Two fixes surfaced
+by the tests: laravel-data renders POST responses as 201, so cancel
+returns an explicit 200 JsonResponse, and the customer guard caches the
+first bearer within a test, so multi-identity tests call
+Auth::forgetGuards() (CustomerAuthenticationTest precedent).
+
+07-06: `CancelOrderOnHoldExpired` subscriber registered for HoldExpired
+(one conditional UPDATE pending-to-canceled by hold_id; zero rows is
+success). Feature coverage: cancellation on delivery, exactly one
+effect under duplicate delivery of the same event id, awaiting_payment
+untouched. Evidence: state table 42 passed, cancel spread 15 passed,
+consumer 4 passed, Architecture 38, Contract 278.
