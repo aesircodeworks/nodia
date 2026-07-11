@@ -147,6 +147,7 @@ class ProblemRenderer
             ErrorCode::CatalogSeatMapVenueMismatch => "The seat map does not exist or does not belong to the event's venue.",
             ErrorCode::CatalogSeatMapVirtualEvent => 'A virtual event cannot have a seat_map_id.',
             ErrorCode::CatalogSeatMapInUse => 'This seat map is referenced by at least one event and cannot be deleted.',
+            ErrorCode::InsufficientInventory => 'There is not enough inventory available for this ticket type.',
         };
     }
 }

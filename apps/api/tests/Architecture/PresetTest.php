@@ -52,6 +52,7 @@ use App\Identity\IdentityServiceProvider;
 use App\Identity\Mail\CustomerClaimMail;
 use App\Identity\Mail\PasswordResetMail;
 use App\Identity\Mail\StaffInvitationMail;
+use App\Inventory\Exceptions\InsufficientInventoryException;
 use App\Support\Media\Exceptions\MediaNotFoundException;
 use App\Support\Money\CurrencyMismatchException;
 use App\Support\Outbox\Enums\OutboxDeliveryStatus;
@@ -130,6 +131,12 @@ arch()->preset()->security();
 // DELETE /v1/media/{media} route (App\Http\Controllers\MediaController),
 // so it lives under App\Support\Media\Exceptions rather than any one
 // bounded context's own Exceptions directory.
+// App\Inventory\Models\TicketTypeInventory (stage-06 task-02) lives with
+// its own bounded context like every other context's Models directory
+// already ignored above, not App\Models.
+// InsufficientInventoryException (stage-06 task-02) lives in
+// App\Inventory\Exceptions like every other HasErrorCode exception in
+// this codebase, not App\Exceptions.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -195,6 +202,7 @@ arch()->preset()->laravel()->ignoring([
     SeatMapVenueMismatchException::class,
     SeatMapVirtualEventException::class,
     SeatMapInUseException::class,
+    InsufficientInventoryException::class,
     MissingTenantHeaderException::class,
     InvalidTenantHeaderException::class,
     TenantAccessDeniedException::class,
@@ -208,6 +216,7 @@ arch()->preset()->laravel()->ignoring([
     'App\Identity\Http\Controllers',
     'App\EventCatalog\Models',
     'App\EventCatalog\Http\Controllers',
+    'App\Inventory\Models',
     'App\Support\Audit\Models',
     'App\Support\Outbox\Models',
     'App\Support\Media\Models',
