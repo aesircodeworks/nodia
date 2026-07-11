@@ -19,7 +19,7 @@ Update this table when a stage starts and when it merges.
 | Stage 5a: Catalog Core and Publish | Done |
 | Stage 5b: Seating Templates | Done |
 | Stage 5c: Search and Media | Done |
-| Stage 6: Inventory and Reserved Seating | In progress |
+| Stage 6: Inventory and Reserved Seating | Done |
 | Stage 7: Orders, Tickets, Promo Codes | Not started |
 | Stage 8a: Payments and Webhooks | Not started |
 | Stage 8b: Ledger and Refunds | Not started |

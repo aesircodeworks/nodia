@@ -70,6 +70,8 @@ test('the registry holds exactly the known codes', function () {
         'hold_not_committable',
         'seat_selection_invalid',
         'seat_unavailable',
+        'event_not_seated',
+        'seat_not_modifiable',
     ]);
 });
 
@@ -144,6 +146,8 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'hold_not_committable' => [ErrorCode::HoldNotCommittable, 409, 'Hold not committable', '/problems/hold-not-committable'],
     'seat_selection_invalid' => [ErrorCode::SeatSelectionInvalid, 422, 'Seat selection invalid', '/problems/seat-selection-invalid'],
     'seat_unavailable' => [ErrorCode::SeatUnavailable, 409, 'Seat unavailable', '/problems/seat-unavailable'],
+    'event_not_seated' => [ErrorCode::EventNotSeated, 409, 'Event not seated', '/problems/event-not-seated'],
+    'seat_not_modifiable' => [ErrorCode::SeatNotModifiable, 409, 'Seat not modifiable', '/problems/seat-not-modifiable'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

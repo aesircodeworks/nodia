@@ -158,6 +158,8 @@ class ProblemRenderer
             ErrorCode::HoldNotCommittable => 'This hold is expired, released, or already committed and cannot be committed.',
             ErrorCode::SeatSelectionInvalid => 'The seat_ids do not match the requested items: a requires_seat item is missing seats, the seat count does not match its quantity, or seats were given for a GA item.',
             ErrorCode::SeatUnavailable => 'One or more of the requested seats are held, sold, blocked, or do not belong to the given event and ticket type.',
+            ErrorCode::EventNotSeated => 'This event has no seat map; there is no seat inventory to read.',
+            ErrorCode::SeatNotModifiable => 'One or more of the requested seats could not be transitioned by this operation.',
         };
     }
 }

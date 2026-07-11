@@ -11,15 +11,15 @@
 
 - [x] 06-01 Counters: ticket_type_inventory migration, model, InitializeTicketTypeInventory and AdjustInventoryQuantity Actions, isolation probe (plan slice 1, task 2)
 - [x] 06-02 Catalog quantity contract: additive quantity on ticket type Data objects, delegation to Inventory Actions, requires_seat rejection (plan task 3)
-- [ ] 06-03 GA hold creation: holds and hold_items migrations, HoldStatus, CreateHold, HoldCreated, POST and GET endpoints, GA oversell simulation green (plan slice 2, task 4)
-- [ ] 06-04 Release and expiry: ReleaseHold, DELETE endpoint, HoldReleased, ReleaseExpiredHolds sweeper, HoldExpired, expiry recovery simulation green (plan slice 3, tasks 5 and 6)
-- [ ] 06-05 Availability reads: storefront availability endpoint and admin inventory read with contracts (plan slice 3, task 7)
+- [x] 06-03 GA hold creation: holds and hold_items migrations, HoldStatus, CreateHold, HoldCreated, POST and GET endpoints, GA oversell simulation green (plan slice 2, task 4)
+- [x] 06-04 Release and expiry: ReleaseHold, DELETE endpoint, HoldReleased, ReleaseExpiredHolds sweeper, HoldExpired, expiry recovery simulation green (plan slice 3, tasks 5 and 6)
+- [x] 06-05 Availability reads: storefront availability endpoint and admin inventory read with contracts (plan slice 3, task 7)
 - [x] 06-06 ExtendHold and CommitHold internal Actions with commit-versus-expiry race (plan slice 4, task 8)
-- [ ] 06-07 Seat materialization on publish: event_seats migration, MaterializeEventSeats, requires_seat publish validation, seat_map_in_use extension (plan slice 5, task 9)
+- [x] 06-07 Seat materialization on publish: event_seats migration, MaterializeEventSeats, requires_seat publish validation, seat_map_in_use extension (plan slice 5, task 9)
 - [x] 06-08 Seated holds through CreateHold, ReleaseHold, CommitHold, sweeper; double-booking simulation green (plan slice 6, task 10)
-- [ ] 06-09 events.manage_seating capability registry addition and role wiring (plan task 10a)
-- [ ] 06-10 Seat management and read surfaces: storefront seats, admin seats list, admin PATCH, contracts (plan slice 7, task 11)
-- [ ] 06-11 Exit sweep: status table flip to done, OpenAPI consolidation check, full gate run (plan task 12, exit criteria)
+- [x] 06-09 events.manage_seating capability registry addition and role wiring (plan task 10a)
+- [x] 06-10 Seat management and read surfaces: storefront seats, admin seats list, admin PATCH, contracts (plan slice 7, task 11)
+- [x] 06-11 Exit sweep: status table flip to done, OpenAPI consolidation check, full gate run (plan task 12, exit criteria)
 
 ### Review rounds
 
@@ -970,3 +970,64 @@ the endpoint table states only loosely, following the precedent task
    `additionalProperties`/`unevaluatedProperties: false`, which a
    top-level `type: array` schema cannot express, so a bare-array
    response would be permanently unable to satisfy that gate.
+
+#### Task 06-11: Exit sweep and status flip (2026-07-11)
+
+Verified every exit criterion (plan task 12, exit criteria 1-13) against
+the tree as landed by tasks 06-01 through 06-10; no new production code
+was needed beyond committing two files that task 06-10 had left
+unstaged (`ProblemRenderer::detailFor` and `ErrorCodeTest`'s
+`event_not_seated`/`seat_not_modifiable` cases, both already exercised
+by `EventSeatEndpointsTest` and `ErrorCodeTest` but only present in the
+working tree, not in commit 96a959e). Flipped the Stage 6 row in
+`docs/api-implementation-plan.md`'s status table to Done. Confirmed the
+OpenAPI document is a single merged file with no external `$ref`s
+(`grep -c '\$ref.*\.yaml' docs/openapi/openapi.yaml` is 0) and that its
+structural validity and route/response coverage are already asserted
+by `tests/Contract/OpenApiDocumentValidityTest.php`,
+`DocumentedResponseCoverageTest.php`, and `RouteSpecDriftTest.php`,
+which ran clean as part of the Contract suite below; no separate
+consolidation tool exists in this repo, so the check is this suite plus
+the `$ref` grep.
+
+Test evidence (all from `apps/api`):
+
+- `composer lint`: Pint, passed, 0 issues.
+- `composer analyse`: Larastan, passed, 0 errors.
+- `composer test` (all six suites: Unit, Feature, Isolation,
+  Concurrency, Architecture, Contract): 1961 passed, 7788 assertions.
+- `php artisan test --testsuite=Concurrency`: 25 passed, 127 assertions
+  (GA oversell at every configured parallelism/oversubscription level,
+  seat double-booking, commit-versus-expiry race, all green; exit
+  criteria 1-3).
+- `php artisan test --testsuite=Isolation`: 208 passed, 445 assertions
+  (cross-tenant probes for `ticket_type_inventory`, `holds`,
+  `hold_items`, and `event_seats` all present and green; exit
+  criterion 8).
+- `php artisan test --testsuite=Architecture`: 38 passed, 94 assertions
+  (Inventory imports no other context's models, Catalog reaches
+  Inventory only through Actions; exit criterion 9).
+- `composer types:generate`: run; `git status` on
+  `packages/api-client/src/generated/` is clean, confirming no drift
+  (exit criterion 12's TypeScript gate).
+
+Exit criteria 4-7, 10, and 11 (expiry recovery exactness, conversion-time
+and extension guards, failure-mode/code coverage via the Contract
+suite, outbox recording proofs, and seat materialization/zoning
+correctness) are covered by the feature and unit tests landed in tasks
+06-03 through 06-10 and re-verified green by this run's full `composer
+test` pass; no gaps found.
+
+Commit: 96a959e (task 06-10, prior) plus this task's own commit
+completing the exit sweep (status flip, journal, and the two files
+task 06-10 left uncommitted). No production behavior changed beyond
+committing the already-implemented and already-tested
+`ErrorCode::EventNotSeated`/`SeatNotModifiable` problem-detail wiring.
+
+Deviation: none from the plan's method. The one deviation from a clean
+handoff is procedural, not substantive: task 06-10's commit omitted two
+files it had already written and tested; this task committed them
+rather than re-doing the work, since the tests that depend on them were
+already green in the working tree and the omission would otherwise
+regress `composer test` for anyone starting from a clean checkout of
+commit 96a959e.
