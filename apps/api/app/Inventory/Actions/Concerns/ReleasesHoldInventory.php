@@ -52,7 +52,7 @@ trait ReleasesHoldInventory
             ->all();
 
         if ($seatIds !== []) {
-            EventSeat::query()
+            $affected = EventSeat::query()
                 ->whereIn('id', $seatIds)
                 ->where('hold_id', $hold->id)
                 ->where('status', EventSeatStatus::Held->value)
@@ -61,6 +61,14 @@ trait ReleasesHoldInventory
                     'hold_id' => null,
                     'updated_at' => Date::now(),
                 ]);
+
+            // The conditional flip must move exactly the seats just selected;
+            // a lower count means a held seat slipped out from under this hold
+            // and the reconciliation is no longer sound (master plan test-first
+            // rule 2: conditional UPDATEs are checked by affected-row count).
+            if ($affected !== count($seatIds)) {
+                throw HoldInventoryReleaseFailedException::forSeats($hold->id, count($seatIds), $affected);
+            }
         }
 
         return $seatIds;

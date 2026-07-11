@@ -76,7 +76,7 @@ final class CommitHold
             ->all();
 
         if ($seatIds !== []) {
-            EventSeat::query()
+            $affected = EventSeat::query()
                 ->whereIn('id', $seatIds)
                 ->where('hold_id', $hold->id)
                 ->where('status', EventSeatStatus::Held->value)
@@ -84,6 +84,15 @@ final class CommitHold
                     'status' => EventSeatStatus::Sold->value,
                     'updated_at' => Date::now(),
                 ]);
+
+            // The held -> sold flip must move exactly the seats just selected;
+            // a lower count means a held seat slipped out from under this hold,
+            // so the commit rolls back rather than sell fewer seats than the
+            // hold covered (master plan test-first rule 2: conditional UPDATEs
+            // are checked by affected-row count).
+            if ($affected !== count($seatIds)) {
+                throw HoldNotCommittableException::forId($hold->id);
+            }
         }
 
         return $seatIds;

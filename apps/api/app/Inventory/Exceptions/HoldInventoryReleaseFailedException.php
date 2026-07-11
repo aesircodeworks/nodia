@@ -27,6 +27,16 @@ final class HoldInventoryReleaseFailedException extends RuntimeException impleme
         ));
     }
 
+    public static function forSeats(string $holdId, int $expected, int $affected): self
+    {
+        return new self(sprintf(
+            'Could not return %d held seats for hold "%s" to available: only %d rows matched the held guard.',
+            $expected,
+            $holdId,
+            $affected,
+        ));
+    }
+
     public function errorCode(): ErrorCode
     {
         return ErrorCode::ServerInternalError;
