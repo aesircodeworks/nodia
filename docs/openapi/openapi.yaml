@@ -4529,7 +4529,9 @@ components:
         surface). name and description are single strings resolved in the
         negotiated locale carried by locale; ticket_types is always
         embedded. Internal state (status, async_payment_policy) is never
-        exposed.
+        exposed. cover_image and gallery (stage-05c plan, Endpoints:
+        "Storefront media exposure") are additive: cover_image is null and
+        gallery is an empty array for an event with no attached media.
       required:
         - id
         - name
@@ -4541,6 +4543,8 @@ components:
         - is_virtual
         - virtual_event_url
         - ticket_types
+        - cover_image
+        - gallery
       properties:
         id:
           type: string
@@ -4569,6 +4573,14 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/StorefrontTicketType'
+        cover_image:
+          oneOf:
+            - $ref: '#/components/schemas/MediaImage'
+            - type: 'null'
+        gallery:
+          type: array
+          items:
+            $ref: '#/components/schemas/MediaImage'
       additionalProperties: false
     StorefrontEventPage:
       type: object
@@ -5660,6 +5672,31 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Media'
+      additionalProperties: false
+    MediaImage:
+      type: object
+      description: >-
+        Storefront-facing image shape (stage-05c plan, Endpoints:
+        "Storefront media exposure"), additive on StorefrontEvent's
+        cover_image and gallery fields. Narrower than the admin Media
+        schema: no collection, file_name, mime_type, size, order, or
+        created_at, since the storefront never needs those.
+      required:
+        - id
+        - url
+        - conversions
+        - alt_text
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+        conversions:
+          $ref: '#/components/schemas/MediaConversions'
+        alt_text:
+          type: [string, 'null']
       additionalProperties: false
     EventMediaUploadRequest:
       type: object

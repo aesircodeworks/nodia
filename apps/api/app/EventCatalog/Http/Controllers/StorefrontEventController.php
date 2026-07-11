@@ -39,7 +39,7 @@ class StorefrontEventController
 
         $events = Event::query()
             ->where('status', EventStatus::Published)
-            ->with('ticketTypes')
+            ->with(['ticketTypes', 'media'])
             ->orderBy('start_at')
             ->paginate()
             ->appends($request->query());
@@ -60,7 +60,7 @@ class StorefrontEventController
         $model = Event::query()
             ->where('status', EventStatus::Published)
             ->whereKey($event)
-            ->with('ticketTypes')
+            ->with(['ticketTypes', 'media'])
             ->first() ?? throw EventNotFoundException::forId($event);
 
         $data = StorefrontEventData::fromModel($model, $locale, $settings->defaultLocale);

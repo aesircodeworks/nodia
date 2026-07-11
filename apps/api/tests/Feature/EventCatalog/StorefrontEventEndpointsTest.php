@@ -7,8 +7,13 @@ use App\Support\Money\Money;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Spatie\MediaLibrary\Conversions\Jobs\PerformConversionsJob;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Tests\Support\MigratedDatabase;
 use Tests\Support\PostgresTestDatabase;
 
@@ -44,6 +49,7 @@ afterEach(function (): void {
         app(TenantTransaction::class)->asTenant($tenantId, function () use ($tenantId): void {
             DB::table('outbox_deliveries')->where('tenant_id', $tenantId)->delete();
             DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
+            DB::table('media')->where('tenant_id', $tenantId)->delete();
             DB::table('ticket_types')->where('tenant_id', $tenantId)->delete();
             DB::table('events')->where('tenant_id', $tenantId)->delete();
             DB::table('venues')->where('tenant_id', $tenantId)->delete();
@@ -75,6 +81,19 @@ function storefrontTicketType(string $tenantId, string $eventId, array $attribut
     return app(TenantTransaction::class)->asTenant(
         $tenantId,
         fn () => TicketType::factory()->create(['tenant_id' => $tenantId, 'event_id' => $eventId, ...$attributes]),
+    );
+}
+
+/**
+ * @param  array<string, string>  $customProperties
+ */
+function attachEventMedia(string $tenantId, Event $event, string $collection, string $fileName = 'image.jpg', array $customProperties = []): Media
+{
+    return app(TenantTransaction::class)->asTenant(
+        $tenantId,
+        fn () => $event->addMedia(UploadedFile::fake()->image($fileName, 2000, 1000))
+            ->withCustomProperties($customProperties)
+            ->toMediaCollection($collection),
     );
 }
 
@@ -186,6 +205,83 @@ describe('GET /v1/storefront/events/{event}', function () {
 
     it('returns request.not_found for an unknown event id', function () {
         $this->getJson('http://'.$this->host.'/v1/storefront/events/'.Str::uuid7()->toString())
+            ->assertNotFound()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.not_found');
+    });
+});
+
+/*
+ * Stage-05c plan, task breakdown item 4 (TDD slice 3): the Stage 5a
+ * storefront event Data objects gain additive cover_image and gallery
+ * fields, sourced from the same medialibrary media stage-05c tasks 1
+ * through 3 already attach to Event. No new endpoint, no new response
+ * class; conversion URLs are null until the queued job runs, exactly like
+ * the admin MediaData shape.
+ */
+describe('storefront media exposure', function () {
+    beforeEach(function (): void {
+        Storage::fake('media');
+        Queue::fake();
+    });
+
+    it('includes cover_image and gallery on the list with conversion urls null before the queued conversion runs', function () {
+        $event = storefrontEvent($this->tenantId, ['status' => EventStatus::Published]);
+        $cover = attachEventMedia($this->tenantId, $event, 'cover', 'cover.jpg', ['alt_text' => 'Crowd cheering']);
+        $galleryOne = attachEventMedia($this->tenantId, $event, 'gallery', 'gallery-one.jpg');
+        $galleryTwo = attachEventMedia($this->tenantId, $event, 'gallery', 'gallery-two.jpg');
+
+        $response = $this->getJson('http://'.$this->host.'/v1/storefront/events')
+            ->assertOk()
+            ->assertConformsToOpenApi();
+
+        expect($response->json('data.0.cover_image.id'))->toBe($cover->id)
+            ->and($response->json('data.0.cover_image.alt_text'))->toBe('Crowd cheering')
+            ->and($response->json('data.0.cover_image.conversions'))->toBe(['thumb' => null, 'card' => null, 'hero' => null])
+            ->and($response->json('data.0.gallery.0.id'))->toBe($galleryOne->id)
+            ->and($response->json('data.0.gallery.1.id'))->toBe($galleryTwo->id);
+    });
+
+    it('includes cover_image and gallery on the detail with conversion urls populated after the queued conversion runs', function () {
+        $event = storefrontEvent($this->tenantId, ['status' => EventStatus::Published]);
+        attachEventMedia($this->tenantId, $event, 'cover', 'cover.jpg');
+
+        $before = $this->getJson('http://'.$this->host.'/v1/storefront/events/'.$event->id)
+            ->assertOk()
+            ->assertConformsToOpenApi()
+            ->json('cover_image.conversions');
+
+        expect($before)->toBe(['thumb' => null, 'card' => null, 'hero' => null]);
+
+        $job = Queue::pushed(PerformConversionsJob::class)->sole();
+
+        app(TenantTransaction::class)->asTenant($this->tenantId, fn () => app()->call([$job, 'handle']));
+
+        $after = $this->getJson('http://'.$this->host.'/v1/storefront/events/'.$event->id)
+            ->assertOk()
+            ->json('cover_image.conversions');
+
+        expect($after['thumb'])->toBeString()->not->toBeEmpty()
+            ->and($after['card'])->toBeString()->not->toBeEmpty()
+            ->and($after['hero'])->toBeString()->not->toBeEmpty();
+    });
+
+    it('returns cover_image null and an empty gallery for an event without media', function () {
+        storefrontEvent($this->tenantId, ['status' => EventStatus::Published]);
+
+        $response = $this->getJson('http://'.$this->host.'/v1/storefront/events')
+            ->assertOk()
+            ->assertConformsToOpenApi();
+
+        expect($response->json('data.0.cover_image'))->toBeNull()
+            ->and($response->json('data.0.gallery'))->toBe([]);
+    });
+
+    it('still returns request.not_found for a draft event with media attached', function () {
+        $event = storefrontEvent($this->tenantId, ['status' => EventStatus::Draft]);
+        attachEventMedia($this->tenantId, $event, 'cover', 'cover.jpg');
+
+        $this->getJson('http://'.$this->host.'/v1/storefront/events/'.$event->id)
             ->assertNotFound()
             ->assertConformsToOpenApi()
             ->assertJsonPath('code', 'request.not_found');

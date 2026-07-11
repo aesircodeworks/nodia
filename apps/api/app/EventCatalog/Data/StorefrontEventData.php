@@ -3,6 +3,7 @@
 namespace App\EventCatalog\Data;
 
 use App\EventCatalog\Models\Event;
+use App\Support\Media\Data\MediaImageData;
 use Carbon\CarbonImmutable;
 use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Attributes\MapName;
@@ -18,12 +19,18 @@ use Spatie\LaravelData\Mappers\SnakeCaseMapper;
  * result, and ticket_types is always embedded. Raw internal state (status,
  * async_payment_policy) is deliberately absent: the storefront exposes only
  * the published surface.
+ *
+ * cover_image and gallery (stage-05c plan, Endpoints: "Storefront media
+ * exposure") are additive: cover_image is null and gallery is an empty
+ * array for an event with no attached media, so the OpenAPI change stays
+ * non-breaking.
  */
 #[MapName(SnakeCaseMapper::class)]
 class StorefrontEventData extends Data
 {
     /**
      * @param  DataCollection<int, StorefrontTicketTypeData>  $ticketTypes
+     * @param  DataCollection<int, MediaImageData>  $gallery
      */
     public function __construct(
         public string $id,
@@ -37,10 +44,15 @@ class StorefrontEventData extends Data
         public ?string $virtualEventUrl,
         #[DataCollectionOf(StorefrontTicketTypeData::class)]
         public DataCollection $ticketTypes,
+        public ?MediaImageData $coverImage,
+        #[DataCollectionOf(MediaImageData::class)]
+        public DataCollection $gallery,
     ) {}
 
     public static function fromModel(Event $event, string $locale, string $defaultLocale): self
     {
+        $cover = $event->getFirstMedia('cover');
+
         return new self(
             $event->id,
             self::translate($event, 'name', $locale, $defaultLocale),
@@ -52,6 +64,8 @@ class StorefrontEventData extends Data
             $event->is_virtual,
             $event->virtual_event_url,
             StorefrontTicketTypeData::collect($event->ticketTypes, DataCollection::class),
+            $cover !== null ? MediaImageData::fromModel($cover) : null,
+            MediaImageData::collect($event->getMedia('gallery'), DataCollection::class),
         );
     }
 

@@ -274,6 +274,12 @@ export type MediaData = {
   order: number;
   created_at: string;
 };
+export type MediaImageData = {
+  id: string;
+  url: string;
+  conversions: MediaConversionsData;
+  alt_text: string | null;
+};
 export type MembershipData = {
   id: string;
   user_id: string;
@@ -377,6 +383,8 @@ export type StorefrontEventData = {
   is_virtual: boolean;
   virtual_event_url: string | null;
   ticket_types: StorefrontTicketTypeData[];
+  cover_image: MediaImageData | null;
+  gallery: MediaImageData[];
 };
 export type StorefrontTicketTypeData = {
   id: string;
