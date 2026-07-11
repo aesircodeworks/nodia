@@ -56,4 +56,17 @@ return [
 
     'gateway_retry_after_seconds' => (int) env('PAYMENTS_GATEWAY_RETRY_AFTER_SECONDS', 30),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Reconciliation Grace Period
+    |--------------------------------------------------------------------------
+    |
+    | The poller only queries the gateway for initiated payments older
+    | than this many seconds (system-design 13): younger ones are still
+    | expected to resolve through their webhook.
+    |
+    */
+
+    'reconcile_grace_seconds' => (int) env('PAYMENTS_RECONCILE_GRACE_SECONDS', 300),
+
 ];

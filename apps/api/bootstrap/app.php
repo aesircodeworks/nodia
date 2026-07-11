@@ -26,6 +26,12 @@ return Application::configure(basePath: dirname(__DIR__))
         // Stage-06 plan, Slice 3, task breakdown item 6: expire active
         // holds past their expires_at every minute.
         $schedule->command('holds:release-expired')->everyMinute();
+
+        // Stage-08a plan, Slice 7: expire initiated payments past their
+        // confirmation window every minute; poll the gateway for missed
+        // webhooks every 5 minutes (system-design 13).
+        $schedule->command('payments:expire')->everyMinute();
+        $schedule->command('payments:reconcile')->everyFiveMinutes();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

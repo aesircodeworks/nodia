@@ -34,6 +34,7 @@ class PaymentsServiceProvider extends ServiceProvider
         $registry->register('PaymentInitiated');
         $registry->register('PaymentConfirmed');
         $registry->register('PaymentFailed');
+        $registry->register('PaymentExpired');
 
         Route::middleware('tenancy.storefront')
             ->prefix('v1')

@@ -3,7 +3,9 @@
 namespace App\Payments\Actions;
 
 use App\Payments\Enums\PaymentStatus;
+use App\Payments\Events\PaymentExpired;
 use App\Payments\Models\Payment;
+use App\Support\Outbox\OutboxRecorder;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 
@@ -15,6 +17,10 @@ use Illuminate\Support\Facades\DB;
  */
 final class ExpirePayment
 {
+    public function __construct(
+        private readonly OutboxRecorder $outbox,
+    ) {}
+
     public function __invoke(string $paymentId): ?Payment
     {
         $affected = DB::table('payments')
@@ -27,6 +33,14 @@ final class ExpirePayment
                 'updated_at' => Date::now(),
             ]);
 
-        return $affected === 1 ? Payment::query()->findOrFail($paymentId) : null;
+        if ($affected !== 1) {
+            return null;
+        }
+
+        $payment = Payment::query()->findOrFail($paymentId);
+
+        $this->outbox->record(PaymentExpired::fromPayment($payment));
+
+        return $payment;
     }
 }
