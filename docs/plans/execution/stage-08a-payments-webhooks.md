@@ -98,6 +98,11 @@ No push yet; push and CI verification happen once after the review loop.
 3. Important, SendOrderConfirmation lacks the plan's 5-attempt linear 1-minute retry budget: fixed, upgrading the earlier recorded deviation. config/outbox.php gained subscriber_retries; ProcessOutboxDelivery applies a per-subscriber tries/backoff override at dispatch; unit test asserts 5/60 for send_order_confirmation and outbox defaults elsewhere.
 4. Minor, PDF text-extraction spot-check absent: already journaled as a deliberate deviation (magic bytes, mime, size asserted instead); no change.
 
+#### Round 2 (2026-07-11 19:14 -03, codex): needs-fixes, 0 blocking, 2 important, 0 minor
+
+1. Important, FakeGateway.php normalizeWebhook, "webhook fee parsing violates integer/currency money invariants (casts arbitrary JSON to int, defaults currency to BRL; a mismatched fee currency gets relabeled with the payment currency by ConfirmPayment)": fixed. normalizeWebhook now refuses non-integer fee amounts and missing or invalid currencies (returns null, routing to the ignored path), and ProcessGatewayWebhook ignores a confirmation whose fee currency differs from the payment currency instead of persisting a relabeled amount. Tests written first and observed failing: FakeGatewayTest fee-validation matrix, WebhookProcessingTest currency-mismatch ignored path.
+2. Important, OrderConfirmationMail.php:42, "confirmation email divides minor units by 100 in floating point": fixed with pure integer formatting (intdiv plus two-digit remainder). New OrderConfirmationMailTest proves a 2^53+1 minor-unit total formats exactly where the float path lost the last digit, observed failing first (rendered .92 instead of .93).
+
 ### Decisions and deviations
 
 - payments carries a nullable next_action jsonb column beyond the plan's column list: the plan requires replays and GET /v1/storefront/payments/{payment} to re-serve next_action byte-identically, and deriving it from the adapter on read would couple reads to gateway determinism. Added while the creating migration is still unmerged on this branch, so no merged migration was edited.
