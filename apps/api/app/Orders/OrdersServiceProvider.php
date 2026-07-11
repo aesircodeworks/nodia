@@ -3,6 +3,8 @@
 namespace App\Orders;
 
 use App\Orders\Jobs\CancelOrderOnHoldExpired;
+use App\Orders\Support\DerivedTicketSigningKeyProvider;
+use App\Orders\Support\TicketSigningKeyProvider;
 use App\Support\Outbox\EventTypeRegistry;
 use App\Support\Outbox\SubscriberRegistry;
 use Illuminate\Support\Facades\Route;
@@ -17,6 +19,11 @@ use Illuminate\Support\ServiceProvider;
  */
 class OrdersServiceProvider extends ServiceProvider
 {
+    public function register(): void
+    {
+        $this->app->bind(TicketSigningKeyProvider::class, DerivedTicketSigningKeyProvider::class);
+    }
+
     public function boot(EventTypeRegistry $registry, SubscriberRegistry $subscribers): void
     {
         $registry->register('OrderCreated');
