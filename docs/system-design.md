@@ -238,7 +238,7 @@ graph TD
 
 ### 4.3 Cross-Tenant Operations
 
-Platform administration (support, billing, aggregate analytics) uses a separate database role for which RLS policies allow cross-tenant reads. This role is only assumable by platform-scope staff, and every use is recorded in the activity log.
+Platform administration (support, billing, aggregate analytics) uses a separate database role for which RLS policies allow cross-tenant reads. This role is only assumable by platform-scope staff, and every use is recorded in the activity log. One sanctioned system use exists beyond staff: webhook processing assumes this role to resolve the target tenant from an unauthenticated gateway callback (section 7.4), and every such use is activity-logged like any staff use.
 
 ## 5. Identity Model
 
