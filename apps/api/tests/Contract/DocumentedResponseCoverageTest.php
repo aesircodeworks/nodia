@@ -79,13 +79,11 @@ afterEach(function (): void {
             DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
             DB::table('memberships')->where('tenant_id', $tenantId)->delete();
 
-            // The customer token/registration/claim exercisers (task
-            // breakdown item 13) create customers rows scoped to a fresh
-            // contractCustomerTenant() each; customers carries no
-            // platform write policy either, the same reason memberships
-            // needs this per-tenant nodia_app delete above rather than a
-            // blanket nodia_platform one.
-            DB::table('customers')->where('tenant_id', $tenantId)->delete();
+            // The order exercisers (stage-07 plan, task breakdown item 3)
+            // write orders and order_items referencing customers, events,
+            // ticket_types, and holds with no cascade, so they go first.
+            DB::table('order_items')->where('tenant_id', $tenantId)->delete();
+            DB::table('orders')->where('tenant_id', $tenantId)->delete();
 
             // contractEventCoverMedia()'s exercisers (stage-05c plan, task
             // breakdown item 2) write media rows scoped to a fresh event
@@ -102,6 +100,15 @@ afterEach(function (): void {
             // them with no cascade.
             DB::table('hold_items')->where('tenant_id', $tenantId)->delete();
             DB::table('holds')->where('tenant_id', $tenantId)->delete();
+
+            // The customer token/registration/claim exercisers (task
+            // breakdown item 13) create customers rows scoped to a fresh
+            // contractCustomerTenant() each; customers carries no
+            // platform write policy either, the same reason memberships
+            // needs this per-tenant nodia_app delete above rather than a
+            // blanket nodia_platform one. Deleted after holds and orders:
+            // the stage-07 conversion exercisers attach customers to both.
+            DB::table('customers')->where('tenant_id', $tenantId)->delete();
 
             // contractSeatedEvent()'s exercisers (stage-06 plan, task
             // breakdown item 11) materialize event_seats scoped to a fresh
@@ -2838,7 +2845,79 @@ function documentedResponseExercisers(): array
 
             return test()->deleteJson('http://'.$host.'/v1/storefront/holds/'.$created['id']);
         },
+        // Stage-07 plan, task breakdown item 3: the storefront order
+        // conversion surface. Every case authenticates as a customer over
+        // the Host-resolved endpoint; only the 401 goes without a bearer.
+        'post /v1/storefront/orders 201' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            ['event' => $event, 'ticketType' => $ticketType] = contractHoldFixture($tenant);
+            $token = contractOrderCustomerBearer($tenant, $host);
+
+            return test()->postJson('http://'.$host.'/v1/storefront/orders', [
+                'hold_id' => contractOrderHold($host, $event->id, $ticketType->id),
+            ], ['Authorization' => 'Bearer '.$token]);
+        },
+        'post /v1/storefront/orders 401' => function (): TestResponse {
+            ['host' => $host] = contractHoldTenant();
+
+            return test()->postJson('http://'.$host.'/v1/storefront/orders', [
+                'hold_id' => (string) Str::uuid7(),
+            ]);
+        },
+        'post /v1/storefront/orders 404' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            $token = contractOrderCustomerBearer($tenant, $host);
+
+            return test()->postJson('http://'.$host.'/v1/storefront/orders', [
+                'hold_id' => (string) Str::uuid7(),
+            ], ['Authorization' => 'Bearer '.$token]);
+        },
+        'post /v1/storefront/orders 409' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            ['event' => $event, 'ticketType' => $ticketType] = contractHoldFixture($tenant);
+            $token = contractOrderCustomerBearer($tenant, $host);
+            $holdId = contractOrderHold($host, $event->id, $ticketType->id);
+
+            test()->postJson('http://'.$host.'/v1/storefront/orders', [
+                'hold_id' => $holdId,
+            ], ['Authorization' => 'Bearer '.$token]);
+
+            return test()->postJson('http://'.$host.'/v1/storefront/orders', [
+                'hold_id' => $holdId,
+            ], ['Authorization' => 'Bearer '.$token]);
+        },
+        'post /v1/storefront/orders 422' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            $token = contractOrderCustomerBearer($tenant, $host);
+
+            return test()->postJson('http://'.$host.'/v1/storefront/orders', [], [
+                'Authorization' => 'Bearer '.$token,
+            ]);
+        },
     ];
+}
+
+/**
+ * A fresh customer for the given contractHoldTenant(), authenticated
+ * over the Host-resolved token endpoint (stage-07 plan, Endpoints:
+ * buyer routes require a customer bearer token).
+ */
+function contractOrderCustomerBearer(Tenant $tenant, string $host): string
+{
+    contractCustomer($tenant, ['email' => 'contract-order-buyer@example.com', 'password' => 'password']);
+
+    return test()->postJson('http://'.$host.'/v1/auth/customer/token', [
+        'email' => 'contract-order-buyer@example.com',
+        'password' => 'password',
+    ])->json('access_token');
+}
+
+function contractOrderHold(string $host, string $eventId, string $ticketTypeId): string
+{
+    return test()->postJson('http://'.$host.'/v1/storefront/holds', [
+        'event_id' => $eventId,
+        'items' => [['ticket_type_id' => $ticketTypeId, 'quantity' => 1]],
+    ])->json('id');
 }
 
 /**

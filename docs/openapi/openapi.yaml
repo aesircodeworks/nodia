@@ -3806,6 +3806,66 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/HoldNotReleasableProblem'
+  /v1/storefront/orders:
+    post:
+      operationId: createOrder
+      summary: Convert a hold into a pending order
+      description: >-
+        Storefront surface, customer bearer token required (stage-07
+        plan, Endpoints "Buyer-facing"): every order has a customer from
+        creation. The hold must be anonymous or already belong to the
+        authenticated customer; conversion attaches the customer to an
+        anonymous hold exactly once. Inventory stays held; nothing
+        commits until the paid transition. attendee_names is keyed by
+        ticket type id, one list of names per line.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: The created order, status pending.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          description: Missing or invalid customer bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '404':
+          description: >-
+            The hold does not exist for this tenant or belongs to a
+            different customer (code hold_not_found; not-found semantics
+            so hold ids never leak ownership).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/OrderHoldNotFoundProblem'
+        '409':
+          description: >-
+            The hold's expires_at has passed regardless of sweeper state
+            (code checkout.hold_expired), or an order already references
+            this hold (code hold_already_converted).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/OrderCreateConflictProblem'
+        '422':
+          description: Request validation failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
 components:
   securitySchemes:
     BearerAuth:
@@ -5067,6 +5127,140 @@ components:
             type: string
             format: uuid
       additionalProperties: false
+    CreateOrderRequest:
+      type: object
+      description: >-
+        POST /v1/storefront/orders request body (stage-07 plan,
+        Endpoints). The authenticated customer comes from the bearer
+        token, never the body. attendee_names is keyed by ticket type
+        id. Slice 5 adds the optional promo_code field.
+      required:
+        - hold_id
+      properties:
+        hold_id:
+          type: string
+          format: uuid
+        attendee_names:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+      additionalProperties: false
+    OrderItem:
+      type: object
+      description: >-
+        One priced line of an order, snapshotted at conversion time
+        (stage-07 plan, Data model "order_items").
+      required:
+        - ticket_type_id
+        - quantity
+        - unit_price
+        - attendee_names
+      properties:
+        ticket_type_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+        unit_price:
+          $ref: '#/components/schemas/Money'
+        attendee_names:
+          type: array
+          items:
+            type: string
+          nullable: true
+      additionalProperties: false
+    Order:
+      type: object
+      description: >-
+        The order wire shape shared by the buyer and staff read surfaces
+        (stage-07 plan, Endpoints). promo_code is the human-facing code
+        string, null when no code was applied; raw promo ids are never
+        exposed.
+      required:
+        - id
+        - status
+        - event_id
+        - items
+        - subtotal
+        - discount
+        - fees
+        - total
+        - promo_code
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - pending
+            - awaiting_payment
+            - paid
+            - expired
+            - failed
+            - canceled
+            - partially_refunded
+            - refunded
+        event_id:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        subtotal:
+          $ref: '#/components/schemas/Money'
+        discount:
+          $ref: '#/components/schemas/Money'
+        fees:
+          $ref: '#/components/schemas/Money'
+        total:
+          $ref: '#/components/schemas/Money'
+        promo_code:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    OrderHoldNotFoundProblem:
+      description: >-
+        Problem document for POST /v1/storefront/orders when the hold
+        does not exist for this tenant or belongs to a different
+        customer (stage-07 plan, Error codes: not-found semantics so
+        hold ids never leak ownership).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [404]
+            code:
+              type: string
+              enum: [hold_not_found]
+      unevaluatedProperties: false
+    OrderCreateConflictProblem:
+      description: >-
+        Problem document for POST /v1/storefront/orders when the hold
+        has expired regardless of sweeper state (code
+        checkout.hold_expired) or an order already references the hold
+        (code hold_already_converted), stage-07 plan Error codes.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [checkout.hold_expired, hold_already_converted]
+      unevaluatedProperties: false
     TicketTypeAvailability:
       type: object
       description: >-

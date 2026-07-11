@@ -67,6 +67,10 @@ export type CreateHoldData = {
   items: HoldItemInputData[];
   seat_ids?: string[];
 };
+export type CreateOrderData = {
+  hold_id: string;
+  attendee_names?: Record<string, string[]>;
+};
 export type CreateRoleData = {
   name: string;
   capabilities: string[];
@@ -372,6 +376,24 @@ export type MfaRecoveryCodesData = {
 export type Money = {
   amount: number;
   currency: string;
+};
+export type OrderData = {
+  id: string;
+  status: string;
+  event_id: string;
+  items: OrderItemData[];
+  subtotal: Money;
+  discount: Money;
+  fees: Money;
+  total: Money;
+  promo_code: string | null;
+  created_at: string;
+};
+export type OrderItemData = {
+  ticket_type_id: string;
+  quantity: number;
+  unit_price: Money;
+  attendee_names: string[] | null;
 };
 export type OrderStatus =
   | 'pending'
