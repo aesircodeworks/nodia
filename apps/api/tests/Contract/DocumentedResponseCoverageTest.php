@@ -704,6 +704,81 @@ function documentedResponseExercisers(): array
             ['default_locale' => 'fr'],
             ['Authorization' => 'Bearer '.contractPlatformBearer()],
         ),
+        'post /v1/tenants/{tenant}/media 201' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->post(
+                "/v1/tenants/{$tenant->id}/media",
+                ['file' => UploadedFile::fake()->image('contract-logo.jpg'), 'collection' => 'logo'],
+                [
+                    'Authorization' => 'Bearer '.contractPlatformBearer(),
+                    'Content-Type' => 'multipart/form-data',
+                    'Accept' => 'application/json',
+                ],
+            );
+        },
+        'post /v1/tenants/{tenant}/media 401' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->post(
+                "/v1/tenants/{$tenant->id}/media",
+                ['file' => UploadedFile::fake()->image('contract-logo.jpg'), 'collection' => 'logo'],
+                ['Content-Type' => 'multipart/form-data', 'Accept' => 'application/json'],
+            );
+        },
+        'post /v1/tenants/{tenant}/media 403' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->post(
+                "/v1/tenants/{$tenant->id}/media",
+                ['file' => UploadedFile::fake()->image('contract-logo.jpg'), 'collection' => 'logo'],
+                [
+                    'Authorization' => 'Bearer '.contractPlatformBearer(Capability::EventsView),
+                    'Content-Type' => 'multipart/form-data',
+                    'Accept' => 'application/json',
+                ],
+            );
+        },
+        'post /v1/tenants/{tenant}/media 404' => fn (): TestResponse => test()->post(
+            '/v1/tenants/'.Str::uuid7().'/media',
+            ['file' => UploadedFile::fake()->image('contract-logo.jpg'), 'collection' => 'logo'],
+            [
+                'Authorization' => 'Bearer '.contractPlatformBearer(),
+                'Content-Type' => 'multipart/form-data',
+                'Accept' => 'application/json',
+            ],
+        ),
+        'post /v1/tenants/{tenant}/media 413' => function (): TestResponse {
+            $tenant = contractTenant();
+            $token = contractPlatformBearer();
+
+            return test()->call(
+                'POST',
+                "/v1/tenants/{$tenant->id}/media",
+                ['collection' => 'logo'],
+                [],
+                ['file' => UploadedFile::fake()->image('contract-logo.jpg')],
+                [
+                    'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+                    'CONTENT_TYPE' => 'multipart/form-data',
+                    'HTTP_ACCEPT' => 'application/json',
+                    'CONTENT_LENGTH' => (string) (500 * 1024 * 1024),
+                ],
+            );
+        },
+        'post /v1/tenants/{tenant}/media 422' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->post(
+                "/v1/tenants/{$tenant->id}/media",
+                ['file' => UploadedFile::fake()->image('contract-logo.jpg'), 'collection' => 'banner'],
+                [
+                    'Authorization' => 'Bearer '.contractPlatformBearer(),
+                    'Content-Type' => 'multipart/form-data',
+                    'Accept' => 'application/json',
+                ],
+            );
+        },
         'post /v1/tenants/{tenant}/domains 201' => fn (): TestResponse => test()->postJson(
             '/v1/tenants/'.contractTenant()->id.'/domains',
             ['domain' => 'contract.example.com'],

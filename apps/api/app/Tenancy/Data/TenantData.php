@@ -32,10 +32,24 @@ class TenantData extends Data
 
     public static function fromModel(Tenant $tenant): self
     {
+        $brandingSettings = BrandingSettingsData::from($tenant->branding_settings ?? []);
+
+        // getFirstMediaUrl() returns '' (medialibrary's own empty-string
+        // convention for "no media", not null) rather than throwing, so
+        // an unset logo falls through to whatever the JSON configuration
+        // already carries (stage-05c plan, Endpoints: "The logo URL
+        // populates the logo_url placeholder Stage 2 already defines on
+        // BrandingSettingsData").
+        $logoUrl = $tenant->getFirstMediaUrl('logo');
+
+        if ($logoUrl !== '') {
+            $brandingSettings->logoUrl = $logoUrl;
+        }
+
         return new self(
             $tenant->id,
             $tenant->name,
-            BrandingSettingsData::from($tenant->branding_settings ?? []),
+            $brandingSettings,
             $tenant->default_locale,
             $tenant->supported_locales,
             $tenant->enabled_gateways,

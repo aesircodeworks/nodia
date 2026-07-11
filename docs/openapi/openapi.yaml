@@ -222,6 +222,83 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/TenantUnprocessableProblem'
+  /v1/tenants/{tenant}/media:
+    parameters:
+      - name: tenant
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: uploadTenantMedia
+      summary: Upload a tenant branding logo
+      description: >-
+        Platform admin surface: Passport staff bearer plus the
+        tenants.manage capability, evaluated under the platform posture
+        like every other tenant mutation (stage-05c plan, Endpoints:
+        "Admin tenant branding media"). Multipart request: file
+        (image/jpeg, image/png, or image/webp, up to the
+        media.max_upload_kb config ceiling) and collection (logo, the
+        only value Tenant registers). Uploading replaces the existing
+        logo file, since it is a single-file collection. Deletion goes
+        through the shared DELETE /v1/media/{media}.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TenantMediaUploadRequest'
+      responses:
+        '201':
+          description: Media uploaded.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Media'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: The acting membership does not hold tenants.manage.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
+        '404':
+          description: No tenant has this id.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TenantNotFoundProblem'
+        '413':
+          description: >-
+            The request body exceeds the server's maximum accepted size,
+            rendered before request validation runs (code
+            payload_too_large).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/PayloadTooLargeProblem'
+        '422':
+          description: >-
+            Request validation failed (code request.validation_failed,
+            with the errors map): the file field is missing, its mime
+            type is outside the image/jpeg, image/png, image/webp
+            allowlist, it exceeds the configured size ceiling, or
+            collection is not logo.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
   /v1/tenants/{tenant}/domains:
     parameters:
       - name: tenant
@@ -3603,8 +3680,10 @@ components:
     BrandingSettings:
       type: object
       description: >-
-        Tenant branding configuration. JSON configuration only in this stage;
-        the logo becomes a media upload when media infrastructure lands.
+        Tenant branding configuration. logo_url is populated from the
+        tenant's uploaded logo media (stage-05c plan, Endpoints: "Admin
+        tenant branding media") when one exists; otherwise it falls back
+        to whatever this JSON configuration itself carries.
       properties:
         primary_color:
           type: [string, 'null']
@@ -5616,9 +5695,9 @@ components:
       type: object
       description: >-
         Admin surface response shape for a medialibrary-backed file
-        (stage-05c plan, Endpoints: "Admin event media"), shared by every
-        collection this app registers (event cover and gallery now,
-        tenant logo in a later task).
+        (stage-05c plan, Endpoints: "Admin event media" and "Admin tenant
+        branding media"), shared by every collection this app registers
+        (event cover and gallery, tenant logo).
       required:
         - id
         - collection
@@ -5636,7 +5715,7 @@ components:
           format: uuid
         collection:
           type: string
-          enum: [cover, gallery]
+          enum: [cover, gallery, logo]
         file_name:
           type: string
         mime_type:
@@ -5716,6 +5795,25 @@ components:
         collection:
           type: string
           enum: [cover, gallery]
+      additionalProperties: false
+    TenantMediaUploadRequest:
+      type: object
+      description: >-
+        Multipart request body for POST /v1/tenants/{tenant}/media
+        (stage-05c plan, Endpoints: "Admin tenant branding media").
+      required:
+        - file
+        - collection
+      properties:
+        file:
+          type: string
+          format: binary
+          description: >-
+            image/jpeg, image/png, or image/webp, up to the
+            media.max_upload_kb config ceiling.
+        collection:
+          type: string
+          enum: [logo]
       additionalProperties: false
     EventMediaForbiddenProblem:
       description: >-

@@ -2,12 +2,18 @@
 
 namespace App\Tenancy\Models;
 
+use App\Identity\Capability;
+use App\Support\Media\Contracts\HasMediaCapability;
+use App\Support\Media\ImageMediaCollections;
 use Database\Factories\Tenancy\Models\TenantFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
+use Spatie\MediaLibrary\MediaCollections\Models\Media as SpatieMedia;
 
 /**
  * @property string $id
@@ -22,10 +28,43 @@ use Illuminate\Support\Carbon;
  * @property Carbon $updated_at
  */
 #[Fillable(['name', 'branding_settings', 'default_locale', 'supported_locales', 'enabled_gateways', 'payout_schedule', 'settlement_currency'])]
-class Tenant extends Model
+class Tenant extends Model implements HasMedia, HasMediaCapability
 {
     /** @use HasFactory<TenantFactory> */
-    use HasFactory, HasUuids;
+    use HasFactory, HasUuids, InteractsWithMedia;
+
+    /**
+     * logo is single-file: re-uploading replaces the existing file
+     * (stage-05c plan, Data model: "Tenant: logo (single file)"), same
+     * accepted mime types as Event's cover and gallery, factored out to
+     * App\Support\Media\ImageMediaCollections rather than repeated here.
+     */
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('logo')
+            ->singleFile()
+            ->acceptsMimeTypes(ImageMediaCollections::ACCEPTED_MIME_TYPES);
+    }
+
+    /**
+     * thumb, card, and hero, queued on the dedicated Horizon queue,
+     * the same three conversions Event registers (stage-05c plan, Data
+     * model: "Conversions: thumb, card, hero").
+     */
+    public function registerMediaConversions(?SpatieMedia $media = null): void
+    {
+        ImageMediaCollections::registerConversions($this);
+    }
+
+    /**
+     * Tenant branding logo mutations gate on tenants.manage (stage-05c
+     * plan, Endpoints: "logo upload adopts the same platform-scope
+     * semantics as the rest of the tenant mutation surface").
+     */
+    public function mediaManageCapability(): Capability
+    {
+        return Capability::TenantsManage;
+    }
 
     /**
      * @return array<string, string>

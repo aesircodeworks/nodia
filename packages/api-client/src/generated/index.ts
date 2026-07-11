@@ -412,6 +412,10 @@ export type TenantDomainData = {
   created_at: string;
   updated_at: string;
 };
+export type TenantMediaUploadData = {
+  file: File;
+  collection: string;
+};
 export type TicketTypeData = {
   id: string;
   tenant_id: string;
