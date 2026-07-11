@@ -21,9 +21,20 @@
 - [x] 07-10 Identity: GET /v1/customers lookup endpoint with customers.view capability (plan task 10)
 - [x] 07-11 Promo codes core: limit race simulation, migration with RLS, ApplyPromoCode, discount math, check endpoint (plan slice 5, task 11)
 - [x] 07-12 Promo code admin CRUD with capability gates, uniqueness, immutability after first use (plan task 12)
-- [ ] 07-13 Staff order list and detail with query-builder allowlists and cursor pagination (plan slice 6, task 13)
-- [ ] 07-14 Resend-tickets endpoint with audit and the Stage 8a dispatch seam (plan task 14)
+- [x] 07-13 Staff order list and detail with query-builder allowlists and cursor pagination (plan slice 6, task 13)
+- [x] 07-14 Resend-tickets endpoint with audit and the Stage 8a dispatch seam (plan task 14)
 - [ ] 07-15 Registry and docs sync, status table update (plan task 15)
+
+### Gate
+
+2026-07-11 15:18 -03: full local gates green at the current HEAD.
+`composer lint` passed (after fixing import ordering in two promo test
+files), `composer analyse` passed (after replacing a never-null
+nullsafe access in ConvertHoldToOrder), `composer test` passed all six
+suites (2193 tests, 8791 assertions), `composer types:generate`
+produced no diff under `git status --short
+packages/api-client/src/generated`, and `pnpm typecheck` passed in all
+TS workspaces.
 
 ### Review rounds
 
