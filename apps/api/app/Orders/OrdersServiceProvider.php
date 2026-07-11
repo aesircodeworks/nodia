@@ -4,6 +4,7 @@ namespace App\Orders;
 
 use App\Orders\Jobs\CancelOrderOnHoldExpired;
 use App\Orders\Jobs\HandlePaymentConfirmed;
+use App\Orders\Jobs\HandlePaymentExpired;
 use App\Orders\Jobs\HandlePaymentFailed;
 use App\Orders\Support\DerivedTicketSigningKeyProvider;
 use App\Orders\Support\TicketSigningKeyProvider;
@@ -47,6 +48,12 @@ class OrdersServiceProvider extends ServiceProvider
             HandlePaymentFailed::NAME,
             ['PaymentFailed'],
             $this->app->make(HandlePaymentFailed::class),
+        );
+
+        $subscribers->register(
+            HandlePaymentExpired::NAME,
+            ['PaymentExpired'],
+            $this->app->make(HandlePaymentExpired::class),
         );
 
         Route::middleware('tenancy.storefront')
