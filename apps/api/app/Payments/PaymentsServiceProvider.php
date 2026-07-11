@@ -6,6 +6,7 @@ use App\Payments\Gateways\FakeGateway;
 use App\Payments\Gateways\FakeGatewayScenarios;
 use App\Payments\Gateways\GatewayRegistry;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -25,5 +26,12 @@ class PaymentsServiceProvider extends ServiceProvider
         $this->app->scoped(GatewayRegistry::class, fn (Application $app) => new GatewayRegistry([
             FakeGateway::IDENTIFIER => $app->make(FakeGateway::class),
         ]));
+    }
+
+    public function boot(): void
+    {
+        Route::middleware('tenancy.storefront')
+            ->prefix('v1')
+            ->group(__DIR__.'/Http/routes/storefront.php');
     }
 }

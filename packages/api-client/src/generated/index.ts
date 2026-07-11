@@ -448,6 +448,12 @@ export type OrderStatus =
   | 'refunded';
 export type PaginatedDataCollection<TKey, TValue> = LengthAwarePaginator<TKey, TValue>;
 export type PaymentMethodConfirmation = 'sync' | 'async';
+export type PaymentMethodOfferData = {
+  method: string;
+  gateway: string;
+  confirmation: PaymentMethodConfirmation;
+  confirmation_window_minutes: number | null;
+};
 export type PaymentStatus = 'initiated' | 'confirmed' | 'failed' | 'expired';
 export type ProblemData = {
   type: string;

@@ -4546,6 +4546,57 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/OrderNotCancelableProblem'
+  /v1/storefront/orders/{order}/payment-methods:
+    parameters:
+      - name: order
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getStorefrontOrderPaymentMethods
+      summary: List the payment methods offered for a pending order
+      description: >-
+        Storefront surface, customer bearer token required (stage-08a
+        plan, Endpoints). The union of methods from the tenant's enabled
+        gateways whose capability flags cover the order currency
+        (system-design 7.2), minus methods excluded by the event's
+        slow-method policy or the automatic low-inventory cutoff
+        (system-design 7.4), minus methods of gateways with an open
+        circuit breaker (system-design 13).
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The offered methods; possibly empty.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentMethodOfferList'
+        '401':
+          description: Missing or invalid customer bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '404':
+          description: >-
+            Missing, other tenant (via RLS), or other customer (code
+            request.not_found).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '409':
+          description: The order is not pending.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/OrderNotPayableProblem'
 components:
   securitySchemes:
     BearerAuth:
@@ -6422,6 +6473,55 @@ components:
             code:
               type: string
               enum: [checkout.hold_expired, hold_already_converted]
+      unevaluatedProperties: false
+    PaymentMethodOffer:
+      type: object
+      description: >-
+        One offered payment method (stage-08a plan, Endpoints "GET
+        /v1/storefront/orders/{order}/payment-methods").
+        confirmation_window_minutes is null for synchronous methods.
+      required:
+        - method
+        - gateway
+        - confirmation
+        - confirmation_window_minutes
+      properties:
+        method:
+          type: string
+        gateway:
+          type: string
+        confirmation:
+          type: string
+          enum: [sync, async]
+        confirmation_window_minutes:
+          oneOf:
+            - type: integer
+            - type: 'null'
+      additionalProperties: false
+    PaymentMethodOfferList:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentMethodOffer'
+      additionalProperties: false
+    OrderNotPayableProblem:
+      description: >-
+        Problem document for the payment surface when the order is not
+        in a state that accepts payment (stage-08a plan, Endpoints).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [order_not_payable]
       unevaluatedProperties: false
     TicketTypeAvailability:
       type: object

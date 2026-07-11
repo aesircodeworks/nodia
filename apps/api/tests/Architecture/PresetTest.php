@@ -86,6 +86,16 @@ use App\Orders\Exceptions\PromoCodeImmutableFieldException;
 use App\Orders\Exceptions\PromoCodeInvalidException;
 use App\Orders\Exceptions\PromoCodeNotActiveException;
 use App\Orders\OrdersServiceProvider;
+use App\Payments\Enums\PaymentMethodConfirmation;
+use App\Payments\Enums\PaymentStatus;
+use App\Payments\Exceptions\GatewayUnavailableException;
+use App\Payments\Exceptions\OrderNotPayableException;
+use App\Payments\Exceptions\PaymentOrderNotFoundException;
+use App\Payments\Exceptions\WebhookSignatureInvalidException;
+use App\Payments\Exceptions\WebhookUnparseableException;
+use App\Payments\Gateways\GatewayPaymentOutcome;
+use App\Payments\Gateways\WebhookKind;
+use App\Payments\PaymentsServiceProvider;
 use App\Support\Media\Exceptions\MediaNotFoundException;
 use App\Support\Money\CurrencyMismatchException;
 use App\Support\Outbox\Enums\OutboxDeliveryStatus;
@@ -188,6 +198,10 @@ arch()->preset()->laravel()->ignoring([
     OrderStatus::class,
     TicketStatus::class,
     PromoCodeDiscountType::class,
+    PaymentStatus::class,
+    PaymentMethodConfirmation::class,
+    GatewayPaymentOutcome::class,
+    WebhookKind::class,
     'App\Support\Outbox\Jobs',
     CurrencyMismatchException::class,
     InvalidEventVenueConfigurationException::class,
@@ -281,6 +295,14 @@ arch()->preset()->laravel()->ignoring([
     'App\Orders\Models',
     'App\Orders\Http\Controllers',
     OrdersServiceProvider::class,
+    'App\Payments\Models',
+    'App\Payments\Http\Controllers',
+    PaymentsServiceProvider::class,
+    GatewayUnavailableException::class,
+    WebhookSignatureInvalidException::class,
+    WebhookUnparseableException::class,
+    PaymentOrderNotFoundException::class,
+    OrderNotPayableException::class,
     OrderHoldExpiredException::class,
     HoldAlreadyConvertedException::class,
     OrderNotFoundException::class,
