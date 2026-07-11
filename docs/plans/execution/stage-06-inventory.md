@@ -1085,3 +1085,47 @@ files (ReleaseHoldTest, ReleaseExpiredHoldsTest, UpdateTicketTypeTest,
 MaterializeEventSeatsTest, TicketTypeEndpointsTest,
 HoldExpiryRecoveryContentionTest) all green; `composer -d apps/api run
 lint` passed. No findings declined.
+
+## Review round 2 (Sat Jul 11 06:02:29 -03 2026)
+
+Codex stage-06 round 2 raised two important findings; both fixed.
+
+1. important, apps/api/app/EventCatalog/Actions/CreateTicketType.php:46
+   Creating a requires_seat ticket type on an already-published event
+   skipped inventory initialization (MaterializeEventSeats only seeds
+   counters at publish time), so the new seated type had no
+   ticket_type_inventory row: zoning could not adjust its quantity and
+   availability/holds treated it as permanently unavailable.
+   Fixed: CreateTicketType now injects InitializeTicketTypeInventory and,
+   for a seated type added to a Published event, seeds a zero-quantity
+   counter row (mirroring MaterializeEventSeats' seed) for zoning to
+   adjust. Draft events still defer to publish-time materialization.
+   Added a failing-first test to
+   tests/Unit/EventCatalog/CreateTicketTypeTest.php ("seeds a
+   zero-quantity counter row for a requires_seat ticket type added to a
+   published event").
+
+2. important, apps/api/app/Inventory/Actions/Concerns/ReleasesHoldInventory.php:48
+   (and apps/api/app/Inventory/Actions/CommitHold.php:76-90)
+   The guarded held->available (release/expiry) and held->sold (commit)
+   seat UPDATEs ignored the affected-row count, so a partial or missing
+   seat transition would be treated as successful while the
+   release/commit events and counter changes still proceeded, violating
+   the convention that conditional UPDATEs are checked by affected-row
+   count.
+   Fixed: both seat flips now capture the affected-row count and throw
+   when it does not equal the number of seat ids selected under the held
+   guard (releaseHeldSeats throws HoldInventoryReleaseFailedException via
+   a new forSeats factory; commitSeats throws HoldNotCommittableException),
+   rolling the surrounding transaction back rather than proceeding on an
+   inconsistent seat set. This is a defensive guard on a race-only path
+   (seats are scoped by hold_id, exclusive to the single winner of the
+   hold's own conditional transition), so no new dedicated failing test
+   was added; the existing release/commit unit and concurrency suites
+   still cover the happy path and stay green.
+
+Verification: `php artisan test --filter='Inventory|TicketType'` (234
+tests) green, plus the targeted
+CreateTicketType|CommitHold|ReleaseHold|ReleaseExpiredHolds filter (27
+tests) green; `composer -d apps/api run lint` and `composer -d apps/api
+run analyse` both passed. No findings declined.
