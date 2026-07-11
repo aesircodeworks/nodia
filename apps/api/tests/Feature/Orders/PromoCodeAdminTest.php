@@ -161,6 +161,38 @@ it('renders request.not_found for an unknown id, mirroring roles and ticket type
     $response->assertJsonPath('code', 'request.not_found');
 });
 
+it('clears the currency when an unused fixed code becomes percentage', function (): void {
+    $id = $this->postJson('/v1/promo-codes', promoPayload([
+        'code' => 'FLIP',
+        'discount_type' => 'fixed_amount',
+        'discount_value' => 500,
+        'currency' => 'USD',
+    ]), $this->headers)->assertStatus(201)->json('id');
+
+    $response = $this->patchJson('/v1/promo-codes/'.$id, [
+        'discount_type' => 'percentage',
+    ], $this->headers);
+
+    $response->assertStatus(200);
+    $response->assertJsonPath('discount_type', 'percentage')
+        ->assertJsonPath('currency', null);
+});
+
+it('requires a currency when an unused percentage code becomes fixed_amount', function (): void {
+    $id = $this->postJson('/v1/promo-codes', promoPayload(['code' => 'FLIP2']), $this->headers)
+        ->assertStatus(201)
+        ->json('id');
+
+    $this->patchJson('/v1/promo-codes/'.$id, [
+        'discount_type' => 'fixed_amount',
+    ], $this->headers)->assertStatus(422)->assertJsonPath('code', 'request.validation_failed');
+
+    $this->patchJson('/v1/promo-codes/'.$id, [
+        'discount_type' => 'fixed_amount',
+        'currency' => 'USD',
+    ], $this->headers)->assertStatus(200)->assertJsonPath('currency', 'USD');
+});
+
 it('validates the currency-by-type invariant on create', function (): void {
     $this->postJson('/v1/promo-codes', promoPayload([
         'discount_type' => 'fixed_amount',

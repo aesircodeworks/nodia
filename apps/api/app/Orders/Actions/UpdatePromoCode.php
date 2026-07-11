@@ -52,6 +52,20 @@ final class UpdatePromoCode
             }
         }
 
+        // Keep the currency-by-type CHECK satisfied when the type flips
+        // before first use: a percentage code carries no currency, and a
+        // fixed_amount code cannot lose its currency.
+        $resultingType = $changes['discount_type'] ?? $promoCode->discount_type;
+        $resultingCurrency = array_key_exists('currency', $changes) ? $changes['currency'] : $promoCode->currency;
+
+        if ($resultingType === PromoCodeDiscountType::Percentage && $resultingCurrency !== null) {
+            $changes['currency'] = null;
+        }
+
+        if ($resultingType === PromoCodeDiscountType::FixedAmount && $resultingCurrency === null) {
+            throw ValidationException::withMessages(['currency' => ['A fixed-amount promo code requires a currency.']]);
+        }
+
         if ($changes !== []) {
             try {
                 $promoCode->update($changes);

@@ -11,8 +11,10 @@ use Illuminate\Support\Facades\Schema;
  * 7.1, 8.3; stage-07 plan Data model "tickets"). event_id is
  * denormalized beyond the ERD, mirroring the section 4.2 rationale for
  * tenant_id: Stage 9's manifest and the QR signing key lookup are
- * single-table. event_seat_id is a plain uuid Inventory reference with
- * no FK, like orders.hold_id. No barcode or token column exists: the QR
+ * single-table. ticket_type_id, event_id, and event_seat_id are plain
+ * uuid cross-context references with no FKs, like orders.hold_id: an
+ * issued ticket is a snapshot that must survive whatever the owning
+ * contexts later do to their rows. No barcode or token column exists: the QR
  * payload is computed on render over ticket id, event id, and
  * qr_rotation_counter (system-design 8.3 notes), and bumping the
  * counter invalidates every previously rendered payload. The partial
@@ -28,8 +30,8 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->foreignUuid('tenant_id')->constrained();
             $table->foreignUuid('order_id')->constrained();
-            $table->foreignUuid('ticket_type_id')->constrained();
-            $table->foreignUuid('event_id')->constrained();
+            $table->uuid('ticket_type_id');
+            $table->uuid('event_id');
             $table->uuid('event_seat_id')->nullable();
             $table->string('status')->default('issued');
             $table->string('attendee_name')->nullable();

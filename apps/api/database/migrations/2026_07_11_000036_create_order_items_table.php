@@ -13,6 +13,9 @@ use Illuminate\Support\Facades\Schema;
  * Data model "order_items"). tenant_id is denormalized, RLS still
  * required even though derivable through order_id, mirroring
  * hold_items. attendee_names is copied to tickets at issuance.
+ * ticket_type_id is a plain uuid Catalog reference with no cross-context
+ * FK, per the stage-07 plan's Data model: the priced line is a snapshot
+ * and must survive whatever EventCatalog later does to its rows.
  */
 return new class extends Migration
 {
@@ -22,7 +25,7 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->foreignUuid('tenant_id')->constrained();
             $table->foreignUuid('order_id')->constrained();
-            $table->foreignUuid('ticket_type_id')->constrained();
+            $table->uuid('ticket_type_id');
             $table->integer('quantity');
             $table->integer('unit_price_amount');
             $table->char('currency', 3);
