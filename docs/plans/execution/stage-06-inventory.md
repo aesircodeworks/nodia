@@ -807,3 +807,53 @@ positional partition across `requires_seat` items rather than a
 per-item nested field, and documents that choice in `CreateHoldData`'s
 own docblock and the OpenAPI description, since no prior stage-06 task
 committed to either shape.
+
+## Task 06-09: events.manage_seating capability (2026-07-11 07:56 UTC)
+
+Landed the `events.manage_seating` capability registry addition and its
+template-role wiring (Task breakdown item 10a), ahead of the admin seats
+endpoints task 11 that depends on it.
+
+- `App\Identity\Capability`: added `EventsManageSeating = 'events.manage_seating'`,
+  appended after `SeatMapsManage` (the existing `events.*`-prefixed
+  precedent, per the plan's Risks / capability naming note).
+- `App\Identity\Actions\SeedTemplateRoles::templates`: granted the new
+  capability to `Owner` and `Event Manager`, mirroring exactly which
+  templates already carry `seat_maps.manage` (the closest existing
+  seating-shaped capability), leaving `Box Office`, `Finance`, and
+  `Check-in Agent` without it so the authorization matrix proves denial
+  for those templates.
+- No Data class, controller, or OpenAPI path changed: the capability
+  registry is not itself an OpenAPI schema (only referenced in prose in
+  existing paths), and `Tests\Feature\Identity\AuthorizationMatrixTest`
+  is already data-driven off `Capability::cases()` and
+  `SeedTemplateRoles::templates()`, so it exercises every template role
+  against the new capability, including denial, with no test-code
+  changes required beyond what's listed below.
+- Test-first per the master plan double loop:
+  `tests/Unit/Identity/CapabilityTest.php`'s registry-lock-down test was
+  extended with `'events.manage_seating'` in the expected values list
+  (and the new case added to the "not financially privileged" dataset)
+  before the enum case existed, watched fail
+  (`Pest\Exceptions\DatasetMissing`, since referencing the
+  not-yet-defined `Capability::EventsManageSeating` case broke file
+  compilation), then the enum case and the template-role wiring were
+  added until the assertions passed.
+
+Test evidence (all from `apps/api`):
+
+- `php artisan test --filter="CapabilityTest|SeedTemplateRolesTest|AuthorizationMatrixTest"`:
+  91 passed, 525 assertions (includes every `Capability::cases()` x
+  template-role combination, home and foreign tenant, for the new
+  capability).
+- `php artisan test --testsuite=Unit,Feature --filter=Identity`: 400
+  passed, 1572 assertions.
+- `php artisan test --testsuite=Architecture`: 38 passed, 94 assertions.
+
+No Data class changed, so `composer types:generate` was not run.
+
+Deviations from the plan: none. Template-role assignment (`Owner` and
+`Event Manager` only) was not specified by the plan text itself; this
+task resolves it by following the existing `seat_maps.manage` grant
+pattern, since both capabilities gate seating-adjacent admin operations
+and no prior stage-06 task committed to a different split.

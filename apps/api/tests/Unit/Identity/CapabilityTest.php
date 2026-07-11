@@ -7,6 +7,7 @@ use App\Identity\Capability;
  * extend the enum, never repurpose an existing entry, so a change to this
  * test signals exactly that kind of accidental rename or removal.
  * seat_maps.manage is stage-05b's addition (Task breakdown item 1).
+ * events.manage_seating is stage-06's addition (Task breakdown item 10a).
  */
 
 it('carries the exact capability registry, no more and no less', function () {
@@ -24,6 +25,7 @@ it('carries the exact capability registry, no more and no less', function () {
         'payouts.view',
         'checkin.scan',
         'seat_maps.manage',
+        'events.manage_seating',
     ]);
 });
 
@@ -48,4 +50,5 @@ it('marks every other capability as not financially privileged', function (Capab
     Capability::OrdersView,
     Capability::CheckinScan,
     Capability::SeatMapsManage,
+    Capability::EventsManageSeating,
 ]);
