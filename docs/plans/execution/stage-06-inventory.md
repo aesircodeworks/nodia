@@ -1160,3 +1160,97 @@ CI on origin/feat/api-implementation after push of b787587, all green:
 - Storefront (run 29147461937): success
 - Checkin (run 29147461986): success
 - Admin (run 29147461933): success
+
+## Final summary (Sat Jul 11 06:26:42 -03 2026)
+
+Stage 6 run closed. 11 of 11 planned tasks completed; no blockers.
+
+- Tasks: all 11 tasks from the stage plan (counters, catalog quantity
+  contract, holds with GA path, release, sweeper, availability reads,
+  extend/commit, seat materialization on publish, seated holds,
+  events.manage_seating capability, seat management and read surfaces)
+  landed on feat/api-implementation.
+- Local gate: Pint passed, Larastan passed with 0 errors, Pest fully
+  green at HEAD (final run 1964 passed, 7797 assertions after the
+  Architecture allowlist fix b787587), types:generate produced no
+  contract drift. pnpm typecheck skipped (no TypeScript changed by the
+  post-gate fixes).
+- Ship: pushed over HTTPS via the gh credential helper (the SSH agent
+  is unreachable in this environment; remote config unchanged). CI
+  green twice, verified with gh run watch --exit-status: after code
+  push b787587 (API 29147461995, Packages 29147461934, Storefront
+  29147461937, Checkin 29147461986, Admin 29147461933) and after docs
+  push 301dd53 (API 29147568155, Packages 29147568140, Storefront
+  29147568201, Checkin 29147568144, Admin 29147568161), all success.
+  Remote branch tip confirmed equal to local HEAD (301dd53).
+- Review: three codex rounds. Round 1: needs-fixes, 2 actionable
+  (fixed in 2690b57 and 3853873). Round 2: needs-fixes, 2 actionable
+  (fixed in 4daad8f). Round 3: 0 actionable, 0 minor; review clean.
+  No findings declined or left unresolved.
+
+### Exit criteria walk
+
+1. GA oversell simulation: met. tests/Concurrency/GaHoldContentionTest.php
+   and CounterContentionTest.php pass across the configured parallelism
+   and oversubscription matrix, asserting sold + held <= quantity and the
+   exact number of successful holds.
+2. Seat double-booking simulation: met.
+   tests/Concurrency/SeatDoubleBookingContentionTest.php passes,
+   including overlapping-set full-rollback cases (at most one active
+   hold per seat, no counter drift).
+3. Commit-versus-expiry race: met.
+   tests/Concurrency/HoldCommitExpiryContentionTest.php asserts
+   committed or expired but never both, counters consistent, exactly one
+   HoldExpired on expiry and none for a committed hold.
+4. Exact expiry recovery: met.
+   tests/Concurrency/HoldExpiryRecoveryContentionTest.php plus
+   tests/Unit/Inventory/ReleaseExpiredHoldsTest.php assert held returns
+   to 0, availability reports quantity - sold, and freed seats are
+   available.
+5. Conversion-time validation: met.
+   tests/Unit/Inventory/CommitHoldTest.php covers the expired-but-unswept
+   hold with the fake clock: zero affected rows, typed
+   HoldNotCommittableException.
+6. Extension cannot resurrect: met.
+   tests/Unit/Inventory/ExtendHoldTest.php covers expired and released
+   holds affecting zero rows, and that extension never shortens.
+7. Failure-mode and contract coverage: met.
+   tests/Feature/Inventory/HoldEndpointsTest.php,
+   AvailabilityEndpointsTest.php, and EventSeatEndpointsTest.php assert
+   every status/code row from the endpoint tables
+   (request.validation_failed, event_not_found,
+   ticket_type_not_in_event, sales_window_closed,
+   insufficient_inventory, seat_selection_invalid, seat_unavailable,
+   hold_not_found, hold_not_releasable, event_not_seated,
+   seat_not_modifiable), with responses validated by the Contract suite
+   against the merged OpenAPI paths.
+8. Isolation probes: met. tests/Isolation/TicketTypeInventoryIsolationTest.php,
+   HoldsIsolationTest.php, HoldItemsIsolationTest.php, and
+   EventSeatsIsolationTest.php prove cross-tenant reads and writes fail
+   under RLS; endpoint-level cross-tenant requests return 404 per the
+   Stage 2 pattern.
+9. Architecture boundaries: met. The Architecture suite passes at HEAD
+   (including the preset guard, fixed in b787587); Inventory imports no
+   other context's models and Catalog reaches Inventory only through
+   Actions (CreateTicketType and publish call
+   InitializeTicketTypeInventory and MaterializeEventSeats).
+10. Outbox recording: met. tests/Unit/Inventory/CreateHoldTest.php,
+    ReleaseHoldTest.php, and ReleaseExpiredHoldsTest.php assert
+    HoldCreated, HoldReleased, and HoldExpired are recorded in the
+    producing transaction (present pre-commit, absent after rollback)
+    with complete envelopes, and exactly one of
+    HoldExpired/HoldReleased under the release-versus-sweeper race.
+11. Seated publish path: met.
+    tests/Unit/Inventory/MaterializeEventSeatsTest.php and the Catalog
+    publish feature tests cover exact materialization of template
+    seats (unzoned, requires_seat counters at 0), idempotent
+    re-publish, catalog.seat_map_required, and the extended
+    catalog.seat_map_in_use conflict;
+    tests/Unit/Inventory/UpdateEventSeatsTest.php covers zoning counter
+    adjustments (plus the round 2 fix 3853873 seeding counters for
+    seated types added post-publish).
+12. Gates: met. Lint, analyse, all suites, and the TypeScript drift
+    gate green locally at HEAD and on CI (run IDs above); generated
+    types committed under packages/api-client/src/generated.
+13. Status table: met. docs/api-implementation-plan.md line for
+    Stage 6 reads Done (flipped in 301e00b, re-verified at close).
