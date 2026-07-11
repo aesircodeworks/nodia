@@ -2,7 +2,9 @@
 
 namespace App\EventCatalog;
 
+use App\EventCatalog\Jobs\RefreshSearchIndex;
 use App\Support\Outbox\EventTypeRegistry;
+use App\Support\Outbox\SubscriberRegistry;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
@@ -36,15 +38,29 @@ use Illuminate\Support\ServiceProvider;
  * task breakdown item 9's PublishEvent/CancelEvent producers, the same
  * way, despite both already being reserved in the system-design 9.3
  * registry (stage-05a plan, Domain events: "no registry change needed").
+ *
+ * App\EventCatalog\Jobs\RefreshSearchIndex (stage-05c plan, task
+ * breakdown item 7) subscribes to all four types here: production
+ * consumers register from their owning context provider
+ * (App\Providers\AppServiceProvider's own docblock), and this is the
+ * context that owns both `events` and the `event_search_documents`
+ * projection it maintains.
  */
 class EventCatalogServiceProvider extends ServiceProvider
 {
-    public function boot(EventTypeRegistry $registry): void
+    public function boot(EventTypeRegistry $registry, SubscriberRegistry $subscribers): void
     {
         $registry->register('EventCreated');
         $registry->register('EventUpdated');
         $registry->register('EventPublished');
         $registry->register('EventCanceled');
+
+        $subscribers->register(RefreshSearchIndex::NAME, [
+            'EventCreated',
+            'EventUpdated',
+            'EventPublished',
+            'EventCanceled',
+        ], $this->app->make(RefreshSearchIndex::class));
 
         Route::middleware('tenancy.admin')
             ->prefix('v1')

@@ -59,6 +59,17 @@ final class ParallelRunner
             $tasks,
         ));
 
+        // Spatie\Fork\Fork::run() keys its return array by argument
+        // position (Task::order()), but builds it up in *completion*
+        // order: a task that finishes before an earlier-ordered one
+        // still lands in the array first. array_values() alone follows
+        // that insertion order, not the numeric keys, silently handing
+        // callers a list in whichever task happened to finish first
+        // rather than in the order their closures were given. ksort()
+        // first restores argument order regardless of which contender
+        // won the race.
+        ksort($results);
+
         return array_values($results);
     }
 

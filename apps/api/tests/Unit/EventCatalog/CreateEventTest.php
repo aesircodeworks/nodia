@@ -8,6 +8,7 @@ use App\EventCatalog\Models\Venue;
 use App\Support\Outbox\Models\OutboxEvent;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Support\MigratedDatabase;
 use Tests\Support\PostgresTestDatabase;
@@ -21,6 +22,13 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     app(TenantTransaction::class)->asTenant($this->tenantId, function (): void {
+        // outbox_deliveries before outbox_events: App\EventCatalog\Jobs\
+        // RefreshSearchIndex now subscribes to EventCreated (stage-05c
+        // plan, task breakdown item 7), so a delivery row exists here and
+        // its outbox_event_id foreign key blocks the parent delete
+        // otherwise, mirroring tests/Feature/EventCatalog/
+        // EventCreatedOutboxTest.php's own cleanup order.
+        DB::table('outbox_deliveries')->where('tenant_id', $this->tenantId)->delete();
         OutboxEvent::query()->where('tenant_id', $this->tenantId)->delete();
         Event::query()->where('tenant_id', $this->tenantId)->delete();
         Venue::query()->where('tenant_id', $this->tenantId)->delete();
