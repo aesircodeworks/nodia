@@ -13,6 +13,7 @@ use App\EventCatalog\Exceptions\SeatMapDuplicateSeatsException;
 use App\EventCatalog\Exceptions\SeatMapInUseException;
 use App\EventCatalog\Exceptions\SeatMapNameTakenException;
 use App\EventCatalog\Exceptions\SeatMapNotFoundException;
+use App\EventCatalog\Exceptions\SeatMapRequiredException;
 use App\EventCatalog\Exceptions\SeatMapVenueMismatchException;
 use App\EventCatalog\Exceptions\SeatMapVirtualEventException;
 use App\EventCatalog\Exceptions\TicketTypeNotFoundException;
@@ -52,6 +53,7 @@ use App\Identity\IdentityServiceProvider;
 use App\Identity\Mail\CustomerClaimMail;
 use App\Identity\Mail\PasswordResetMail;
 use App\Identity\Mail\StaffInvitationMail;
+use App\Inventory\Enums\EventSeatStatus;
 use App\Inventory\Enums\HoldStatus;
 use App\Inventory\Exceptions\HoldEventNotFoundException;
 use App\Inventory\Exceptions\HoldNotCommittableException;
@@ -156,6 +158,7 @@ arch()->preset()->laravel()->ignoring([
     OutboxDeliveryStatus::class,
     EventStatus::class,
     HoldStatus::class,
+    EventSeatStatus::class,
     'App\Support\Outbox\Jobs',
     CurrencyMismatchException::class,
     InvalidEventVenueConfigurationException::class,
@@ -214,6 +217,7 @@ arch()->preset()->laravel()->ignoring([
     SeatMapVenueMismatchException::class,
     SeatMapVirtualEventException::class,
     SeatMapInUseException::class,
+    SeatMapRequiredException::class,
     InsufficientInventoryException::class,
     HoldEventNotFoundException::class,
     TicketTypeNotInEventException::class,

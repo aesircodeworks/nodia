@@ -59,12 +59,15 @@ test('the registry holds exactly the known codes', function () {
         'catalog.seat_map_venue_mismatch',
         'catalog.seat_map_virtual_event',
         'catalog.seat_map_in_use',
+        'catalog.seat_map_required',
         'insufficient_inventory',
         'event_not_found',
         'ticket_type_not_in_event',
         'sales_window_closed',
         'hold_not_found',
         'hold_not_releasable',
+        'hold_not_extendable',
+        'hold_not_committable',
     ]);
 });
 
@@ -128,6 +131,7 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'catalog.seat_map_venue_mismatch' => [ErrorCode::CatalogSeatMapVenueMismatch, 422, 'Seat map venue mismatch', '/problems/catalog-seat-map-venue-mismatch'],
     'catalog.seat_map_virtual_event' => [ErrorCode::CatalogSeatMapVirtualEvent, 422, 'Seat map virtual event', '/problems/catalog-seat-map-virtual-event'],
     'catalog.seat_map_in_use' => [ErrorCode::CatalogSeatMapInUse, 409, 'Seat map in use', '/problems/catalog-seat-map-in-use'],
+    'catalog.seat_map_required' => [ErrorCode::CatalogSeatMapRequired, 409, 'Seat map required', '/problems/catalog-seat-map-required'],
     'insufficient_inventory' => [ErrorCode::InsufficientInventory, 409, 'Insufficient inventory', '/problems/insufficient-inventory'],
     'event_not_found' => [ErrorCode::EventNotFound, 404, 'Event not found', '/problems/event-not-found'],
     'ticket_type_not_in_event' => [ErrorCode::TicketTypeNotInEvent, 422, 'Ticket type not in event', '/problems/ticket-type-not-in-event'],

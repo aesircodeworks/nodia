@@ -2752,7 +2752,11 @@ paths:
           description: >-
             The event is not in a publishable state (code
             catalog.event_not_publishable): only a draft event can be
-            published.
+            published. Or the event carries a requires_seat ticket type
+            but no seat_map_id (code catalog.seat_map_required,
+            stage-06 plan, Slice 5): a seated event materializes its
+            event_seats on publish and needs a seat map template to
+            materialize from.
           content:
             application/problem+json:
               schema:
@@ -5809,10 +5813,13 @@ components:
       unevaluatedProperties: false
     EventNotPublishableProblem:
       description: >-
-        Problem document for a publish on an event that is not in a
-        publishable state (stage-05a plan, endpoint table:
-        "catalog.event_not_publishable (409)"). Only a draft event can be
-        published; an already-published or canceled event is rejected.
+        Problem document for a publish that is refused (stage-05a plan,
+        endpoint table: "catalog.event_not_publishable (409)"; stage-06
+        plan, Slice 5: "catalog.seat_map_required (409)"). Either the
+        event is not in a publishable state (only a draft event can be
+        published; an already-published or canceled event is rejected),
+        or the event carries a requires_seat ticket type but no
+        seat_map_id.
       allOf:
         - $ref: '#/components/schemas/Problem'
         - type: object
@@ -5822,7 +5829,7 @@ components:
               enum: [409]
             code:
               type: string
-              enum: [catalog.event_not_publishable]
+              enum: [catalog.event_not_publishable, catalog.seat_map_required]
       unevaluatedProperties: false
     EventNotCancelableProblem:
       description: >-

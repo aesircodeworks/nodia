@@ -147,12 +147,15 @@ class ProblemRenderer
             ErrorCode::CatalogSeatMapVenueMismatch => "The seat map does not exist or does not belong to the event's venue.",
             ErrorCode::CatalogSeatMapVirtualEvent => 'A virtual event cannot have a seat_map_id.',
             ErrorCode::CatalogSeatMapInUse => 'This seat map is referenced by at least one event and cannot be deleted.',
+            ErrorCode::CatalogSeatMapRequired => 'This event has a requires_seat ticket type but no seat_map_id.',
             ErrorCode::InsufficientInventory => 'There is not enough inventory available for this ticket type.',
             ErrorCode::EventNotFound => 'No published event has this id for the resolved tenant.',
             ErrorCode::TicketTypeNotInEvent => 'This ticket type does not belong to the given event.',
             ErrorCode::SalesWindowClosed => "This ticket type's sales window is not currently open.",
             ErrorCode::HoldNotFound => 'No hold has this id for the resolved tenant.',
             ErrorCode::HoldNotReleasable => 'This hold is committed and cannot be released.',
+            ErrorCode::HoldNotExtendable => 'This hold is expired, released, or committed and cannot be extended.',
+            ErrorCode::HoldNotCommittable => 'This hold is expired, released, or already committed and cannot be committed.',
         };
     }
 }

@@ -26,19 +26,42 @@ use Illuminate\Support\Facades\DB;
  * for it, but cannot for the facade-dispatched call, so the query
  * builder form is both correct and the one Larastan accepts without a
  * suppression comment.
+ *
+ * Stage 6 (Slice 5, task breakdown item 9) extends the same mapping to
+ * a template whose seats are materialized into at least one event's
+ * event_seats: seats cascade on seat_maps delete, but
+ * event_seats.seat_id restricts on delete, so the cascade itself fails
+ * with the event_seats_seat_id_foreign violation, caught here
+ * alongside the direct events_seat_map_id_foreign case.
  */
 final class DeleteSeatMap
 {
+    private const RESTRICTING_CONSTRAINTS = [
+        'events_seat_map_id_foreign',
+        'event_seats_seat_id_foreign',
+    ];
+
     public function __invoke(SeatMap $seatMap): void
     {
         try {
             DB::table('seat_maps')->where('id', $seatMap->id)->delete();
         } catch (QueryException $e) {
-            if ($e->getCode() === '23503' && str_contains($e->getMessage(), 'events_seat_map_id_foreign')) {
+            if ($e->getCode() === '23503' && $this->restrictedByMaterialization($e->getMessage())) {
                 throw SeatMapInUseException::forId($seatMap->id);
             }
 
             throw $e;
         }
+    }
+
+    private function restrictedByMaterialization(string $message): bool
+    {
+        foreach (self::RESTRICTING_CONSTRAINTS as $constraint) {
+            if (str_contains($message, $constraint)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

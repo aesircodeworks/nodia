@@ -190,6 +190,7 @@ export type ErrorCode =
   | 'catalog.seat_map_venue_mismatch'
   | 'catalog.seat_map_virtual_event'
   | 'catalog.seat_map_in_use'
+  | 'catalog.seat_map_required'
   | 'insufficient_inventory'
   | 'event_not_found'
   | 'ticket_type_not_in_event'
@@ -228,6 +229,7 @@ export type EventMediaUploadData = {
   file: File;
   collection: string;
 };
+export type EventSeatStatus = 'available' | 'held' | 'sold' | 'blocked';
 export type EventStatus = 'draft' | 'published' | 'canceled';
 export type ExtendHoldData = {
   holdId: string;

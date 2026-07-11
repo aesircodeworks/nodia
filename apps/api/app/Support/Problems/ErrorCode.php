@@ -62,6 +62,7 @@ enum ErrorCode: string
     case CatalogSeatMapVenueMismatch = 'catalog.seat_map_venue_mismatch';
     case CatalogSeatMapVirtualEvent = 'catalog.seat_map_virtual_event';
     case CatalogSeatMapInUse = 'catalog.seat_map_in_use';
+    case CatalogSeatMapRequired = 'catalog.seat_map_required';
     case InsufficientInventory = 'insufficient_inventory';
     case EventNotFound = 'event_not_found';
     case TicketTypeNotInEvent = 'ticket_type_not_in_event';
@@ -129,6 +130,7 @@ enum ErrorCode: string
             self::CatalogSeatMapVenueMismatch => 422,
             self::CatalogSeatMapVirtualEvent => 422,
             self::CatalogSeatMapInUse => 409,
+            self::CatalogSeatMapRequired => 409,
             self::InsufficientInventory => 409,
             self::EventNotFound => 404,
             self::TicketTypeNotInEvent => 422,
@@ -198,6 +200,7 @@ enum ErrorCode: string
             self::CatalogSeatMapVenueMismatch => 'Seat map venue mismatch',
             self::CatalogSeatMapVirtualEvent => 'Seat map virtual event',
             self::CatalogSeatMapInUse => 'Seat map in use',
+            self::CatalogSeatMapRequired => 'Seat map required',
             self::InsufficientInventory => 'Insufficient inventory',
             self::EventNotFound => 'Event not found',
             self::TicketTypeNotInEvent => 'Ticket type not in event',
