@@ -4,6 +4,7 @@ use App\EventCatalog\EventCatalogServiceProvider;
 use App\Identity\IdentityServiceProvider;
 use App\Inventory\InventoryServiceProvider;
 use App\Orders\OrdersServiceProvider;
+use App\Payments\PaymentsServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\HorizonServiceProvider;
 use App\Providers\TypeScriptTransformerServiceProvider;
@@ -18,4 +19,5 @@ return [
     EventCatalogServiceProvider::class,
     InventoryServiceProvider::class,
     OrdersServiceProvider::class,
+    PaymentsServiceProvider::class,
 ];

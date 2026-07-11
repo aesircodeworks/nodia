@@ -171,6 +171,14 @@ class ProblemRenderer
             ErrorCode::PromoCodeExhausted => 'This promo code has reached its usage limit.',
             ErrorCode::PromoCodeCurrencyMismatch => "This promo code's currency does not match the order currency.",
             ErrorCode::PromoCodeImmutableField => 'This field cannot be changed once the promo code has been used.',
+            ErrorCode::IdempotencyKeyMissing => 'This endpoint requires an Idempotency-Key header.',
+            ErrorCode::IdempotencyKeyReuseMismatch => 'This Idempotency-Key was already used with a different request payload.',
+            ErrorCode::OrderNotPayable => 'This order is not in a state that accepts payment.',
+            ErrorCode::PaymentMethodNotAvailable => 'This payment method is not currently offered for this order.',
+            ErrorCode::PaymentDeclined => 'The gateway declined this payment; the order and its hold remain intact for a retry.',
+            ErrorCode::GatewayUnavailable => 'The payment gateway is temporarily unavailable; retry after the interval in the Retry-After header.',
+            ErrorCode::WebhookSignatureInvalid => 'The webhook signature failed verification.',
+            ErrorCode::WebhookUnparseable => 'The webhook body could not be parsed into a gateway event.',
         };
     }
 }

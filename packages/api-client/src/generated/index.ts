@@ -233,7 +233,15 @@ export type ErrorCode =
   | 'promo_code_not_active'
   | 'promo_code_exhausted'
   | 'promo_code_currency_mismatch'
-  | 'promo_code_immutable_field';
+  | 'promo_code_immutable_field'
+  | 'idempotency_key_missing'
+  | 'idempotency_key_reuse_mismatch'
+  | 'order_not_payable'
+  | 'payment_method_not_available'
+  | 'payment_declined'
+  | 'gateway_unavailable'
+  | 'webhook_signature_invalid'
+  | 'webhook_unparseable';
 export type EventAvailabilityData = {
   event_id: string;
   ticket_types: TicketTypeAvailabilityData[];
@@ -281,6 +289,7 @@ export type ExtendHoldData = {
   holdId: string;
   expiresAt: string;
 };
+export type GatewayPaymentOutcome = 'approved' | 'declined' | 'pending';
 export type HealthChecksData = {
   database: CheckResult;
   redis: CheckResult;
@@ -391,6 +400,11 @@ export type Money = {
   amount: number;
   currency: string;
 };
+export type NextActionData = {
+  type: string;
+  redirect_url: string | null;
+  code: string | null;
+};
 export type OrderData = {
   id: string;
   status: string;
@@ -433,6 +447,7 @@ export type OrderStatus =
   | 'partially_refunded'
   | 'refunded';
 export type PaginatedDataCollection<TKey, TValue> = LengthAwarePaginator<TKey, TValue>;
+export type PaymentMethodConfirmation = 'sync' | 'async';
 export type ProblemData = {
   type: string;
   title: string;
@@ -702,3 +717,4 @@ export type VenueData = {
   created_at: string;
   updated_at: string;
 };
+export type WebhookKind = 'confirmed' | 'failed';

@@ -86,6 +86,14 @@ enum ErrorCode: string
     case PromoCodeExhausted = 'promo_code_exhausted';
     case PromoCodeCurrencyMismatch = 'promo_code_currency_mismatch';
     case PromoCodeImmutableField = 'promo_code_immutable_field';
+    case IdempotencyKeyMissing = 'idempotency_key_missing';
+    case IdempotencyKeyReuseMismatch = 'idempotency_key_reuse_mismatch';
+    case OrderNotPayable = 'order_not_payable';
+    case PaymentMethodNotAvailable = 'payment_method_not_available';
+    case PaymentDeclined = 'payment_declined';
+    case GatewayUnavailable = 'gateway_unavailable';
+    case WebhookSignatureInvalid = 'webhook_signature_invalid';
+    case WebhookUnparseable = 'webhook_unparseable';
 
     public function status(): int
     {
@@ -169,6 +177,14 @@ enum ErrorCode: string
             self::PromoCodeExhausted => 422,
             self::PromoCodeCurrencyMismatch => 422,
             self::PromoCodeImmutableField => 422,
+            self::IdempotencyKeyMissing => 400,
+            self::IdempotencyKeyReuseMismatch => 409,
+            self::OrderNotPayable => 409,
+            self::PaymentMethodNotAvailable => 422,
+            self::PaymentDeclined => 402,
+            self::GatewayUnavailable => 503,
+            self::WebhookSignatureInvalid => 401,
+            self::WebhookUnparseable => 422,
         };
     }
 
@@ -254,6 +270,14 @@ enum ErrorCode: string
             self::PromoCodeExhausted => 'Promo code exhausted',
             self::PromoCodeCurrencyMismatch => 'Promo code currency mismatch',
             self::PromoCodeImmutableField => 'Promo code immutable field',
+            self::IdempotencyKeyMissing => 'Idempotency key missing',
+            self::IdempotencyKeyReuseMismatch => 'Idempotency key reuse mismatch',
+            self::OrderNotPayable => 'Order not payable',
+            self::PaymentMethodNotAvailable => 'Payment method not available',
+            self::PaymentDeclined => 'Payment declined',
+            self::GatewayUnavailable => 'Gateway unavailable',
+            self::WebhookSignatureInvalid => 'Webhook signature invalid',
+            self::WebhookUnparseable => 'Webhook unparseable',
         };
     }
 
