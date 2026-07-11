@@ -3940,6 +3940,61 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrderCreateConflictProblem'
         '422':
+          description: >-
+            Request validation failed (code request.validation_failed,
+            with the errors map), or the promo_code is unknown for this
+            tenant (promo_code_invalid), outside its validity window
+            (promo_code_not_active), at its usage limit
+            (promo_code_exhausted), or a fixed-amount code in another
+            currency (promo_code_currency_mismatch); the whole conversion
+            rolls back.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/OrderCreateUnprocessableProblem'
+  /v1/storefront/promo-codes/check:
+    post:
+      operationId: checkPromoCode
+      summary: Preview a promo code against a hold
+      description: >-
+        Storefront surface, customer bearer token required (stage-07
+        plan, Endpoints). A read-only preview of the code against the
+        hold's priced subtotal; never increments usage_count. Always 200
+        for a resolvable hold: an unusable code answers valid false with
+        its stable reason_code rather than a problem document.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckPromoCodeRequest'
+      responses:
+        '200':
+          description: The preview result.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoCodeCheck'
+        '401':
+          description: Missing or invalid customer bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '404':
+          description: >-
+            The hold does not exist for this tenant or belongs to a
+            different customer (code hold_not_found).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/OrderHoldNotFoundProblem'
+        '422':
           description: Request validation failed.
           content:
             application/problem+json:
@@ -5357,6 +5412,83 @@ components:
             type: array
             items:
               type: string
+        promo_code:
+          type: string
+      additionalProperties: false
+    OrderCreateUnprocessableProblem:
+      description: >-
+        Problem document for POST /v1/storefront/orders that cannot be
+        processed: request validation failed (with the errors map, code
+        request.validation_failed) or the promo_code was rejected
+        (stage-07 plan, Error codes).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - oneOf:
+            - type: object
+              required:
+                - errors
+              properties:
+                code:
+                  type: string
+                  enum: [request.validation_failed]
+                errors:
+                  type: object
+                  additionalProperties:
+                    type: array
+                    items:
+                      type: string
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - promo_code_invalid
+                    - promo_code_not_active
+                    - promo_code_exhausted
+                    - promo_code_currency_mismatch
+      unevaluatedProperties: false
+    CheckPromoCodeRequest:
+      type: object
+      description: >-
+        POST /v1/storefront/promo-codes/check request body (stage-07
+        plan, Endpoints).
+      required:
+        - code
+        - hold_id
+      properties:
+        code:
+          type: string
+        hold_id:
+          type: string
+          format: uuid
+      additionalProperties: false
+    PromoCodeCheck:
+      type: object
+      description: >-
+        POST /v1/storefront/promo-codes/check response shape (stage-07
+        plan, Endpoints): a read-only preview that never increments
+        usage_count. discount is null and reason_code carries the stable
+        error code when valid is false.
+      required:
+        - valid
+        - discount
+        - reason_code
+      properties:
+        valid:
+          type: boolean
+        discount:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        reason_code:
+          type: string
+          nullable: true
+          enum:
+            - promo_code_invalid
+            - promo_code_not_active
+            - promo_code_exhausted
+            - promo_code_currency_mismatch
+            - null
       additionalProperties: false
     OrderItem:
       type: object

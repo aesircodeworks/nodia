@@ -36,6 +36,10 @@ export type CapabilityListData = {
 export type ChangeMembershipRoleData = {
   role_id: string;
 };
+export type CheckPromoCodeData = {
+  code: string;
+  hold_id: string;
+};
 export type CheckResult = 'ok' | 'failed';
 export type ClaimRequestData = {
   email: string;
@@ -73,6 +77,7 @@ export type CreateHoldData = {
 export type CreateOrderData = {
   hold_id: string;
   attendee_names?: Record<string, string[]>;
+  promo_code?: string;
 };
 export type CreateRoleData = {
   name: string;
@@ -421,6 +426,11 @@ export type ProblemData = {
   detail: string;
   code: string;
   correlation_id?: string;
+};
+export type PromoCodeCheckData = {
+  valid: boolean;
+  discount: Money | null;
+  reason_code: string | null;
 };
 export type PromoCodeDiscountType = 'percentage' | 'fixed_amount';
 export type RefreshTokenRequestData = {

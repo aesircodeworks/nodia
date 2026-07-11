@@ -9,6 +9,7 @@ use App\Inventory\Actions\ResolveHoldForOrder;
 use App\Inventory\Data\HoldForOrderData;
 use App\Inventory\Enums\HoldStatus;
 use App\Inventory\Exceptions\HoldNotFoundException;
+use App\Orders\Data\AppliedPromoCode;
 use App\Orders\Data\CreateOrderData;
 use App\Orders\Data\OrderData;
 use App\Orders\Enums\OrderStatus;
@@ -44,6 +45,7 @@ final class ConvertHoldToOrder
         private readonly ResolveHoldForOrder $resolveHold,
         private readonly AttachHoldCustomer $attachCustomer,
         private readonly ResolveTicketTypePricing $pricing,
+        private readonly ApplyPromoCode $applyPromoCode,
     ) {}
 
     public function __invoke(CreateOrderData $data, string $customerId): OrderData
@@ -79,7 +81,13 @@ final class ConvertHoldToOrder
             $hold->items,
         ));
 
-        $order = $this->createOrder($hold, $customerId, $this->subtotal($hold, $prices));
+        $subtotal = $this->subtotal($hold, $prices);
+
+        $applied = $data->promoCode instanceof Optional
+            ? null
+            : ($this->applyPromoCode)($data->promoCode, $subtotal);
+
+        $order = $this->createOrder($hold, $customerId, $subtotal, $applied);
 
         $attendeeNames = $data->attendeeNames instanceof Optional ? [] : $data->attendeeNames;
 
@@ -124,21 +132,23 @@ final class ConvertHoldToOrder
         return $priced->price;
     }
 
-    private function createOrder(HoldForOrderData $hold, string $customerId, Money $subtotal): Order
+    private function createOrder(HoldForOrderData $hold, string $customerId, Money $subtotal, ?AppliedPromoCode $applied): Order
     {
         $zero = Money::of(0, $subtotal->currency);
+        $discount = $applied?->discount ?? $zero;
 
         try {
             return Order::query()->create([
                 'tenant_id' => $this->tenantContext->tenantId(),
                 'customer_id' => $customerId,
                 'event_id' => $hold->eventId,
+                'promo_code_id' => $applied?->promoCodeId,
                 'hold_id' => $hold->id,
                 'status' => OrderStatus::Pending,
                 'subtotal' => $subtotal,
-                'discount' => $zero,
+                'discount' => $discount,
                 'fees' => $zero,
-                'total' => $subtotal,
+                'total' => $subtotal->subtract($discount),
             ]);
         } catch (UniqueConstraintViolationException) {
             throw HoldAlreadyConvertedException::forId($hold->id);

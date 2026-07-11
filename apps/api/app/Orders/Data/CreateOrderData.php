@@ -24,6 +24,7 @@ class CreateOrderData extends Data
     public function __construct(
         public string $holdId,
         public array|Optional $attendeeNames,
+        public string|Optional $promoCode,
     ) {}
 
     /**
@@ -36,6 +37,7 @@ class CreateOrderData extends Data
             'attendee_names' => ['sometimes', 'array'],
             'attendee_names.*' => ['array'],
             'attendee_names.*.*' => ['string', 'max:255'],
+            'promo_code' => ['sometimes', 'string', 'max:64'],
         ];
     }
 }

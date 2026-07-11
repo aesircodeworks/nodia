@@ -1,6 +1,7 @@
 <?php
 
 use App\Orders\Http\Controllers\OrderController;
+use App\Orders\Http\Controllers\PromoCodeCheckController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -14,4 +15,5 @@ Route::middleware('auth:customer')->group(function (): void {
     Route::get('/storefront/orders/{order}', [OrderController::class, 'show'])->whereUuid('order');
     Route::get('/storefront/orders/{order}/tickets', [OrderController::class, 'tickets'])->whereUuid('order');
     Route::post('/storefront/orders/{order}/cancel', [OrderController::class, 'cancel'])->whereUuid('order');
+    Route::post('/storefront/promo-codes/check', PromoCodeCheckController::class);
 });

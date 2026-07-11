@@ -18,6 +18,7 @@ use App\Inventory\Models\TicketTypeInventory;
 use App\Models\User;
 use App\Orders\Actions\MarkOrderAwaitingPayment;
 use App\Orders\Actions\MarkOrderPaid;
+use App\Orders\Models\PromoCode;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
@@ -88,6 +89,7 @@ afterEach(function (): void {
             DB::table('tickets')->where('tenant_id', $tenantId)->delete();
             DB::table('order_items')->where('tenant_id', $tenantId)->delete();
             DB::table('orders')->where('tenant_id', $tenantId)->delete();
+            DB::table('promo_codes')->where('tenant_id', $tenantId)->delete();
 
             // contractEventCoverMedia()'s exercisers (stage-05c plan, task
             // breakdown item 2) write media rows scoped to a fresh event
@@ -2979,6 +2981,48 @@ function documentedResponseExercisers(): array
             $token = contractOrderCustomerBearer($tenant, $host);
 
             return test()->getJson('http://'.$host.'/v1/storefront/orders/'.Str::uuid7().'/tickets', [
+                'Authorization' => 'Bearer '.$token,
+            ]);
+        },
+        'post /v1/storefront/promo-codes/check 200' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            ['event' => $event, 'ticketType' => $ticketType] = contractHoldFixture($tenant);
+            $token = contractOrderCustomerBearer($tenant, $host);
+
+            app(TenantTransaction::class)->asTenant($tenant->id, function () use ($tenant): void {
+                PromoCode::factory()->create([
+                    'tenant_id' => $tenant->id,
+                    'code' => 'CONTRACT10',
+                ]);
+            });
+
+            return test()->postJson('http://'.$host.'/v1/storefront/promo-codes/check', [
+                'code' => 'CONTRACT10',
+                'hold_id' => contractOrderHold($host, $event->id, $ticketType->id),
+            ], ['Authorization' => 'Bearer '.$token]);
+        },
+        'post /v1/storefront/promo-codes/check 401' => function (): TestResponse {
+            ['host' => $host] = contractHoldTenant();
+
+            return test()->postJson('http://'.$host.'/v1/storefront/promo-codes/check', [
+                'code' => 'CONTRACT10',
+                'hold_id' => (string) Str::uuid7(),
+            ]);
+        },
+        'post /v1/storefront/promo-codes/check 404' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            $token = contractOrderCustomerBearer($tenant, $host);
+
+            return test()->postJson('http://'.$host.'/v1/storefront/promo-codes/check', [
+                'code' => 'CONTRACT10',
+                'hold_id' => (string) Str::uuid7(),
+            ], ['Authorization' => 'Bearer '.$token]);
+        },
+        'post /v1/storefront/promo-codes/check 422' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            $token = contractOrderCustomerBearer($tenant, $host);
+
+            return test()->postJson('http://'.$host.'/v1/storefront/promo-codes/check', [], [
                 'Authorization' => 'Bearer '.$token,
             ]);
         },

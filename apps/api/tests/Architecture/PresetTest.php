@@ -79,6 +79,10 @@ use App\Orders\Exceptions\HoldExpiredException as OrderHoldExpiredException;
 use App\Orders\Exceptions\InvalidOrderTransitionException;
 use App\Orders\Exceptions\OrderNotCancelableException;
 use App\Orders\Exceptions\OrderNotFoundException;
+use App\Orders\Exceptions\PromoCodeCurrencyMismatchException;
+use App\Orders\Exceptions\PromoCodeExhaustedException;
+use App\Orders\Exceptions\PromoCodeInvalidException;
+use App\Orders\Exceptions\PromoCodeNotActiveException;
 use App\Orders\OrdersServiceProvider;
 use App\Support\Media\Exceptions\MediaNotFoundException;
 use App\Support\Money\CurrencyMismatchException;
@@ -280,6 +284,10 @@ arch()->preset()->laravel()->ignoring([
     OrderNotFoundException::class,
     InvalidOrderTransitionException::class,
     OrderNotCancelableException::class,
+    PromoCodeInvalidException::class,
+    PromoCodeNotActiveException::class,
+    PromoCodeExhaustedException::class,
+    PromoCodeCurrencyMismatchException::class,
     'App\Support\Audit\Models',
     'App\Support\Outbox\Models',
     'App\Support\Media\Models',

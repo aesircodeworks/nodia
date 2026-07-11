@@ -38,8 +38,10 @@ class OrderData extends Data
         public string $createdAt,
     ) {}
 
-    public static function fromModel(Order $order, ?string $promoCode = null): self
+    public static function fromModel(Order $order): self
     {
+        $promoCode = $order->promo_code_id === null ? null : $order->promoCode?->code;
+
         return new self(
             $order->id,
             $order->status->value,
