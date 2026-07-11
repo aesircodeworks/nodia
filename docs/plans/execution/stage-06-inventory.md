@@ -200,3 +200,121 @@ Test evidence (run from `apps/api`):
 No deviations from the plan beyond the two documented above (the
 cleanup-fix scope and the `SetTicketTypeQuantity`-vs-absolute-
 `AdjustInventoryQuantity` design choice).
+
+#### Task 06-03: GA hold creation with oversell simulation (2026-07-11)
+
+Landed Slice 2's GA path (stage-06 plan, task breakdown item 4): the
+`holds`/`hold_items` tables, `HoldStatus`, `CreateHold`, and
+`POST`/`GET /v1/storefront/holds`, turning the GA oversell simulation
+from slice 0 green.
+
+- `holds` (id, tenant_id, event_id, customer_id nullable, status,
+  expires_at) and `hold_items` (id, tenant_id, hold_id, ticket_type_id,
+  quantity with a `> 0` CHECK) migrations, each with RLS in the same
+  file, `event_id`/`customer_id`/`ticket_type_id`/`hold_id` all real FKs.
+  `App\Inventory\Models\{Hold,HoldItem}`, `App\Inventory\Enums\HoldStatus`
+  (`active`, `released`, `expired`, `committed`), and their factories.
+- `App\Inventory\Actions\CreateHold`: validates the request against
+  Catalog facts through a new read-only seam,
+  `App\EventCatalog\Actions\ResolveEventForHold` (returning
+  `#[Hidden]` `HoldableEventData`/`HoldableTicketTypeData` Data objects),
+  never by querying `Event`/`TicketType` directly (the architecture
+  boundary rule), the same pattern `CreateTicketType` already
+  established for the Inventory-ward direction. Per item: event
+  published lookup (`event_not_found`), ticket-type membership
+  (`ticket_type_not_in_event`), sales-window check against
+  `Illuminate\Support\Facades\Date::now()` (`sales_window_closed`),
+  then the held-increment conditional UPDATE (`sold + held + n <=
+  quantity`, checked by affected-row count, throwing
+  `InsufficientHoldInventoryException` with a `ticket_type_id`
+  extension member on zero rows). TTL is a 10-minute constant. Runs
+  entirely inside the ambient request transaction
+  `ResolveTenantFromHost` already opened, so the hold row, its items,
+  the counter guard, and the `HoldCreated` outbox row commit or roll
+  back together.
+- `App\Inventory\Http\Controllers\HoldController`: `customer_id` is
+  never a `CreateHoldData` property (a client-supplied identity
+  assertion is not trusted alone), so a body-supplied value is simply
+  ignored; the controller derives it from `$request->user('customer')`
+  (optional, no `auth:customer` middleware on either route), null for
+  guests. `GET` renders `hold_not_found` for an unknown or
+  cross-tenant id (RLS makes cross-tenant a natural miss). New
+  `App\Inventory\InventoryServiceProvider` mounts the two routes under
+  `tenancy.storefront` and registers `HoldCreated` in the outbox event
+  type registry.
+- Four new stable error codes (`event_not_found` 404,
+  `ticket_type_not_in_event` 422, `sales_window_closed` 409,
+  `hold_not_found` 404) added to the `ErrorCode` registry;
+  `insufficient_inventory` (409) is reused for the hold path via a new
+  `InsufficientHoldInventoryException` distinct from the existing
+  quantity-adjustment one so the PATCH ticket-type endpoint's existing
+  conflict schema (no `errors` member) stays unchanged.
+- OpenAPI: `POST /v1/storefront/holds` and
+  `GET /v1/storefront/holds/{hold}` paths, `Hold`/`HoldItem`/
+  `HoldItemInput`/`CreateHoldRequest` schemas, and four new problem
+  schemas (`HoldEventNotFoundProblem`, `HoldNotFoundProblem`,
+  `HoldCreateUnprocessableProblem`, `HoldCreateConflictProblem`).
+  `composer types:generate` run; `packages/api-client/src/generated/
+  index.ts` and the manifest regenerated with `CreateHoldData`,
+  `HoldData`, `HoldItemData`, `HoldItemInputData`, `HoldStatus`, and the
+  four new `ErrorCode` members.
+- Test-first per the master plan double loop: the GA oversell
+  concurrency simulation (`tests/Concurrency/GaHoldContentionTest.php`,
+  exact-fit/2x/10x oversubscription plus a multi-unit-per-request case,
+  driven through the real HTTP kernel in forked workers against
+  `POST /v1/storefront/holds`) was written and run failing before the
+  migrations existed, then turned green by the implementation, per
+  slice 0's rule that a failing probe cannot land on `main` so it
+  merges with the task that turns it green. Isolation probes for
+  `holds` and `hold_items` (`tests/Isolation/{HoldsIsolationTest,
+  HoldItemsIsolationTest}.php`) went the same route. Unit
+  (`tests/Unit/Inventory/CreateHoldTest.php`, including a rollback
+  probe: `HoldCreated` present via a mid-transaction `OutboxEvent`
+  query, then absent and the hold row gone after a forced
+  `RuntimeException` rolls the surrounding `TenantTransaction::asTenant`
+  back) and feature
+  (`tests/Feature/Inventory/HoldEndpointsTest.php`, every failure-mode
+  row from the endpoint table, `expires_at` asserted via `travelTo`,
+  customer-token derivation, guest null, and a feature-level
+  cross-tenant 404 probe) suites were written before the Action and
+  controller existed and watched fail on the missing classes.
+- `tests/Contract/DocumentedResponseCoverageTest.php` gained
+  `contractHoldTenant()`/`contractHoldFixture()` helpers and six
+  exercisers (one per newly documented `method path status` triple),
+  required by that suite's own coverage gate; `tests/Architecture/
+  PresetTest.php` gained the new context's ignore-list entries
+  (`App\Inventory\Http\Controllers`, `InventoryServiceProvider`,
+  `HoldStatus`, the five new exception classes) the Laravel preset
+  needs for a fresh bounded context, mirroring every earlier context's
+  own entries.
+
+Test evidence (run from `apps/api`):
+
+- `php artisan test --filter="CreateHoldTest|HoldEndpointsTest|HoldsIsolationTest|HoldItemsIsolationTest|GaHoldContentionTest|ErrorCodeTest"`: 103 passed, 384 assertions.
+- `php artisan test --testsuite=Architecture`: 38 passed, 94 assertions.
+- `php artisan test --testsuite=Isolation`: 201 passed, 433 assertions.
+- `php artisan test --testsuite=Unit`: 587 passed, 1407 assertions.
+- `php artisan test --testsuite=Feature`: 732 passed, 3622 assertions.
+- `php artisan test --testsuite=Contract`: 247 passed, 1575 assertions (one flaky faker-email-collision failure on a first run, in an unrelated pre-existing exerciser, gone on rerun against a clean database).
+- `composer analyse`: passed (0 errors).
+- `composer lint`: passed (Pint auto-fixed one import order in the new unit test file).
+
+Deviations from the plan, both scope-narrowing and both intentional
+given task 06-03's own instructions restrict this task to the GA path:
+
+- Seated ticket types are out of scope: `CreateHold` has no
+  `seat_ids` input yet and no `requires_seat` special-case. A
+  `requires_seat` ticket type simply falls through to the same
+  held-increment guard as GA, which stays safe because a later task's
+  `MaterializeEventSeats` seeds every seated counter's `quantity` at 0
+  until zoning assigns seats, so an unmaterialized or unzoned seated
+  type always fails `insufficient_inventory` rather than overselling.
+  `HoldData`/`HoldCreatedPayload` ship `seat_ids` as an always-empty
+  array now so the response and payload envelopes do not change shape
+  once a later task adds seat handling.
+- The plan's GA oversell simulation description also asks for "mixed
+  create-and-release interleaving"; `ReleaseHold` does not exist yet
+  (task breakdown item 5), so `GaHoldContentionTest` covers only the
+  create-side oversubscription matrix (exact-fit, 2x, 10x, and a
+  multi-unit-per-request case) and defers the release interleaving
+  case to the task that ships `ReleaseHold`.
