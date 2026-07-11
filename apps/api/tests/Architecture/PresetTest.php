@@ -76,6 +76,9 @@ use App\Orders\Enums\PromoCodeDiscountType;
 use App\Orders\Enums\TicketStatus;
 use App\Orders\Exceptions\HoldAlreadyConvertedException;
 use App\Orders\Exceptions\HoldExpiredException as OrderHoldExpiredException;
+use App\Orders\Exceptions\InvalidOrderTransitionException;
+use App\Orders\Exceptions\OrderNotCancelableException;
+use App\Orders\Exceptions\OrderNotFoundException;
 use App\Orders\OrdersServiceProvider;
 use App\Support\Media\Exceptions\MediaNotFoundException;
 use App\Support\Money\CurrencyMismatchException;
@@ -274,6 +277,9 @@ arch()->preset()->laravel()->ignoring([
     OrdersServiceProvider::class,
     OrderHoldExpiredException::class,
     HoldAlreadyConvertedException::class,
+    OrderNotFoundException::class,
+    InvalidOrderTransitionException::class,
+    OrderNotCancelableException::class,
     'App\Support\Audit\Models',
     'App\Support\Outbox\Models',
     'App\Support\Media\Models',
