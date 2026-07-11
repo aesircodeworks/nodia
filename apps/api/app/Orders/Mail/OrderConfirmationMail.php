@@ -39,7 +39,12 @@ final class OrderConfirmationMail extends Mailable
             $this->ticketCount === 1 ? '' : 's',
             $this->ticketCount === 1 ? 'is' : 'are',
             e($this->total->currency),
-            number_format($this->total->amount / 100, 2),
+            $this->formattedTotal(),
         ));
+    }
+
+    private function formattedTotal(): string
+    {
+        return number_format(intdiv($this->total->amount, 100)).'.'.sprintf('%02d', $this->total->amount % 100);
     }
 }
