@@ -86,6 +86,7 @@ use App\Orders\Exceptions\PromoCodeImmutableFieldException;
 use App\Orders\Exceptions\PromoCodeInvalidException;
 use App\Orders\Exceptions\PromoCodeNotActiveException;
 use App\Orders\OrdersServiceProvider;
+use App\Payments\Enums\GatewayWebhookStatus;
 use App\Payments\Enums\PaymentMethodConfirmation;
 use App\Payments\Enums\PaymentStatus;
 use App\Payments\Exceptions\GatewayUnavailableException;
@@ -203,6 +204,7 @@ arch()->preset()->laravel()->ignoring([
     PromoCodeDiscountType::class,
     PaymentStatus::class,
     PaymentMethodConfirmation::class,
+    GatewayWebhookStatus::class,
     GatewayPaymentOutcome::class,
     WebhookKind::class,
     'App\Support\Outbox\Jobs',

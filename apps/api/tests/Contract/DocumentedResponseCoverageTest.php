@@ -19,6 +19,9 @@ use App\Models\User;
 use App\Orders\Actions\MarkOrderAwaitingPayment;
 use App\Orders\Actions\MarkOrderPaid;
 use App\Orders\Models\PromoCode;
+use App\Payments\Gateways\FakeGateway;
+use App\Payments\Gateways\FakeGatewayScenarios;
+use App\Support\Money\Money;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
@@ -66,6 +69,10 @@ afterEach(function (): void {
         DB::table('outbox_deliveries')->delete();
         DB::table('outbox_events')->delete();
         DB::table('memberships')->delete();
+
+        // The webhook exercisers (stage-08a plan, task breakdown item 6)
+        // persist raw rows under the sentinel tenant.
+        DB::table('gateway_webhook_events')->delete();
     });
 
     // contractRoleTenantBearer() (task breakdown item 8) writes tenant-scope
@@ -81,6 +88,11 @@ afterEach(function (): void {
             DB::table('outbox_deliveries')->where('tenant_id', $tenantId)->delete();
             DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
             DB::table('memberships')->where('tenant_id', $tenantId)->delete();
+
+            // The payment exercisers (stage-08a plan, task breakdown items
+            // 3 to 6) write payments referencing orders with no cascade, so
+            // they go ahead of orders.
+            DB::table('payments')->where('tenant_id', $tenantId)->delete();
 
             // The order exercisers (stage-07 plan, task breakdown item 3)
             // write orders, order_items, and tickets referencing customers,
@@ -3250,7 +3262,196 @@ function documentedResponseExercisers(): array
                 'Authorization' => 'Bearer '.$token,
             ]);
         },
+        'get /v1/storefront/orders/{order}/payment-methods 200' => function (): TestResponse {
+            $order = contractPaymentOrder();
+
+            return test()->getJson('http://'.$order['host'].'/v1/storefront/orders/'.$order['orderId'].'/payment-methods', [
+                'Authorization' => 'Bearer '.$order['token'],
+            ]);
+        },
+        'get /v1/storefront/orders/{order}/payment-methods 401' => function (): TestResponse {
+            ['host' => $host] = contractPaymentTenant();
+
+            return test()->getJson('http://'.$host.'/v1/storefront/orders/'.Str::uuid7().'/payment-methods');
+        },
+        'get /v1/storefront/orders/{order}/payment-methods 404' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractPaymentTenant();
+            $token = contractOrderCustomerBearer($tenant, $host);
+
+            return test()->getJson('http://'.$host.'/v1/storefront/orders/'.Str::uuid7().'/payment-methods', [
+                'Authorization' => 'Bearer '.$token,
+            ]);
+        },
+        'get /v1/storefront/orders/{order}/payment-methods 409' => function (): TestResponse {
+            $order = contractPaymentOrder();
+
+            app(TenantTransaction::class)->asTenant(
+                $order['tenant']->id,
+                fn () => app(MarkOrderAwaitingPayment::class)($order['orderId']),
+            );
+
+            return test()->getJson('http://'.$order['host'].'/v1/storefront/orders/'.$order['orderId'].'/payment-methods', [
+                'Authorization' => 'Bearer '.$order['token'],
+            ]);
+        },
+        'post /v1/storefront/orders/{order}/payments 201' => function (): TestResponse {
+            $order = contractPaymentOrder();
+
+            return contractInitiatePayment($order, ['method' => 'card', 'details' => ['token' => 'tok_approve']], (string) Str::uuid7());
+        },
+        'post /v1/storefront/orders/{order}/payments 200' => function (): TestResponse {
+            $order = contractPaymentOrder();
+            $key = (string) Str::uuid7();
+            $body = ['method' => 'card', 'details' => ['token' => 'tok_approve']];
+
+            contractInitiatePayment($order, $body, $key);
+
+            return contractInitiatePayment($order, $body, $key);
+        },
+        'post /v1/storefront/orders/{order}/payments 400' => function (): TestResponse {
+            $order = contractPaymentOrder();
+
+            return contractInitiatePayment($order, ['method' => 'card', 'details' => ['token' => 'tok_approve']], null);
+        },
+        'post /v1/storefront/orders/{order}/payments 401' => function (): TestResponse {
+            ['host' => $host] = contractPaymentTenant();
+
+            return test()->postJson('http://'.$host.'/v1/storefront/orders/'.Str::uuid7().'/payments', [
+                'method' => 'card',
+            ], ['Idempotency-Key' => (string) Str::uuid7()]);
+        },
+        'post /v1/storefront/orders/{order}/payments 402' => function (): TestResponse {
+            $order = contractPaymentOrder();
+
+            return contractInitiatePayment($order, ['method' => 'card', 'details' => ['token' => 'tok_decline']], (string) Str::uuid7());
+        },
+        'post /v1/storefront/orders/{order}/payments 404' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractPaymentTenant();
+            $token = contractOrderCustomerBearer($tenant, $host);
+
+            return test()->postJson('http://'.$host.'/v1/storefront/orders/'.Str::uuid7().'/payments', [
+                'method' => 'card',
+            ], ['Authorization' => 'Bearer '.$token, 'Idempotency-Key' => (string) Str::uuid7()]);
+        },
+        'post /v1/storefront/orders/{order}/payments 409' => function (): TestResponse {
+            $order = contractPaymentOrder();
+            $key = (string) Str::uuid7();
+
+            contractInitiatePayment($order, ['method' => 'card', 'details' => ['token' => 'tok_approve']], $key);
+
+            return contractInitiatePayment($order, ['method' => 'card', 'details' => ['token' => 'tok_decline']], $key);
+        },
+        'post /v1/storefront/orders/{order}/payments 422' => function (): TestResponse {
+            $order = contractPaymentOrder();
+
+            return contractInitiatePayment($order, ['method' => 'crypto'], (string) Str::uuid7());
+        },
+        'post /v1/storefront/orders/{order}/payments 503' => function (): TestResponse {
+            $order = contractPaymentOrder();
+
+            app(FakeGatewayScenarios::class)->failNextCreate();
+
+            return contractInitiatePayment($order, ['method' => 'card', 'details' => ['token' => 'tok_approve']], (string) Str::uuid7());
+        },
+        'get /v1/storefront/payments/{payment} 200' => function (): TestResponse {
+            $order = contractPaymentOrder();
+
+            $paymentId = contractInitiatePayment($order, ['method' => 'pix'], (string) Str::uuid7())->json('id');
+
+            return test()->getJson('http://'.$order['host'].'/v1/storefront/payments/'.$paymentId, [
+                'Authorization' => 'Bearer '.$order['token'],
+            ]);
+        },
+        'get /v1/storefront/payments/{payment} 401' => function (): TestResponse {
+            ['host' => $host] = contractPaymentTenant();
+
+            return test()->getJson('http://'.$host.'/v1/storefront/payments/'.Str::uuid7());
+        },
+        'get /v1/storefront/payments/{payment} 404' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractPaymentTenant();
+            $token = contractOrderCustomerBearer($tenant, $host);
+
+            return test()->getJson('http://'.$host.'/v1/storefront/payments/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.$token,
+            ]);
+        },
+        'post /v1/webhooks/{gateway} 401' => function (): TestResponse {
+            $delivery = app(FakeGateway::class)->confirmationWebhook('fake_contract_ref', Money::of(125, 'USD'));
+
+            return contractPostWebhook('fake', $delivery->body, 'bogus');
+        },
+        'post /v1/webhooks/{gateway} 404' => function (): TestResponse {
+            $delivery = app(FakeGateway::class)->confirmationWebhook('fake_contract_ref', Money::of(125, 'USD'));
+
+            return contractPostWebhook('stripe', $delivery->body, $delivery->headers['X-Fake-Signature']);
+        },
+        'post /v1/webhooks/{gateway} 422' => function (): TestResponse {
+            $body = (string) json_encode(['type' => 'payment.confirmed']);
+
+            return contractPostWebhook('fake', $body, hash_hmac('sha256', $body, config()->string('payments.gateways.fake.webhook_secret')));
+        },
     ];
+}
+
+/**
+ * A contractHoldTenant() with the fake gateway enabled (stage-08a plan,
+ * task breakdown items 3 to 6).
+ *
+ * @return array{tenant: Tenant, host: string}
+ */
+function contractPaymentTenant(): array
+{
+    ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+
+    app(TenantTransaction::class)->asPlatform(fn () => $tenant->update(['enabled_gateways' => ['fake']]));
+
+    return ['tenant' => $tenant, 'host' => $host];
+}
+
+/**
+ * A pending order in a payment-enabled tenant with plenty of inventory,
+ * so async methods stay in the offer.
+ *
+ * @return array{tenant: Tenant, host: string, token: string, orderId: string}
+ */
+function contractPaymentOrder(): array
+{
+    ['tenant' => $tenant, 'host' => $host] = contractPaymentTenant();
+    ['event' => $event, 'ticketType' => $ticketType] = contractHoldFixture($tenant, 100);
+    $token = contractOrderCustomerBearer($tenant, $host);
+
+    $orderId = test()->postJson('http://'.$host.'/v1/storefront/orders', [
+        'hold_id' => contractOrderHold($host, $event->id, $ticketType->id),
+    ], ['Authorization' => 'Bearer '.$token])->json('id');
+
+    return ['tenant' => $tenant, 'host' => $host, 'token' => $token, 'orderId' => $orderId];
+}
+
+/**
+ * @param  array<string, mixed>  $body
+ * @return TestResponse<JsonResponse>
+ */
+function contractInitiatePayment(array $order, array $body, ?string $key): TestResponse
+{
+    $headers = ['Authorization' => 'Bearer '.$order['token']];
+
+    if ($key !== null) {
+        $headers['Idempotency-Key'] = $key;
+    }
+
+    return test()->postJson('http://'.$order['host'].'/v1/storefront/orders/'.$order['orderId'].'/payments', $body, $headers);
+}
+
+/**
+ * @return TestResponse<JsonResponse>
+ */
+function contractPostWebhook(string $gateway, string $body, string $signature): TestResponse
+{
+    return test()->call('POST', '/v1/webhooks/'.$gateway, [], [], [], [
+        'CONTENT_TYPE' => 'application/json',
+        'HTTP_ACCEPT' => 'application/json',
+        'HTTP_X_FAKE_SIGNATURE' => $signature,
+    ], $body);
 }
 
 /**

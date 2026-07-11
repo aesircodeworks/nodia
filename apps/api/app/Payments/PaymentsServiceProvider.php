@@ -38,5 +38,7 @@ class PaymentsServiceProvider extends ServiceProvider
         Route::middleware('tenancy.storefront')
             ->prefix('v1')
             ->group(__DIR__.'/Http/routes/storefront.php');
+
+        Route::prefix('v1')->group(__DIR__.'/Http/routes/webhooks.php');
     }
 }

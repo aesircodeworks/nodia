@@ -4748,6 +4748,56 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/NotFoundProblem'
+  /v1/webhooks/{gateway}:
+    parameters:
+      - name: gateway
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: ingestGatewayWebhook
+      summary: Ingest a gateway webhook
+      description: >-
+        Gateway-facing ingestion, one route per registered adapter
+        (stage-08a plan, Endpoints; system-design 3.2). Unauthenticated
+        and exempt from tenant resolution; the adapter's signature
+        verification is the gate. Persist first, always 2xx after
+        persist; duplicate gateway event ids insert-conflict into a
+        no-op reusing the existing row.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Persisted (or already persisted); empty body.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+        '401':
+          description: Signature verification failed; nothing persisted.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/WebhookSignatureInvalidProblem'
+        '404':
+          description: No registered adapter for this gateway (code request.not_found).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '422':
+          description: >-
+            Signature valid but no gateway event id extractable (code
+            webhook_unparseable); nothing persisted.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/WebhookUnparseableProblem'
 components:
   securitySchemes:
     BearerAuth:
@@ -6823,6 +6873,36 @@ components:
             code:
               type: string
               enum: [gateway_unavailable]
+      unevaluatedProperties: false
+    WebhookSignatureInvalidProblem:
+      description: >-
+        Problem document for webhook ingestion when the signature fails
+        verification (stage-08a plan, Endpoints); nothing is persisted.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [401]
+            code:
+              type: string
+              enum: [webhook_signature_invalid]
+      unevaluatedProperties: false
+    WebhookUnparseableProblem:
+      description: >-
+        Problem document for webhook ingestion when the body carries no
+        extractable gateway event id (stage-08a plan, Endpoints).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [422]
+            code:
+              type: string
+              enum: [webhook_unparseable]
       unevaluatedProperties: false
     OrderNotPayableProblem:
       description: >-
