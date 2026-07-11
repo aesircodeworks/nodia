@@ -108,6 +108,12 @@ No push yet; push and CI verification happen once after the review loop.
 1. Blocking, InitiatePayment.php replay path, "idempotency replay is not scoped to the requested order; the same key with the same payload against another order replays the first order's payment": confirmed and fixed. replay() now treats a key reused against a different order as idempotency_key_reuse_mismatch regardless of payload. Feature test written first and observed failing (the cross-order replay returned 200 with the first order's payment).
 2. Important, FakeGateway normalization, "negative webhook fees pass validation, then the payments_fee_non_negative check constraint fails the job and strands the raw event in received for endless retries": confirmed and fixed by rejecting negative amounts in normalization, routing the delivery to the ignored path. The feature test observed the predicted 500 with the check violation before the fix; unit matrix extended with the negative case.
 
+### Gate re-run after the review loop (2026-07-11 19:55 -03, local)
+
+- Pint passed; Larastan passed with 0 errors.
+- Full test run: 2341 passed, 9475 assertions, 0 failed. A first attempt failed twice on leftover state (`outbox_test_effects` and its rows) inherited from a run composer's 300-second process timeout had killed mid-suite; a clean re-run plus the Isolation and Concurrency suites run individually are all green, so the failures were environmental, not code defects. Run the full suite via `php artisan test` from apps/api rather than the composer script when it may exceed 300 seconds.
+- types:generate produced no drift in packages/api-client/src/generated; pnpm typecheck passes in all four workspaces.
+
 ### Decisions and deviations
 
 - payments carries a nullable next_action jsonb column beyond the plan's column list: the plan requires replays and GET /v1/storefront/payments/{payment} to re-serve next_action byte-identically, and deriving it from the adapter on read would couple reads to gateway determinism. Added while the creating migration is still unmerged on this branch, so no merged migration was edited.
