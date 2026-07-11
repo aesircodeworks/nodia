@@ -3,6 +3,8 @@
 namespace App\Orders;
 
 use App\Orders\Jobs\CancelOrderOnHoldExpired;
+use App\Orders\Jobs\HandlePaymentConfirmed;
+use App\Orders\Jobs\HandlePaymentFailed;
 use App\Orders\Support\DerivedTicketSigningKeyProvider;
 use App\Orders\Support\TicketSigningKeyProvider;
 use App\Support\Outbox\EventTypeRegistry;
@@ -33,6 +35,18 @@ class OrdersServiceProvider extends ServiceProvider
             CancelOrderOnHoldExpired::NAME,
             ['HoldExpired'],
             $this->app->make(CancelOrderOnHoldExpired::class),
+        );
+
+        $subscribers->register(
+            HandlePaymentConfirmed::NAME,
+            ['PaymentConfirmed'],
+            $this->app->make(HandlePaymentConfirmed::class),
+        );
+
+        $subscribers->register(
+            HandlePaymentFailed::NAME,
+            ['PaymentFailed'],
+            $this->app->make(HandlePaymentFailed::class),
         );
 
         Route::middleware('tenancy.storefront')
