@@ -20,6 +20,29 @@ final class SearchDocumentWriter
     }
 
     /**
+     * Prunes rows whose locale is no longer in the event's current
+     * supported-locale set, so a locale removed from supported_locales
+     * stops being searchable on the next refresh rather than lingering
+     * as a stale one-row-per-locale projection drift. An empty list is a
+     * guard only; the upsert path always writes at least one locale.
+     *
+     * @param  list<string>  $locales
+     */
+    public function deleteForExceptLocales(string $eventId, array $locales): void
+    {
+        if ($locales === []) {
+            $this->deleteFor($eventId);
+
+            return;
+        }
+
+        DB::table('event_search_documents')
+            ->where('event_id', $eventId)
+            ->whereNotIn('locale', $locales)
+            ->delete();
+    }
+
+    /**
      * Raw INSERT ... ON CONFLICT (event_id, locale) DO UPDATE: a second
      * write of the same (event_id, locale) pair overwrites the same
      * content rather than creating a second row, which is what makes

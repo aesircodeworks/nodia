@@ -50,8 +50,15 @@ final readonly class RefreshSearchIndex implements OutboxSubscriber
             return;
         }
 
-        foreach ($this->builder->documentsFor($model) as $row) {
+        $rows = $this->builder->documentsFor($model);
+
+        foreach ($rows as $row) {
             $this->writer->upsert($row);
         }
+
+        $this->writer->deleteForExceptLocales(
+            $event->aggregate_id,
+            array_map(static fn ($row): string => $row->locale, $rows),
+        );
     }
 }

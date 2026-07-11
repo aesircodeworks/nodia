@@ -169,6 +169,30 @@ it('refreshes documents when EventUpdated fires on a currently published event',
         ->and($documents['fr']->name)->toBe('Jazz Festival Reloaded');
 });
 
+it('removes documents for locales dropped from supported_locales when a published event is refreshed', function (): void {
+    $create = $this->postJson('/v1/events', refreshIndexEventPayload());
+    $eventId = $create->json('id');
+    $this->postJson("/v1/events/{$eventId}/publish")->assertOk();
+
+    expect(refreshIndexDocuments($this->tenantId, $eventId))->toHaveCount(2);
+
+    // Drop 'fr' from the tenant's supported locales: the next refresh must
+    // prune the now-unsupported locale row rather than leaving it searchable.
+    app(TenantTransaction::class)->asPlatform(function (): void {
+        DB::table('tenants')->where('id', $this->tenantId)->update([
+            'supported_locales' => json_encode(['en']),
+        ]);
+    });
+
+    $this->patchJson("/v1/events/{$eventId}", ['name' => ['en' => 'Jazz Festival Reloaded']])->assertOk();
+
+    $documents = collect(refreshIndexDocuments($this->tenantId, $eventId))->keyBy('locale');
+
+    expect($documents)->toHaveCount(1)
+        ->and($documents->keys()->all())->toBe(['en'])
+        ->and($documents['en']->name)->toBe('Jazz Festival Reloaded');
+});
+
 it('deletes stale documents when EventUpdated fires on an event that is not published', function (): void {
     $create = $this->postJson('/v1/events', refreshIndexEventPayload());
     $eventId = $create->json('id');
