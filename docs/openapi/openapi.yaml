@@ -4000,6 +4000,236 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ValidationProblem'
+  /v1/promo-codes:
+    get:
+      operationId: listPromoCodes
+      summary: List promo codes in the acting tenant
+      description: >-
+        Tenant admin surface behind promo_codes.manage (stage-07 plan,
+        Endpoints). A bounded collection, page-paginated. Allowed
+        query-builder parameters are filter[code] (exact),
+        filter[active] (validity window against now), and sort in
+        (created_at, -created_at); unknown ones are rejected with 400
+        invalid_query_parameter.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          style: deepObject
+          explode: true
+          description: >-
+            Allowed filters: filter[code] (exact), filter[active]
+            (boolean validity-window check).
+          schema:
+            type: object
+            properties:
+              code:
+                type: string
+              active:
+                type: string
+            additionalProperties:
+              type: string
+        - name: sort
+          in: query
+          required: false
+          description: 'Allowed sorts: created_at, -created_at.'
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: One page of promo codes.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoCodePage'
+        '400':
+          description: >-
+            A filter or sort parameter outside the endpoint allowlist
+            (code invalid_query_parameter).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/InvalidQueryParameterProblem'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing
+            promo_codes.manage, or unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/StaffCapabilityForbiddenProblem'
+    post:
+      operationId: createPromoCode
+      summary: Create a promo code
+      description: >-
+        Tenant admin surface behind promo_codes.manage, audited
+        (stage-07 plan, Endpoints). discount_value is basis points for
+        percentage codes and minor units for fixed_amount codes, whose
+        currency is then required. (tenant_id, code) is unique; a
+        duplicate surfaces as request.validation_failed.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpsertPromoCodeRequest'
+      responses:
+        '201':
+          description: The created promo code.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoCode'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing
+            promo_codes.manage, or unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/StaffCapabilityForbiddenProblem'
+        '422':
+          description: >-
+            Request validation failed, including a duplicate code in the
+            tenant or a currency that contradicts the discount type.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+  /v1/promo-codes/{promo_code}:
+    parameters:
+      - name: promo_code
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getPromoCode
+      summary: Fetch a promo code including usage_count
+      description: >-
+        Tenant admin surface behind promo_codes.manage (stage-07 plan,
+        Endpoints).
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The promo code.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoCode'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing
+            promo_codes.manage, or unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/StaffCapabilityForbiddenProblem'
+        '404':
+          description: >-
+            No promo code has this id for the acting tenant (code
+            request.not_found, mirroring roles and ticket types).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+    patch:
+      operationId: updatePromoCode
+      summary: Partially update a promo code
+      description: >-
+        Tenant admin surface behind promo_codes.manage, audited
+        (stage-07 plan, Endpoints). code, discount_type, discount_value,
+        and currency are immutable once usage_count > 0 (sending the
+        unchanged value back stays accepted); validity windows remain
+        editable, so deactivation is setting valid_to.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpsertPromoCodeRequest'
+      responses:
+        '200':
+          description: The updated promo code.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoCode'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing
+            promo_codes.manage, or unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/StaffCapabilityForbiddenProblem'
+        '404':
+          description: >-
+            No promo code has this id for the acting tenant (code
+            request.not_found).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '422':
+          description: >-
+            Request validation failed (code request.validation_failed,
+            with the errors map), or a locked field changed after first
+            use (code promo_code_immutable_field).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/PromoCodeUpdateUnprocessableProblem'
   /v1/storefront/orders/{order}:
     parameters:
       - name: order
@@ -5446,6 +5676,134 @@ components:
                     - promo_code_not_active
                     - promo_code_exhausted
                     - promo_code_currency_mismatch
+      unevaluatedProperties: false
+    PromoCode:
+      type: object
+      description: >-
+        The staff promo code wire shape (stage-07 plan, Endpoints).
+        discount_value is basis points for percentage codes and minor
+        units for fixed_amount codes, whose currency is then non-null.
+      required:
+        - id
+        - code
+        - discount_type
+        - discount_value
+        - currency
+        - usage_limit
+        - usage_count
+        - valid_from
+        - valid_to
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        discount_type:
+          type: string
+          enum: [percentage, fixed_amount]
+        discount_value:
+          type: integer
+          minimum: 1
+        currency:
+          type: string
+          nullable: true
+        usage_limit:
+          type: integer
+          nullable: true
+        usage_count:
+          type: integer
+        valid_from:
+          type: string
+          format: date-time
+          nullable: true
+        valid_to:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    PromoCodePage:
+      type: object
+      description: >-
+        Laravel standard paginator envelope (data, links, meta) per
+        docs/api-conventions.md.
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PromoCode'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageLink'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      additionalProperties: false
+    UpsertPromoCodeRequest:
+      type: object
+      description: >-
+        POST and PATCH /v1/promo-codes request body (stage-07 plan,
+        Endpoints). Every field is optional so PATCH stays partial; POST
+        requires code, discount_type, and discount_value.
+      properties:
+        code:
+          type: string
+        discount_type:
+          type: string
+          enum: [percentage, fixed_amount]
+        discount_value:
+          type: integer
+          minimum: 1
+        currency:
+          type: string
+          nullable: true
+        usage_limit:
+          type: integer
+          nullable: true
+        valid_from:
+          type: string
+          format: date-time
+          nullable: true
+        valid_to:
+          type: string
+          format: date-time
+          nullable: true
+      additionalProperties: false
+    PromoCodeUpdateUnprocessableProblem:
+      description: >-
+        Problem document for PATCH /v1/promo-codes/{promo_code} that
+        cannot be processed: request validation failed (with the errors
+        map) or a locked field changed after first use (stage-07 plan,
+        Error codes).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - oneOf:
+            - type: object
+              required:
+                - errors
+              properties:
+                code:
+                  type: string
+                  enum: [request.validation_failed]
+                errors:
+                  type: object
+                  additionalProperties:
+                    type: array
+                    items:
+                      type: string
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum: [promo_code_immutable_field]
       unevaluatedProperties: false
     CheckPromoCodeRequest:
       type: object

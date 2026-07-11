@@ -38,5 +38,9 @@ class OrdersServiceProvider extends ServiceProvider
         Route::middleware('tenancy.storefront')
             ->prefix('v1')
             ->group(__DIR__.'/Http/routes/storefront.php');
+
+        Route::middleware('tenancy.admin')
+            ->prefix('v1')
+            ->group(__DIR__.'/Http/routes/admin.php');
     }
 }

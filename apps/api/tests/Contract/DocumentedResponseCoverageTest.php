@@ -2984,6 +2984,108 @@ function documentedResponseExercisers(): array
                 'Authorization' => 'Bearer '.$token,
             ]);
         },
+        // Stage-07 plan, task breakdown item 12: promo code admin CRUD.
+        'get /v1/promo-codes 200' => function (): TestResponse {
+            $tenant = contractTenant();
+            contractPromoCode($tenant);
+
+            return test()->getJson('/v1/promo-codes', contractPromoHeaders($tenant));
+        },
+        'get /v1/promo-codes 400' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->getJson('/v1/promo-codes?filter[nope]=1', contractPromoHeaders($tenant));
+        },
+        'get /v1/promo-codes 401' => fn (): TestResponse => test()->getJson('/v1/promo-codes'),
+        'get /v1/promo-codes 403' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->getJson('/v1/promo-codes', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/promo-codes 201' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->postJson('/v1/promo-codes', [
+                'code' => 'CONTRACTNEW',
+                'discount_type' => 'percentage',
+                'discount_value' => 1000,
+            ], contractPromoHeaders($tenant));
+        },
+        'post /v1/promo-codes 401' => fn (): TestResponse => test()->postJson('/v1/promo-codes', [
+            'code' => 'X',
+            'discount_type' => 'percentage',
+            'discount_value' => 1,
+        ]),
+        'post /v1/promo-codes 403' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->postJson('/v1/promo-codes', [
+                'code' => 'X',
+                'discount_type' => 'percentage',
+                'discount_value' => 1,
+            ], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/promo-codes 422' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->postJson('/v1/promo-codes', [], contractPromoHeaders($tenant));
+        },
+        'get /v1/promo-codes/{promo_code} 200' => function (): TestResponse {
+            $tenant = contractTenant();
+            $promo = contractPromoCode($tenant);
+
+            return test()->getJson('/v1/promo-codes/'.$promo->id, contractPromoHeaders($tenant));
+        },
+        'get /v1/promo-codes/{promo_code} 401' => fn (): TestResponse => test()->getJson('/v1/promo-codes/'.Str::uuid7()),
+        'get /v1/promo-codes/{promo_code} 403' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->getJson('/v1/promo-codes/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/promo-codes/{promo_code} 404' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->getJson('/v1/promo-codes/'.Str::uuid7(), contractPromoHeaders($tenant));
+        },
+        'patch /v1/promo-codes/{promo_code} 200' => function (): TestResponse {
+            $tenant = contractTenant();
+            $promo = contractPromoCode($tenant);
+
+            return test()->patchJson('/v1/promo-codes/'.$promo->id, [
+                'usage_limit' => 5,
+            ], contractPromoHeaders($tenant));
+        },
+        'patch /v1/promo-codes/{promo_code} 401' => fn (): TestResponse => test()->patchJson('/v1/promo-codes/'.Str::uuid7(), []),
+        'patch /v1/promo-codes/{promo_code} 403' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->patchJson('/v1/promo-codes/'.Str::uuid7(), [], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'patch /v1/promo-codes/{promo_code} 404' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->patchJson('/v1/promo-codes/'.Str::uuid7(), [], contractPromoHeaders($tenant));
+        },
+        'patch /v1/promo-codes/{promo_code} 422' => function (): TestResponse {
+            $tenant = contractTenant();
+            $promo = contractPromoCode($tenant, ['usage_count' => 1]);
+
+            return test()->patchJson('/v1/promo-codes/'.$promo->id, [
+                'code' => 'RENAMED',
+            ], contractPromoHeaders($tenant));
+        },
         'post /v1/storefront/promo-codes/check 200' => function (): TestResponse {
             ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
             ['event' => $event, 'ticketType' => $ticketType] = contractHoldFixture($tenant);
@@ -3069,6 +3171,28 @@ function documentedResponseExercisers(): array
                 'Authorization' => 'Bearer '.$token,
             ]);
         },
+    ];
+}
+
+/**
+ * @param  array<string, mixed>  $attributes
+ */
+function contractPromoCode(Tenant $tenant, array $attributes = []): PromoCode
+{
+    return app(TenantTransaction::class)->asTenant(
+        $tenant->id,
+        fn () => PromoCode::factory()->create(['tenant_id' => $tenant->id, ...$attributes]),
+    );
+}
+
+/**
+ * @return array<string, string>
+ */
+function contractPromoHeaders(Tenant $tenant): array
+{
+    return [
+        'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['promo_codes.manage']),
+        'X-Tenant-Id' => $tenant->id,
     ];
 }
 

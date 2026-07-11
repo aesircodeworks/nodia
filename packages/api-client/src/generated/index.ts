@@ -432,6 +432,18 @@ export type PromoCodeCheckData = {
   discount: Money | null;
   reason_code: string | null;
 };
+export type PromoCodeData = {
+  id: string;
+  code: string;
+  discount_type: string;
+  discount_value: number;
+  currency: string | null;
+  usage_limit: number | null;
+  usage_count: number;
+  valid_from: string | null;
+  valid_to: string | null;
+  created_at: string;
+};
 export type PromoCodeDiscountType = 'percentage' | 'fixed_amount';
 export type RefreshTokenRequestData = {
   refresh_token: string;
@@ -641,6 +653,15 @@ export type UpdateVenueData = {
   city?: string;
   country?: string;
   capacity?: number;
+};
+export type UpsertPromoCodeData = {
+  code?: string;
+  discount_type?: string;
+  discount_value?: number;
+  currency?: string | null;
+  usage_limit?: number | null;
+  valid_from?: string | null;
+  valid_to?: string | null;
 };
 export type UpsertSeatMapData = {
   name: string;
