@@ -230,4 +230,4 @@ Test evidence:
 - Full `composer test` (Feature, Unit, Contract, Architecture, Isolation, Concurrency): 1720/1720 passed, 6851 assertions (up from task-07's 1712/1712; this task's 7 new unit tests plus 1 new architecture test account for the delta exactly).
 - `composer lint` (Pint): passed. `composer analyse` (Larastan): passed, 0 errors. `composer types:generate`: no diff (no laravel-data class or endpoint changed; `EventSearcher`/`PostgresEventSearcher` are plain PHP, not wire shapes).
 
-Committed as `<pending>` `feat(catalog): EventSearcher interface, PostgresEventSearcher, and config-selected search binding`.
+Committed as `bb3561e` `feat(catalog): EventSearcher interface, PostgresEventSearcher, and config-selected search binding`.
