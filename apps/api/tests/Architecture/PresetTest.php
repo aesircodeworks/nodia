@@ -79,6 +79,7 @@ use App\Orders\Exceptions\HoldExpiredException as OrderHoldExpiredException;
 use App\Orders\Exceptions\InvalidOrderTransitionException;
 use App\Orders\Exceptions\OrderNotCancelableException;
 use App\Orders\Exceptions\OrderNotFoundException;
+use App\Orders\Exceptions\OrderNotPaidException;
 use App\Orders\Exceptions\PromoCodeCurrencyMismatchException;
 use App\Orders\Exceptions\PromoCodeExhaustedException;
 use App\Orders\Exceptions\PromoCodeImmutableFieldException;
@@ -285,6 +286,7 @@ arch()->preset()->laravel()->ignoring([
     OrderNotFoundException::class,
     InvalidOrderTransitionException::class,
     OrderNotCancelableException::class,
+    OrderNotPaidException::class,
     PromoCodeInvalidException::class,
     PromoCodeNotActiveException::class,
     PromoCodeExhaustedException::class,

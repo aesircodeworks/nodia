@@ -403,6 +403,20 @@ export type OrderData = {
   promo_code: string | null;
   created_at: string;
 };
+export type OrderDetailData = {
+  id: string;
+  status: string;
+  event_id: string;
+  items: OrderItemData[];
+  subtotal: Money;
+  discount: Money;
+  fees: Money;
+  total: Money;
+  promo_code: string | null;
+  created_at: string;
+  tickets: TicketData[];
+  customer: CustomerSummaryData | null;
+};
 export type OrderItemData = {
   ticket_type_id: string;
   quantity: number;

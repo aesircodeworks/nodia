@@ -9,7 +9,17 @@ use App\Http\Middleware\RecordActivityAudit;
 use App\Http\Middleware\RequireCapability;
 use App\Identity\Capability;
 use App\Orders\Http\Controllers\PromoCodeAdminController;
+use App\Orders\Http\Controllers\StaffOrderController;
 use Illuminate\Support\Facades\Route;
+
+Route::middleware(RequireCapability::class.':'.Capability::OrdersView->value)->group(function (): void {
+    Route::get('/orders', [StaffOrderController::class, 'index']);
+    Route::get('/orders/{order}', [StaffOrderController::class, 'show'])->whereUuid('order');
+});
+
+Route::middleware([RequireCapability::class.':'.Capability::OrdersResendTickets->value, RecordActivityAudit::class])->group(function (): void {
+    Route::post('/orders/{order}/resend-tickets', [StaffOrderController::class, 'resendTickets'])->whereUuid('order');
+});
 
 Route::middleware(RequireCapability::class.':'.Capability::PromoCodesManage->value)->group(function (): void {
     Route::get('/promo-codes', [PromoCodeAdminController::class, 'index']);

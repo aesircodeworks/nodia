@@ -4000,6 +4000,190 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ValidationProblem'
+  /v1/orders:
+    get:
+      operationId: listOrders
+      summary: List orders in the acting tenant
+      description: >-
+        Tenant admin surface behind orders.view (stage-07 plan,
+        Endpoints). High-volume, so cursor-paginated over descending id
+        (UUIDv7, so descending creation time). Allowed query-builder
+        parameters are filter[status], filter[event_id],
+        filter[customer_id] (exact) and filter[created_from] /
+        filter[created_to] (created_at range); no sorts are allowed;
+        unknown parameters are rejected with 400
+        invalid_query_parameter, never ignored.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          style: deepObject
+          explode: true
+          description: >-
+            Allowed filters: filter[status], filter[event_id],
+            filter[customer_id] (exact), filter[created_from],
+            filter[created_to] (created_at range).
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              event_id:
+                type: string
+              customer_id:
+                type: string
+              created_from:
+                type: string
+              created_to:
+                type: string
+            additionalProperties:
+              type: string
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: per_page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: One cursor page of orders.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderCursorPage'
+        '400':
+          description: >-
+            A filter or sort parameter outside the endpoint allowlist
+            (code invalid_query_parameter).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/InvalidQueryParameterProblem'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing orders.view,
+            or unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/StaffCapabilityForbiddenProblem'
+  /v1/orders/{order}:
+    parameters:
+      - name: order
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getOrder
+      summary: Fetch an order with tickets and customer summary
+      description: >-
+        Tenant admin surface behind orders.view (stage-07 plan,
+        Endpoints). The customer summary is composed through Identity,
+        never a join.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The order detail.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetail'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing orders.view,
+            or unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/StaffCapabilityForbiddenProblem'
+        '404':
+          description: >-
+            Missing or other tenant via RLS (code order_not_found).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/OrderNotFoundProblem'
+  /v1/orders/{order}/resend-tickets:
+    parameters:
+      - name: order
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: resendOrderTickets
+      summary: Queue a ticket resend for a paid order
+      description: >-
+        Tenant admin surface behind orders.resend_tickets, audited
+        (stage-07 plan, Endpoints). A dormant dispatch seam until Stage
+        8a's email and PDF consumers exist; the qr_rotation_counter bump
+        ships with that activation task, so payloads are only
+        invalidated when new tickets actually go out.
+      security:
+        - BearerAuth: []
+      responses:
+        '202':
+          description: The resend is accepted.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing
+            orders.resend_tickets, or unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/StaffCapabilityForbiddenProblem'
+        '404':
+          description: >-
+            Missing or other tenant via RLS (code order_not_found).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/OrderNotFoundProblem'
+        '409':
+          description: The order has no issued tickets (code order_not_paid).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/OrderNotPaidProblem'
   /v1/promo-codes:
     get:
       operationId: listPromoCodes
@@ -6090,6 +6274,106 @@ components:
             code:
               type: string
               enum: [tenant_access_denied, missing_capability, mfa_enforcement_required]
+      unevaluatedProperties: false
+    OrderCursorPage:
+      type: object
+      description: >-
+        Cursor-paginated envelope (data, links, meta) for the staff
+        order list (stage-07 plan, Endpoints).
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+        links:
+          type: array
+          items: {}
+        meta:
+          $ref: '#/components/schemas/CursorPageMeta'
+      additionalProperties: false
+    OrderDetail:
+      type: object
+      description: >-
+        GET /v1/orders/{order} response shape (stage-07 plan,
+        Endpoints): the order fields plus tickets and a customer summary
+        composed through Identity, never a join. customer is null only
+        for an erased customer (anonymize-in-place, system-design 14.3).
+      required:
+        - id
+        - status
+        - event_id
+        - items
+        - subtotal
+        - discount
+        - fees
+        - total
+        - promo_code
+        - created_at
+        - tickets
+        - customer
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - pending
+            - awaiting_payment
+            - paid
+            - expired
+            - failed
+            - canceled
+            - partially_refunded
+            - refunded
+        event_id:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        subtotal:
+          $ref: '#/components/schemas/Money'
+        discount:
+          $ref: '#/components/schemas/Money'
+        fees:
+          $ref: '#/components/schemas/Money'
+        total:
+          $ref: '#/components/schemas/Money'
+        promo_code:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        tickets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ticket'
+        customer:
+          oneOf:
+            - $ref: '#/components/schemas/CustomerSummary'
+            - type: 'null'
+      additionalProperties: false
+    OrderNotPaidProblem:
+      description: >-
+        Problem document for POST /v1/orders/{order}/resend-tickets on
+        an order without issued tickets (stage-07 plan, Error codes).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [order_not_paid]
       unevaluatedProperties: false
     OrderNotFoundProblem:
       description: >-

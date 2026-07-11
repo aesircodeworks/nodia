@@ -2984,6 +2984,85 @@ function documentedResponseExercisers(): array
                 'Authorization' => 'Bearer '.$token,
             ]);
         },
+        // Stage-07 plan, task breakdown items 13 and 14: staff order surface.
+        'get /v1/orders 200' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            contractStaffOrder($tenant, $host);
+
+            return test()->getJson('/v1/orders', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['orders.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/orders 400' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->getJson('/v1/orders?filter[nope]=1', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['orders.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/orders 401' => fn (): TestResponse => test()->getJson('/v1/orders'),
+        'get /v1/orders 403' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->getJson('/v1/orders', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/orders/{order} 200' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            $orderId = contractStaffOrder($tenant, $host);
+
+            return test()->getJson('/v1/orders/'.$orderId, [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['orders.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/orders/{order} 401' => fn (): TestResponse => test()->getJson('/v1/orders/'.Str::uuid7()),
+        'get /v1/orders/{order} 403' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->getJson('/v1/orders/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/orders/{order} 404' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->getJson('/v1/orders/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['orders.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/orders/{order}/resend-tickets 401' => fn (): TestResponse => test()->postJson('/v1/orders/'.Str::uuid7().'/resend-tickets'),
+        'post /v1/orders/{order}/resend-tickets 403' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->postJson('/v1/orders/'.Str::uuid7().'/resend-tickets', [], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['orders.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/orders/{order}/resend-tickets 404' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->postJson('/v1/orders/'.Str::uuid7().'/resend-tickets', [], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['orders.resend_tickets']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/orders/{order}/resend-tickets 409' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            $orderId = contractStaffOrder($tenant, $host);
+
+            return test()->postJson('/v1/orders/'.$orderId.'/resend-tickets', [], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['orders.resend_tickets']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
         // Stage-07 plan, task breakdown item 12: promo code admin CRUD.
         'get /v1/promo-codes 200' => function (): TestResponse {
             $tenant = contractTenant();
@@ -3172,6 +3251,21 @@ function documentedResponseExercisers(): array
             ]);
         },
     ];
+}
+
+/**
+ * A pending order in the given contractHoldTenant(), created over the
+ * real storefront conversion flow (stage-07 plan, task breakdown item
+ * 13).
+ */
+function contractStaffOrder(Tenant $tenant, string $host): string
+{
+    ['event' => $event, 'ticketType' => $ticketType] = contractHoldFixture($tenant);
+    $token = contractOrderCustomerBearer($tenant, $host);
+
+    return test()->postJson('http://'.$host.'/v1/storefront/orders', [
+        'hold_id' => contractOrderHold($host, $event->id, $ticketType->id),
+    ], ['Authorization' => 'Bearer '.$token])->json('id');
 }
 
 /**
