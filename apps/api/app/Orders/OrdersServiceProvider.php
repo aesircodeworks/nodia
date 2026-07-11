@@ -2,7 +2,9 @@
 
 namespace App\Orders;
 
+use App\Orders\Jobs\CancelOrderOnHoldExpired;
 use App\Support\Outbox\EventTypeRegistry;
+use App\Support\Outbox\SubscriberRegistry;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
@@ -15,9 +17,15 @@ use Illuminate\Support\ServiceProvider;
  */
 class OrdersServiceProvider extends ServiceProvider
 {
-    public function boot(EventTypeRegistry $registry): void
+    public function boot(EventTypeRegistry $registry, SubscriberRegistry $subscribers): void
     {
         $registry->register('OrderCreated');
+
+        $subscribers->register(
+            CancelOrderOnHoldExpired::NAME,
+            ['HoldExpired'],
+            $this->app->make(CancelOrderOnHoldExpired::class),
+        );
 
         Route::middleware('tenancy.storefront')
             ->prefix('v1')
