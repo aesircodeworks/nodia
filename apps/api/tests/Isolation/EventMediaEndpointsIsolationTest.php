@@ -9,6 +9,7 @@ use App\Support\Database\Rls;
 use App\Support\Tenancy\TenantTransaction;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\Isolation\Support\EventFixture;
 use Tests\Isolation\Support\TenantFixture;
@@ -45,6 +46,7 @@ use function Tests\Isolation\Support\actingAsRole;
 
 beforeEach(function (): void {
     Storage::fake('media');
+    Queue::fake();
     EventFixture::seed();
 });
 

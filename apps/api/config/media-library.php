@@ -30,13 +30,16 @@ use Spatie\MediaLibraryPro\Models\TemporaryUpload;
 // Published from spatie/laravel-medialibrary's own config (vendor/spatie/
 // laravel-medialibrary/config/media-library.php), the same "adjust, don't
 // hand-roll" approach the stage-05c plan takes for the migration itself
-// (ADR 014). Three keys change from the vendor default: disk_name and
+// (ADR 014). Four keys change from the vendor default: disk_name and
 // path_generator point at the MinIO/S3-backed media disk (config/
 // filesystems.php) and the tenant-prefixing path generator this stage
-// ships, and media_model points at the uuid-aware, tenant-stamping
+// ships, media_model points at the uuid-aware, tenant-stamping
 // subclass (App\Support\Media\Models\Media) over the adjusted media
-// table (stage-05c task 1). Every other key is the package's own
-// default, kept published so any future code that calls addMedia()
+// table (stage-05c task 1), and queue_name names the dedicated Horizon
+// queue the thumb/card/hero conversions dispatch onto (stage-05c task 3),
+// distinct from "default" so conversion work is independently observable
+// and scalable in the Horizon dashboard. Every other key is the package's
+// own default, kept published so any future code that calls addMedia()
 // directly picks up these overrides without needing to know they exist.
 return [
 
@@ -95,7 +98,7 @@ return [
      * This queue will be used to generate derived and responsive images.
      * Leave empty to use the default queue.
      */
-    'queue_name' => env('MEDIA_QUEUE', ''),
+    'queue_name' => env('MEDIA_QUEUE', 'media-conversions'),
 
     /*
      * By default all conversions will be performed on a queue.

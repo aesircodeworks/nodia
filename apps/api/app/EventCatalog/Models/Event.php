@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
+use Spatie\MediaLibrary\MediaCollections\Models\Media as SpatieMedia;
 use Spatie\Translatable\HasTranslations;
 
 /**
@@ -130,6 +131,17 @@ class Event extends Model implements HasMedia, HasMediaCapability
 
         $this->addMediaCollection('gallery')
             ->acceptsMimeTypes(ImageMediaCollections::ACCEPTED_MIME_TYPES);
+    }
+
+    /**
+     * thumb, card, and hero, queued on the dedicated Horizon queue,
+     * factored out to App\Support\Media\ImageMediaCollections since
+     * Tenant's logo collection (a later task) registers the identical
+     * set (stage-05c plan, Data model: "Conversions: thumb, card, hero").
+     */
+    public function registerMediaConversions(?SpatieMedia $media = null): void
+    {
+        ImageMediaCollections::registerConversions($this);
     }
 
     /**

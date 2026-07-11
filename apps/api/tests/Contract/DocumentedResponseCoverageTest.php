@@ -19,6 +19,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -34,6 +35,7 @@ beforeEach(function (): void {
     PostgresTestDatabase::use();
     MigratedDatabase::ensure();
     Storage::fake('media');
+    Queue::fake();
 });
 
 afterEach(function (): void {

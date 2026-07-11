@@ -7,6 +7,7 @@ use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\Support\MigratedDatabase;
@@ -27,6 +28,7 @@ beforeEach(function (): void {
     PostgresTestDatabase::use();
     MigratedDatabase::ensure();
     Storage::fake('media');
+    Queue::fake();
 
     $this->tenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);
     $this->otherTenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);

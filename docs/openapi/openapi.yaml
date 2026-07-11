@@ -5581,10 +5581,10 @@ components:
       type: object
       description: >-
         Fixed conversion-name shape (stage-05c plan, Endpoints:
-        "conversions: { thumb, card, hero }"). Every value is null until
-        a later task registers and queues the actual conversions; the key
-        stays present from this task on so the wire shape never changes
-        underneath a client.
+        "conversions: { thumb, card, hero }"). Each value is null until
+        its queued conversion job completes, then becomes the conversion's
+        URL; the key stays present throughout so the wire shape never
+        changes underneath a client.
       required:
         - thumb
         - card
@@ -5592,10 +5592,13 @@ components:
       properties:
         thumb:
           type: [string, 'null']
+          format: uri
         card:
           type: [string, 'null']
+          format: uri
         hero:
           type: [string, 'null']
+          format: uri
       additionalProperties: false
     Media:
       type: object

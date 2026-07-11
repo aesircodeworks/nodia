@@ -56,7 +56,7 @@ final class MediaData extends Data
             $media->mime_type,
             (int) $media->size,
             $media->getUrl(),
-            MediaConversionsData::allNull(),
+            MediaConversionsData::fromModel($media),
             $media->getCustomProperty('alt_text'),
             (int) ($media->order_column ?? 0),
             CarbonImmutable::instance($media->created_at)->utc()->format('Y-m-d\TH:i:s\Z'),

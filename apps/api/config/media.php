@@ -19,4 +19,24 @@ return [
 
     'max_upload_kb' => (int) env('MEDIA_MAX_UPLOAD_KB', 10_240),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Conversion Widths
+    |--------------------------------------------------------------------------
+    |
+    | Fixed target widths for the thumb, card, and hero conversions every
+    | image collection in this app registers (stage-05c plan, Data model:
+    | "Conversions: thumb, card, hero (fixed widths from config)"). Height
+    | is left unconstrained (App\Support\Media\ImageMediaCollections calls
+    | only ->width(), preserving aspect ratio) since the plan names widths
+    | only, not a crop shape.
+    |
+    */
+
+    'conversions' => [
+        'thumb' => ['width' => (int) env('MEDIA_CONVERSION_THUMB_WIDTH', 320)],
+        'card' => ['width' => (int) env('MEDIA_CONVERSION_CARD_WIDTH', 640)],
+        'hero' => ['width' => (int) env('MEDIA_CONVERSION_HERO_WIDTH', 1920)],
+    ],
+
 ];

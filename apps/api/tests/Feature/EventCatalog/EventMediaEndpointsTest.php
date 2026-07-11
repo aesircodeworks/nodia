@@ -7,9 +7,11 @@ use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
+use Spatie\MediaLibrary\Conversions\Jobs\PerformConversionsJob;
 use Tests\Support\MigratedDatabase;
 use Tests\Support\PostgresTestDatabase;
 use Tests\Support\StaffTokens;
@@ -28,6 +30,7 @@ beforeEach(function (): void {
     PostgresTestDatabase::use();
     MigratedDatabase::ensure();
     Storage::fake('media');
+    Queue::fake();
 
     $this->tenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);
     $this->otherTenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);
@@ -337,5 +340,31 @@ describe('GET /v1/events/{event}/media', function () {
             ->assertForbidden()
             ->assertConformsToOpenApi()
             ->assertJsonPath('code', 'tenant_access_denied');
+    });
+});
+
+describe('queued thumb, card, and hero conversions', function () {
+    it('enqueues one PerformConversionsJob on the media-conversions queue and leaves conversions null until it runs', function () {
+        $upload = uploadEventMedia($this->event->id, UploadedFile::fake()->image('cover.jpg', 2000, 1000), 'cover');
+
+        $upload->assertCreated();
+
+        expect($upload->json('conversions'))->toBe(['thumb' => null, 'card' => null, 'hero' => null]);
+
+        Queue::assertPushedOn('media-conversions', PerformConversionsJob::class);
+
+        $listedBeforeJobRuns = $this->getJson("/v1/events/{$this->event->id}/media")->json('data.0.conversions');
+
+        expect($listedBeforeJobRuns)->toBe(['thumb' => null, 'card' => null, 'hero' => null]);
+
+        $job = Queue::pushed(PerformConversionsJob::class)->sole();
+
+        app(TenantTransaction::class)->asTenant($this->tenantId, fn () => app()->call([$job, 'handle']));
+
+        $listedAfterJobRuns = $this->getJson("/v1/events/{$this->event->id}/media")->json('data.0.conversions');
+
+        expect($listedAfterJobRuns['thumb'])->toBeString()->not->toBeEmpty()
+            ->and($listedAfterJobRuns['card'])->toBeString()->not->toBeEmpty()
+            ->and($listedAfterJobRuns['hero'])->toBeString()->not->toBeEmpty();
     });
 });
