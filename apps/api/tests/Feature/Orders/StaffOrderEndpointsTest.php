@@ -12,9 +12,13 @@ use App\Orders\Actions\ConvertHoldToOrder;
 use App\Orders\Actions\MarkOrderAwaitingPayment;
 use App\Orders\Actions\MarkOrderPaid;
 use App\Orders\Data\CreateOrderData;
+use App\Orders\Mail\OrderConfirmationMail;
+use App\Orders\Models\Ticket;
+use App\Orders\Support\TicketQrCodec;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Tests\Support\MigratedDatabase;
 use Tests\Support\PostgresTestDatabase;
@@ -217,9 +221,21 @@ describe('GET /v1/orders/{order}', function (): void {
 });
 
 describe('POST /v1/orders/{order}/resend-tickets', function (): void {
-    it('returns 202 for a paid order, audits, and leaves qr_rotation_counter untouched', function (): void {
+    it('returns 202 for a paid order, audits, bumps qr_rotation_counter, and resends the email', function (): void {
         $fixture = staffOrdersFixture($this->tenantId);
         $headers = staffOrderHeaders($this->tenantId, [Capability::OrdersView, Capability::OrdersResendTickets]);
+
+        // A payload rendered before the resend must no longer verify
+        // afterwards, while a fresh render does (stage-08a plan, task
+        // breakdown item 12).
+        $codec = app(TicketQrCodec::class);
+
+        $staleSignature = app(TenantTransaction::class)->asTenant(
+            $this->tenantId,
+            fn (): string => $codec->sign(Ticket::query()->where('order_id', $fixture['paidOrderId'])->firstOrFail()),
+        );
+
+        Mail::fake();
 
         $response = $this->postJson('/v1/orders/'.$fixture['paidOrderId'].'/resend-tickets', [], $headers);
 
@@ -228,10 +244,17 @@ describe('POST /v1/orders/{order}/resend-tickets', function (): void {
         $state = app(TenantTransaction::class)->asTenant($this->tenantId, fn (): array => [
             'counters' => DB::table('tickets')->where('order_id', $fixture['paidOrderId'])->pluck('qr_rotation_counter')->unique()->all(),
             'auditEntries' => DB::table('activity_log')->where('tenant_id', $this->tenantId)->count(),
+            'staleValid' => $codec->verify($staleSignature)->valid,
+            'freshValid' => $codec->verify($codec->sign(Ticket::query()->where('order_id', $fixture['paidOrderId'])->firstOrFail()))->valid,
         ]);
 
-        expect($state['counters'])->toBe([0])
-            ->and($state['auditEntries'])->toBeGreaterThan(0);
+        expect($state['counters'])->toBe([1])
+            ->and($state['auditEntries'])->toBeGreaterThan(0)
+            ->and($state['staleValid'])->toBeFalse()
+            ->and($state['freshValid'])->toBeTrue();
+
+        Mail::assertSentCount(1);
+        Mail::assertSent(OrderConfirmationMail::class);
     });
 
     it('renders order_not_paid for an order without issued tickets', function (): void {
