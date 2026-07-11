@@ -1,0 +1,127 @@
+<?php
+
+namespace App\Payments\Jobs;
+
+use App\Payments\Actions\ConfirmPayment;
+use App\Payments\Actions\FailPayment;
+use App\Payments\Enums\GatewayWebhookStatus;
+use App\Payments\Enums\PaymentStatus;
+use App\Payments\Gateways\GatewayRegistry;
+use App\Payments\Gateways\NormalizedPaymentEvent;
+use App\Payments\Gateways\WebhookKind;
+use App\Payments\Models\GatewayWebhookEvent;
+use App\Payments\Models\Payment;
+use App\Support\Audit\ActivityLogger;
+use App\Support\Tenancy\TenantTransaction;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Normalizes a persisted raw webhook row and applies the payment
+ * transition (stage-08a plan, Endpoints "POST /v1/webhooks/{gateway}").
+ * The payment is resolved by (gateway, gateway_reference) under the
+ * platform-scope role because the callback carries no tenant
+ * (system-design 4.3, amended by this stage to sanction system use for
+ * webhook tenant resolution; every use is activity-logged), then the
+ * conditional transition runs inside a tenant-scoped transaction.
+ * Unmatched references and zero-row transitions mark the raw row
+ * ignored rather than erroring, so replays and late events are inert;
+ * a zero-row transition whose payment already carries the expected
+ * terminal status is a duplicate and marks the row processed.
+ */
+final class ProcessGatewayWebhook implements ShouldQueue
+{
+    use Queueable;
+
+    public function __construct(
+        public readonly string $webhookEventId,
+    ) {}
+
+    public function handle(): void
+    {
+        $tx = app(TenantTransaction::class);
+        $sentinel = config()->string('tenancy.platform_tenant_id');
+
+        $row = $tx->asTenant($sentinel, fn (): ?GatewayWebhookEvent => GatewayWebhookEvent::query()->find($this->webhookEventId));
+
+        if ($row === null || $row->status !== GatewayWebhookStatus::Received) {
+            return;
+        }
+
+        $adapter = app(GatewayRegistry::class)->get($row->gateway);
+        $normalized = $adapter?->normalizeWebhook($row->payload);
+
+        if ($normalized === null) {
+            $this->conclude($tx, $sentinel, GatewayWebhookStatus::Ignored);
+
+            return;
+        }
+
+        $payment = $tx->asPlatform(function () use ($row, $normalized): ?Payment {
+            $payment = Payment::query()
+                ->where('gateway', $row->gateway)
+                ->where('gateway_reference', $normalized->gatewayReference)
+                ->first();
+
+            app(ActivityLogger::class)->record(
+                description: sprintf('Webhook tenant resolution for %s event %s', $row->gateway, $row->gateway_event_id),
+                causer: null,
+                event: 'platform_role_use',
+                properties: [
+                    'gateway' => $row->gateway,
+                    'gateway_event_id' => $row->gateway_event_id,
+                    'resolved_tenant_id' => $payment?->tenant_id,
+                ],
+            );
+
+            return $payment;
+        });
+
+        if ($payment === null) {
+            $this->conclude($tx, $sentinel, GatewayWebhookStatus::Ignored);
+
+            return;
+        }
+
+        $status = $tx->asTenant($payment->tenant_id, fn (): GatewayWebhookStatus => $this->apply($payment, $normalized));
+
+        $this->conclude($tx, $sentinel, $status);
+    }
+
+    private function apply(Payment $payment, NormalizedPaymentEvent $normalized): GatewayWebhookStatus
+    {
+        $applied = match ($normalized->kind) {
+            WebhookKind::Confirmed => app(ConfirmPayment::class)($payment->id, $normalized->fee),
+            WebhookKind::Failed => app(FailPayment::class)($payment->id, (string) $normalized->failureCode),
+        };
+
+        if ($applied !== null) {
+            return GatewayWebhookStatus::Processed;
+        }
+
+        $expected = $normalized->kind === WebhookKind::Confirmed ? PaymentStatus::Confirmed : PaymentStatus::Failed;
+
+        // A duplicate of an already-applied outcome is processed; a late
+        // event against any other terminal (or a past-window confirm still
+        // sitting on initiated) is ignored, never applied.
+        return Payment::query()->findOrFail($payment->id)->status === $expected
+            ? GatewayWebhookStatus::Processed
+            : GatewayWebhookStatus::Ignored;
+    }
+
+    private function conclude(TenantTransaction $tx, string $sentinel, GatewayWebhookStatus $status): void
+    {
+        $tx->asTenant($sentinel, function () use ($status): void {
+            DB::table('gateway_webhook_events')
+                ->where('id', $this->webhookEventId)
+                ->where('status', GatewayWebhookStatus::Received->value)
+                ->update([
+                    'status' => $status->value,
+                    'processed_at' => Date::now(),
+                    'updated_at' => Date::now(),
+                ]);
+        });
+    }
+}

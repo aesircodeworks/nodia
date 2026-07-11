@@ -4,6 +4,7 @@ namespace App\Payments\Actions;
 
 use App\Payments\Enums\GatewayWebhookStatus;
 use App\Payments\Gateways\GatewayAdapter;
+use App\Payments\Jobs\ProcessGatewayWebhook;
 use App\Payments\Models\GatewayWebhookEvent;
 use App\Support\Tenancy\TenantTransaction;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -32,7 +33,7 @@ final class IngestGatewayWebhook
     {
         $parsed = $adapter->parseWebhook($body, $headers);
 
-        return $this->tenantTransaction->asTenant(
+        $rowId = $this->tenantTransaction->asTenant(
             config()->string('tenancy.platform_tenant_id'),
             function () use ($adapter, $parsed): string {
                 try {
@@ -53,5 +54,12 @@ final class IngestGatewayWebhook
                 }
             },
         );
+
+        // Enqueued after the persisting transaction committed; a duplicate
+        // delivery re-enqueues the same row, which the job's conditional
+        // status update makes harmless.
+        ProcessGatewayWebhook::dispatch($rowId);
+
+        return $rowId;
     }
 }
