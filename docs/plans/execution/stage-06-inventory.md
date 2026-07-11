@@ -1129,3 +1129,34 @@ tests) green, plus the targeted
 CreateTicketType|CommitHold|ReleaseHold|ReleaseExpiredHolds filter (27
 tests) green; `composer -d apps/api run lint` and `composer -d apps/api
 run analyse` both passed. No findings declined.
+
+## CI
+
+Sat Jul 11 06:20:14 -03 2026
+
+Re-ran full local gates after the review-round fixes landed past the
+05:51 gate entry:
+
+- `composer -d apps/api run lint` (Pint): passed
+- `composer -d apps/api run analyse` (PHPStan/Larastan): passed, 0 errors
+- `composer -d apps/api run test` (Pest): first run surfaced one
+  Architecture failure. The `laravel` preset flagged the review-added
+  `App\Inventory\Exceptions\HoldInventoryReleaseFailedException` for
+  implementing Throwable outside `App\Exceptions`; it belongs in its
+  bounded context's Exceptions directory like every other HasErrorCode
+  guard exception. Fixed by adding it to the preset ignore allowlist in
+  `tests/Architecture/PresetTest.php` (commit b787587,
+  `test(inventory):`), not by relocating the class or weakening the
+  rule. Re-run: 1964 passed, 7797 assertions.
+- `composer -d apps/api run types:generate` + `git status --short
+  packages/api-client/src/generated`: no contract drift.
+- `pnpm typecheck`: not run (no TypeScript changed; only a PHP test file
+  moved).
+
+CI on origin/feat/api-implementation after push of b787587, all green:
+
+- API (run 29147461995): success
+- Packages (run 29147461934): success
+- Storefront (run 29147461937): success
+- Checkin (run 29147461986): success
+- Admin (run 29147461933): success
