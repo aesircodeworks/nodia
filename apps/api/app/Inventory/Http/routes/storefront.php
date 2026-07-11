@@ -1,5 +1,6 @@
 <?php
 
+use App\Inventory\Http\Controllers\AvailabilityController;
 use App\Inventory\Http\Controllers\HoldController;
 use Illuminate\Support\Facades\Route;
 
@@ -11,3 +12,8 @@ use Illuminate\Support\Facades\Route;
 Route::post('/storefront/holds', [HoldController::class, 'store']);
 Route::get('/storefront/holds/{hold}', [HoldController::class, 'show'])->whereUuid('hold');
 Route::delete('/storefront/holds/{hold}', [HoldController::class, 'destroy'])->whereUuid('hold');
+
+// Task breakdown item 7 (TDD Slice 3): the database-backed availability
+// read, database-authoritative and unauthenticated like every other
+// storefront route in this file.
+Route::get('/storefront/events/{event}/availability', [AvailabilityController::class, 'index'])->whereUuid('event');

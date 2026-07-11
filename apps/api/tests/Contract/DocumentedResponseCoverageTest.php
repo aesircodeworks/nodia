@@ -1876,6 +1876,48 @@ function documentedResponseExercisers(): array
                 'X-Tenant-Id' => $tenant->id,
             ]);
         },
+        'get /v1/ticket-types/{ticket_type}/inventory 200' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant);
+            $ticketType = contractTicketType($tenant, $event->id);
+            app(TenantTransaction::class)->asTenant($tenant->id, fn () => TicketTypeInventory::factory()->create([
+                'tenant_id' => $tenant->id,
+                'ticket_type_id' => $ticketType->id,
+                'quantity' => 10,
+                'sold' => 0,
+                'held' => 0,
+            ]));
+
+            return test()->getJson('/v1/ticket-types/'.$ticketType->id.'/inventory', [
+                'Authorization' => 'Bearer '.contractTicketTypeBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/ticket-types/{ticket_type}/inventory 401' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant);
+            $ticketType = contractTicketType($tenant, $event->id);
+
+            return test()->getJson('/v1/ticket-types/'.$ticketType->id.'/inventory', ['X-Tenant-Id' => $tenant->id]);
+        },
+        'get /v1/ticket-types/{ticket_type}/inventory 403' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+            $event = contractEvent($tenant);
+            $ticketType = contractTicketType($tenant, $event->id);
+
+            return test()->getJson('/v1/ticket-types/'.$ticketType->id.'/inventory', [
+                'Authorization' => 'Bearer '.contractTicketTypeBearer($tenant, ['events.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/ticket-types/{ticket_type}/inventory 404' => function (): TestResponse {
+            $tenant = contractTicketTypeTenant();
+
+            return test()->getJson('/v1/ticket-types/'.Str::uuid7().'/inventory', [
+                'Authorization' => 'Bearer '.contractTicketTypeBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
         'patch /v1/ticket-types/{ticket_type} 200' => function (): TestResponse {
             $tenant = contractTicketTypeTenant();
             $event = contractEvent($tenant);
@@ -2539,6 +2581,17 @@ function documentedResponseExercisers(): array
             [, $host] = contractCustomerTenant();
 
             return test()->postJson('http://'.$host.'/v1/auth/customer/claim/confirm', ['token' => '', 'password' => '']);
+        },
+        'get /v1/storefront/events/{event}/availability 200' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            ['event' => $event] = contractHoldFixture($tenant);
+
+            return test()->getJson('http://'.$host.'/v1/storefront/events/'.$event->id.'/availability');
+        },
+        'get /v1/storefront/events/{event}/availability 404' => function (): TestResponse {
+            ['host' => $host] = contractHoldTenant();
+
+            return test()->getJson('http://'.$host.'/v1/storefront/events/'.Str::uuid7().'/availability');
         },
         'post /v1/storefront/holds 201' => function (): TestResponse {
             ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();

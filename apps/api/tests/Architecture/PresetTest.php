@@ -59,6 +59,7 @@ use App\Inventory\Exceptions\HoldNotReleasableException;
 use App\Inventory\Exceptions\InsufficientHoldInventoryException;
 use App\Inventory\Exceptions\InsufficientInventoryException;
 use App\Inventory\Exceptions\SalesWindowClosedException;
+use App\Inventory\Exceptions\TicketTypeInventoryNotFoundException;
 use App\Inventory\Exceptions\TicketTypeNotInEventException;
 use App\Inventory\InventoryServiceProvider;
 use App\Support\Media\Exceptions\MediaNotFoundException;
@@ -218,6 +219,7 @@ arch()->preset()->laravel()->ignoring([
     InsufficientHoldInventoryException::class,
     HoldNotFoundException::class,
     HoldNotReleasableException::class,
+    TicketTypeInventoryNotFoundException::class,
     MissingTenantHeaderException::class,
     InvalidTenantHeaderException::class,
     TenantAccessDeniedException::class,

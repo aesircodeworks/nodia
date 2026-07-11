@@ -193,6 +193,10 @@ export type ErrorCode =
   | 'sales_window_closed'
   | 'hold_not_found'
   | 'hold_not_releasable';
+export type EventAvailabilityData = {
+  event_id: string;
+  ticket_types: TicketTypeAvailabilityData[];
+};
 export type EventData = {
   id: string;
   tenant_id: string;
@@ -447,6 +451,11 @@ export type TenantMediaUploadData = {
   file: File;
   collection: string;
 };
+export type TicketTypeAvailabilityData = {
+  ticket_type_id: string;
+  available: number;
+  on_sale: boolean;
+};
 export type TicketTypeData = {
   id: string;
   tenant_id: string;
@@ -458,6 +467,11 @@ export type TicketTypeData = {
   requires_seat: boolean;
   created_at: string;
   updated_at: string;
+};
+export type TicketTypeInventoryData = {
+  quantity: number;
+  sold: number;
+  held: number;
 };
 export type TokenPairData = {
   access_token: string;

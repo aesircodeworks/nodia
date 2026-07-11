@@ -3079,6 +3079,61 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/TicketTypeUnprocessableProblem'
+  /v1/ticket-types/{ticket_type}/inventory:
+    parameters:
+      - name: ticket_type
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getTicketTypeInventory
+      summary: Fetch one ticket type's inventory counters
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the events.view capability (stage-06 plan,
+        Endpoints "GET /v1/ticket-types/{ticket_type}/inventory"). Lets a
+        tenant see the raw quantity/sold/held counters without database
+        access. A well-formed but nonexistent or foreign-tenant ticket
+        type id renders the same generic request.not_found problem a
+        malformed id gets from route-parameter matching, mirroring
+        getTicketType's own posture.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The ticket type's inventory counters.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketTypeInventory'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.view (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TicketTypeForbiddenProblem'
+        '404':
+          description: No ticket type is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
   /v1/events/{event}/media:
     parameters:
       - name: event
@@ -3379,6 +3434,45 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/NotFoundProblem'
+  /v1/storefront/events/{event}/availability:
+    parameters:
+      - name: event
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getStorefrontEventAvailability
+      summary: Fetch per-ticket-type availability for a published event
+      description: >-
+        Storefront surface: unauthenticated, tenant resolved from the Host
+        header (stage-06 plan, Endpoints "GET
+        /v1/storefront/events/{event}/availability"). Database-backed and
+        authoritative; a later stage fronts this with a cache without
+        changing the contract. available is quantity - sold - held for
+        each ticket type; on_sale reflects the ticket type's own sales
+        window against the current time. A draft, canceled,
+        foreign-tenant, or nonexistent event id all render the same
+        event_not_found problem, so unpublished existence never leaks.
+      responses:
+        '200':
+          description: Per-ticket-type availability for the event.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventAvailability'
+        '404':
+          description: >-
+            No published event is visible with this id for the resolved
+            tenant (drafts, canceled, and foreign-tenant events included).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/HoldEventNotFoundProblem'
   /v1/storefront/holds:
     post:
       operationId: createHold
@@ -4667,6 +4761,24 @@ components:
           type: string
           format: date-time
       additionalProperties: false
+    TicketTypeInventory:
+      type: object
+      description: >-
+        GET /v1/ticket-types/{ticket_type}/inventory response shape
+        (stage-06 plan, Endpoints): the raw ticket_type_inventory counter
+        row for one ticket type.
+      required:
+        - quantity
+        - sold
+        - held
+      properties:
+        quantity:
+          type: integer
+        sold:
+          type: integer
+        held:
+          type: integer
+      additionalProperties: false
     HoldItem:
       type: object
       description: One GA line item of a hold (stage-06 plan, Endpoints).
@@ -4730,6 +4842,44 @@ components:
           items:
             type: string
             format: uuid
+      additionalProperties: false
+    TicketTypeAvailability:
+      type: object
+      description: >-
+        One ticket type's entry in an EventAvailability response
+        (stage-06 plan, Endpoints "GET
+        /v1/storefront/events/{event}/availability"). available is
+        quantity - sold - held, floored at 0; on_sale reflects the
+        ticket type's own sales window against the current time.
+      required:
+        - ticket_type_id
+        - available
+        - on_sale
+      properties:
+        ticket_type_id:
+          type: string
+          format: uuid
+        available:
+          type: integer
+        on_sale:
+          type: boolean
+      additionalProperties: false
+    EventAvailability:
+      type: object
+      description: >-
+        GET /v1/storefront/events/{event}/availability response shape
+        (stage-06 plan, Endpoints).
+      required:
+        - event_id
+        - ticket_types
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        ticket_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/TicketTypeAvailability'
       additionalProperties: false
     CreateHoldRequest:
       type: object
@@ -5275,9 +5425,11 @@ components:
       unevaluatedProperties: false
     HoldEventNotFoundProblem:
       description: >-
-        Problem document for POST /v1/storefront/holds when event_id does
-        not resolve to a published event for the resolved tenant (stage-06
-        plan, Endpoints).
+        Problem document for POST /v1/storefront/holds and GET
+        /v1/storefront/events/{event}/availability when the given id does
+        not resolve to a published event for the resolved tenant
+        (stage-06 plan, Endpoints); shared verbatim by both since the
+        status and code are identical.
       allOf:
         - $ref: '#/components/schemas/Problem'
         - type: object
