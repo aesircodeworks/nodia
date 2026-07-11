@@ -590,3 +590,109 @@ Actions`).
 No deviations from the plan beyond the PresetTest allowlist addition,
 a mechanical consequence of adding new domain exceptions under the
 codebase's existing architecture rule.
+
+#### Task 06-07: event_seats materialization on publish (2026-07-11)
+
+Landed Slice 5, task breakdown item 9: the three Stage 5b deferrals
+(publish-blocking validation for a requires_seat ticket type without a
+seat_map_id, the restricting FK from event_seats.seat_id to seats.id,
+and extending catalog.seat_map_in_use to materialized maps), plus
+MaterializeEventSeats and its wiring into Catalog's publish Action.
+
+- `event_seats` migration (RLS, `unique(event_id, seat_id)`, restricting
+  FK on `seat_id` to `seats.id`, FK on `hold_id` to `holds.id`, indexes
+  on `(event_id, status)`, `hold_id`, and `(event_id, ticket_type_id)`),
+  `App\Inventory\Enums\EventSeatStatus`, `App\Inventory\Models\EventSeat`.
+- `App\Inventory\Actions\MaterializeEventSeats`: takes tenant id, event
+  id, and the seat ids and requires_seat ticket type ids Catalog already
+  resolved (Inventory never reads App\EventCatalog's seats or
+  ticket_types tables directly), wraps the whole call in `DB::transaction`
+  so a mid-way failure (an unresolvable seat id in the unit suite's
+  probe) rolls back every event_seats row and every counter seed
+  together. `insertOrIgnore` against the `unique(event_id, seat_id)`
+  constraint makes seat materialization idempotent; each requires_seat
+  ticket type's counter is seeded via the existing
+  `InitializeTicketTypeInventory` only when no counter row exists yet,
+  making the counter seed idempotent too.
+- `App\EventCatalog\Exceptions\SeatMapRequiredException`
+  (`catalog.seat_map_required`, 409) and the publish validation in
+  `App\EventCatalog\Actions\PublishEvent`: before the conditional
+  UPDATE, an event with at least one requires_seat ticket type and no
+  seat_map_id is refused. This is a shape validation on the event's own
+  data, not a concurrency guard, so a plain read-then-throw is correct
+  here per CLAUDE.md's read-then-write rule (which targets invariant-
+  guarding state transitions). After a successful publish of a seated
+  event, PublishEvent resolves the template's seat ids via
+  App\EventCatalog\Models\Seat and calls MaterializeEventSeats inside
+  the same transaction the whole admin request already runs in; a GA
+  event (`seat_map_id` null) calls nothing.
+- `App\EventCatalog\Actions\DeleteSeatMap` now catches both
+  `events_seat_map_id_foreign` (Stage 5b's own case) and
+  `event_seats_seat_id_foreign` (this task's: seats cascade on
+  seat_maps delete, but event_seats.seat_id restricts, so the cascade
+  itself fails), mapping either to the existing `SeatMapInUseException`.
+- OpenAPI: `EventNotPublishableProblem`'s `code` enum gained
+  `catalog.seat_map_required` alongside `catalog.event_not_publishable`
+  (same 409 status, one schema, mirroring the existing
+  `catalog.event_immutable`/`insufficient_inventory` combined-enum
+  precedent) rather than a second schema; the publish path's 409
+  description and the seat-map DELETE path's own description (already
+  anticipating this task from Stage 5b) were updated in text only.
+  `composer types:generate` run; `packages/api-client/src/generated/`
+  regenerated with `EventSeatStatus` and the new `ErrorCode` member.
+- Test-first per the master plan double loop:
+  `tests/Unit/Inventory/MaterializeEventSeatsTest.php` (one row per
+  template seat unzoned/available, counter seeded at 0, idempotent
+  re-materialization, atomic rollback on a bogus seat id) written and
+  watched fail before the Action existed.
+  `tests/Isolation/EventSeatsIsolationTest.php` plus
+  `tests/Isolation/Support/EventSeatFixture.php` (built on SeatFixture,
+  creating its event directly rather than through EventFixture::seed()
+  to avoid double-seeding TenantFixture, mirroring HoldItemFixture's own
+  precedent) prove the standard tenant-isolation matrix for the new
+  table. `tests/Feature/EventCatalog/SeatMaterializationEndpointsTest.php`
+  covers all four feature-test requirements through the Stage 5a publish
+  endpoint: a seated event materializes unzoned seats, a GA event
+  materializes nothing, a requires_seat type with no seat_map_id gets
+  409 catalog.seat_map_required, and deleting a materialized template's
+  seat map gets 409 catalog.seat_map_in_use via the restricting FK.
+
+Test evidence (all from `apps/api`):
+
+- `php artisan test --filter="MaterializeEventSeatsTest|EventSeatsIsolationTest|SeatMaterializationEndpointsTest|ErrorCodeTest"`:
+  79 passed, 317 assertions.
+- `php artisan test --filter="MaterializeEventSeatsTest|EventSeatsIsolationTest|SeatMaterializationEndpointsTest|CatalogPublishSequenceTest|SeatMapEndpointsTest|TicketTypeEndpointsTest|EventLifecycleContentionTest|ErrorCodeTest"`:
+  178 passed, 796 assertions (proves the extension does not regress the
+  Stage 5a/5b publish, seat-map, or ticket-type suites).
+- `php artisan test --testsuite=Architecture`: 38 passed, 94 assertions
+  (green only after adding `SeatMapRequiredException` and
+  `EventSeatStatus` to `tests/Architecture/PresetTest.php`'s allowlist).
+- `php artisan test --testsuite=Unit,Contract,Isolation,Architecture,Concurrency`
+  (combined): 1145 passed, 3772 assertions, run twice (once before,
+  once after the `composer analyse`/`composer lint` fixes below) with
+  identical results.
+- `php artisan test --testsuite=Feature`: 750 passed, 3710 assertions.
+- `composer analyse`: failed on first run (phpstan's exhaustive match
+  check on `ProblemRenderer::detailFor()` caught not only the new
+  `CatalogSeatMapRequired` arm this task added but two pre-existing
+  gaps from Stage 6 task 06-06, `HoldNotExtendable` and
+  `HoldNotCommittable`, whose `ErrorCode` members were never added to
+  `detailFor()`'s match or to `ErrorCodeTest`'s known-codes array; both
+  are fixed here since phpstan and `ErrorCodeTest` now both catch the
+  gap directly). Passed (0 errors) after adding all three arms.
+- `composer lint`: failed on the two new test files (import ordering,
+  an unused import); passed after `pint` auto-fixed them.
+- `composer types:generate`: run; `packages/api-client/src/generated/index.ts`
+  and the manifest regenerated with `EventSeatStatus` and
+  `catalog.seat_map_required`.
+
+Commit: `3d02711` (`feat(catalog): materialize event_seats on publish`),
+scope `catalog` per the plan's own instruction for the wiring commit,
+covering the Inventory-side Action and models too since splitting them
+into a second `inventory`-scoped commit would have left one of the two
+commits red (PublishEvent and MaterializeEventSeats are tested together
+through the Slice 5 feature suite).
+
+Deviations from the plan: none beyond the two pre-existing ErrorCode
+gaps fixed above, which were mechanical consequences of phpstan's
+exhaustive-match check rather than new scope.
