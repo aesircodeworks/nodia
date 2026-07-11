@@ -24,8 +24,8 @@ Open decision flagged by the plan (Risks): public-read media bucket versus signe
 - [x] task-07: `RefreshSearchIndex` outbox consumer with subscription routing, duplicate-delivery, out-of-order, and lifecycle tests (plan task 7, slice 5)
 - [x] task-08: `EventSearcher` interface, `PostgresEventSearcher`, config-selected container binding (plan task 8, slice 6)
 - [x] task-09: `q` parameter on the storefront events list with relevance smoke tests, pagination, OpenAPI parameter, fake-searcher seam proof (plan task 9, slice 6)
-- [ ] task-10: `search:rebuild` artisan command with the state-scan-versus-replay equivalence test (plan task 10, slice 7)
-- [ ] task-11: Sweep: error code registry entries (`payload_too_large` if absent), endpoint-level isolation coverage check, master plan status flip to Done (plan task 11)
+- [x] task-10: `search:rebuild` artisan command with the state-scan-versus-replay equivalence test (plan task 10, slice 7)
+- [x] task-11: Sweep: error code registry entries (`payload_too_large` if absent), endpoint-level isolation coverage check, master plan status flip to Done (plan task 11)
 
 ### Review rounds
 
@@ -281,3 +281,24 @@ Test evidence:
 - `composer lint` (Pint): passed. `composer analyse` (Larastan): passed, 0 errors. `composer types:generate`: no diff (no laravel-data class or endpoint changed; every new class in this task is plain PHP).
 
 This closes out Stage 5c's task breakdown items 1 through 10; only task 11 (docs: mark Stage 5c in the master plan status table, error code registry entries) remains for this stage.
+
+#### task-11, 2026-07-11
+
+Sweep and close-out for Stage 5c (plan task breakdown item 11, exit criteria 3 and 9): no product code changed, since the sweep found no gaps.
+
+What was checked:
+
+- Error code registry: `ErrorCode::PayloadTooLarge` (`payload_too_large`, HTTP 413, `/problems/payload-too-large`) is already present in `app/Support/Problems/ErrorCode.php`, wired into `ProblemRenderer`'s HTTP-exception status mapping, and covered by `tests/Unit/Problems/ErrorCodeTest.php`'s enum-completeness dataset — added in task-02 when the media upload ceiling first needed a 413 problem document. Nothing to add.
+- Endpoint-level Isolation coverage for every new route this stage added: `POST /v1/events/{event}/media`, `GET /v1/events/{event}/media`, and the shared `DELETE /v1/media/{media}` (via both `tests/Isolation/EventMediaEndpointsIsolationTest.php` and `tests/Isolation/TenantMediaEndpointsIsolationTest.php`, each proving `request.not_found` rather than `missing_capability` for a foreign tenant's media/event id); `POST /v1/tenants/{tenant}/media` (`TenantMediaEndpointsIsolationTest.php`, plus its own docblock recording why no cross-tenant POST scenario applies: the route runs entirely under the platform posture). `GET /v1/storefront/events?q=` is not a new route (Stage 5a already shipped `GET /v1/storefront/events`; this stage only adds an optional query parameter to it), so the plan's "every new endpoint has isolation coverage" line does not require a fresh endpoint-level test for it; the underlying cross-tenant guarantee is instead proven at the table level in `tests/Isolation/EventSearchDocumentsIsolationTest.php` (`event_search_documents` RLS, the table the search join reads) composed with the pre-existing `tests/Isolation/StorefrontEventsIsolationTest.php` (the `events` table RLS the join's visibility filter also depends on) — the same reasoning the plan applies to `media`/`event_search_documents` directly in exit criterion 3. No gap found; no new test written.
+- Master plan status table: `docs/api-implementation-plan.md`'s Implementation Status table flipped `Stage 5c: Search and Media` from `In progress` to `Done`.
+
+Test evidence (full gate, run after the docs-only change above; no product code touched in this task so no red-to-green cycle applies):
+
+- `composer lint` (Pint): passed.
+- `composer analyse` (Larastan): passed, 0 errors.
+- `composer test` (Feature, Unit, Contract, Architecture, Isolation, Concurrency, run as the full combined suite): 1732/1732 passed, 6912 assertions — unchanged from task-10's own full-suite count, confirming this task added no tests and broke nothing.
+- `composer types:generate`: no diff (no laravel-data class or endpoint changed).
+
+Deviations from the plan: none. Both items exit criteria 3 and 9 name (error code registry, endpoint isolation coverage) were already satisfied by prior tasks in this run; this task's own contribution is the verification itself plus the docs flip.
+
+This closes Stage 5c: Search and Media. All eleven task breakdown items are done; the full gate (Feature, Unit, Contract, Architecture, Isolation, Concurrency, Larastan, Pint, TypeScript drift) is green.
