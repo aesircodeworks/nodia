@@ -15,9 +15,9 @@
 - [x] 07-04 Transition Actions and the state machine table test (plan slice 2, task 4)
 - [x] 07-05 Buyer cancel endpoint plus hold release wiring (plan task 5)
 - [x] 07-06 HoldExpired subscriber with the duplicate-delivery test (plan task 6)
-- [ ] 07-07 Paid path: MarkOrderPaid exactly-once simulation, tickets migration with RLS, IssueTickets, CommitHold wiring, TicketIssued (plan slice 3, task 7)
-- [ ] 07-08 Buyer order status and tickets endpoints with contract coverage (plan task 8)
-- [ ] 07-09 QR codec, key provider, render integration, rotation invalidation tests (plan slice 4, task 9)
+- [x] 07-07 Paid path: MarkOrderPaid exactly-once simulation, tickets migration with RLS, IssueTickets, CommitHold wiring, TicketIssued (plan slice 3, task 7)
+- [x] 07-08 Buyer order status and tickets endpoints with contract coverage (plan task 8)
+- [x] 07-09 QR codec, key provider, render integration, rotation invalidation tests (plan slice 4, task 9)
 - [ ] 07-10 Identity: GET /v1/customers lookup endpoint with customers.view capability (plan task 10)
 - [ ] 07-11 Promo codes core: limit race simulation, migration with RLS, ApplyPromoCode, discount math, check endpoint (plan slice 5, task 11)
 - [ ] 07-12 Promo code admin CRUD with capability gates, uniqueness, immutability after first use (plan task 12)
@@ -109,3 +109,34 @@ success). Feature coverage: cancellation on delivery, exactly one
 effect under duplicate delivery of the same event id, awaiting_payment
 untouched. Evidence: state table 42 passed, cancel spread 15 passed,
 consumer 4 passed, Architecture 38, Contract 278.
+
+#### Tasks 07-07 to 07-09: paid path, QR codec, buyer reads (2026-07-11)
+
+07-07: failing tests committed first (paid-path race, tickets
+isolation, IssueTickets units), then the tickets migration with RLS,
+partial live-seat unique index, Ticket model and factory, TicketIssued
+plus the producer-less TicketCanceled and TicketRefunded event classes
+for a complete Orders event surface, `IssueTickets` (one ticket per
+unit, attendee names positional, seats from Inventory's
+ResolveHoldForOrder seam), and the full `MarkOrderPaid` (conditional
+UPDATE, then CommitHold and IssueTickets in the same transaction). The
+6-worker race proves exactly one paid transition, 3 tickets, held to
+sold once, and 3 TicketIssued rows. A latent bug in
+HoldForOrderData's seat grouping (`toArray()` on a plain array)
+surfaced and was fixed.
+
+07-09: `TicketQrCodec` (base64url JSON of ticket_id, event_id,
+rotation, HMAC-SHA256), `TicketSigningKeyProvider` interface with the
+HKDF `DerivedTicketSigningKeyProvider` bound in the provider, versioned
+info string so Stage 9 can seed stored keys from the same derivation.
+Unit spread: round-trip, tamper, cross-event key, rotation bump,
+determinism.
+
+07-08: GET order and GET tickets buyer endpoints with qr_payload
+computed on render, OpenAPI paths, Ticket schema, and exercisers.
+Deviation: the tickets list is wrapped in a `data` envelope rather than
+the plan's bare list, because the spec has no top-level bare arrays and
+the contract strictness gate cannot assert a bare-array schema
+(api-conventions collection shape). Evidence: paid-path set 52 passed,
+read endpoints 7 passed, codec 5 passed, Contract 284 passed,
+Isolation 227 passed, Architecture 38 passed.
