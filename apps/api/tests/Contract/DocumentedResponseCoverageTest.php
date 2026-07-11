@@ -16,6 +16,8 @@ use App\Inventory\Enums\EventSeatStatus;
 use App\Inventory\Models\EventSeat;
 use App\Inventory\Models\TicketTypeInventory;
 use App\Models\User;
+use App\Orders\Actions\MarkOrderAwaitingPayment;
+use App\Orders\Actions\MarkOrderPaid;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
@@ -80,8 +82,10 @@ afterEach(function (): void {
             DB::table('memberships')->where('tenant_id', $tenantId)->delete();
 
             // The order exercisers (stage-07 plan, task breakdown item 3)
-            // write orders and order_items referencing customers, events,
-            // ticket_types, and holds with no cascade, so they go first.
+            // write orders, order_items, and tickets referencing customers,
+            // events, ticket_types, and holds with no cascade, so they go
+            // first.
+            DB::table('tickets')->where('tenant_id', $tenantId)->delete();
             DB::table('order_items')->where('tenant_id', $tenantId)->delete();
             DB::table('orders')->where('tenant_id', $tenantId)->delete();
 
@@ -2891,6 +2895,63 @@ function documentedResponseExercisers(): array
             $token = contractOrderCustomerBearer($tenant, $host);
 
             return test()->postJson('http://'.$host.'/v1/storefront/orders', [], [
+                'Authorization' => 'Bearer '.$token,
+            ]);
+        },
+        'get /v1/storefront/orders/{order} 200' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            ['event' => $event, 'ticketType' => $ticketType] = contractHoldFixture($tenant);
+            $token = contractOrderCustomerBearer($tenant, $host);
+
+            $orderId = test()->postJson('http://'.$host.'/v1/storefront/orders', [
+                'hold_id' => contractOrderHold($host, $event->id, $ticketType->id),
+            ], ['Authorization' => 'Bearer '.$token])->json('id');
+
+            return test()->getJson('http://'.$host.'/v1/storefront/orders/'.$orderId, [
+                'Authorization' => 'Bearer '.$token,
+            ]);
+        },
+        'get /v1/storefront/orders/{order} 401' => function (): TestResponse {
+            ['host' => $host] = contractHoldTenant();
+
+            return test()->getJson('http://'.$host.'/v1/storefront/orders/'.Str::uuid7());
+        },
+        'get /v1/storefront/orders/{order} 404' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            $token = contractOrderCustomerBearer($tenant, $host);
+
+            return test()->getJson('http://'.$host.'/v1/storefront/orders/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.$token,
+            ]);
+        },
+        'get /v1/storefront/orders/{order}/tickets 200' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            ['event' => $event, 'ticketType' => $ticketType] = contractHoldFixture($tenant);
+            $token = contractOrderCustomerBearer($tenant, $host);
+
+            $orderId = test()->postJson('http://'.$host.'/v1/storefront/orders', [
+                'hold_id' => contractOrderHold($host, $event->id, $ticketType->id),
+            ], ['Authorization' => 'Bearer '.$token])->json('id');
+
+            app(TenantTransaction::class)->asTenant($tenant->id, function () use ($orderId): void {
+                app(MarkOrderAwaitingPayment::class)($orderId);
+                app(MarkOrderPaid::class)($orderId);
+            });
+
+            return test()->getJson('http://'.$host.'/v1/storefront/orders/'.$orderId.'/tickets', [
+                'Authorization' => 'Bearer '.$token,
+            ]);
+        },
+        'get /v1/storefront/orders/{order}/tickets 401' => function (): TestResponse {
+            ['host' => $host] = contractHoldTenant();
+
+            return test()->getJson('http://'.$host.'/v1/storefront/orders/'.Str::uuid7().'/tickets');
+        },
+        'get /v1/storefront/orders/{order}/tickets 404' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            $token = contractOrderCustomerBearer($tenant, $host);
+
+            return test()->getJson('http://'.$host.'/v1/storefront/orders/'.Str::uuid7().'/tickets', [
                 'Authorization' => 'Bearer '.$token,
             ]);
         },

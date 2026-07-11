@@ -5,8 +5,12 @@ namespace App\Orders\Http\Controllers;
 use App\Orders\Actions\CancelOrder;
 use App\Orders\Actions\ConvertHoldToOrder;
 use App\Orders\Data\CreateOrderData;
+use App\Orders\Data\OrderData;
+use App\Orders\Data\TicketData;
 use App\Orders\Exceptions\OrderNotFoundException;
 use App\Orders\Models\Order;
+use App\Orders\Models\Ticket;
+use App\Orders\Support\TicketQrCodec;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -22,6 +26,30 @@ class OrderController
         $customerId = (string) $request->user('customer')->getAuthIdentifier();
 
         return response()->json($convertHoldToOrder($data, $customerId), 201);
+    }
+
+    public function show(Request $request, string $order): OrderData
+    {
+        return OrderData::fromModel($this->ownOrderOrFail($request, $order)->load('items'));
+    }
+
+    /**
+     * qr_payload is computed on render, never stored (system-design 8.3
+     * notes); the list is empty until the paid transition issues the
+     * tickets (stage-07 plan, Endpoints).
+     */
+    public function tickets(Request $request, string $order, TicketQrCodec $codec): JsonResponse
+    {
+        $model = $this->ownOrderOrFail($request, $order);
+
+        $tickets = Ticket::query()
+            ->where('order_id', $model->id)
+            ->orderBy('id')
+            ->get()
+            ->map(fn (Ticket $ticket): TicketData => TicketData::fromModel($ticket, $codec->sign($ticket)))
+            ->all();
+
+        return response()->json(['data' => $tickets]);
     }
 
     /**

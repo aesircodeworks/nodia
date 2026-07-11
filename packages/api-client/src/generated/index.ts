@@ -535,6 +535,15 @@ export type TenantMediaUploadData = {
   file: File;
   collection: string;
 };
+export type TicketData = {
+  id: string;
+  ticket_type_id: string;
+  event_seat_id: string | null;
+  status: string;
+  attendee_name: string | null;
+  issued_at: string;
+  qr_payload: string;
+};
 export type TicketStatus = 'issued' | 'canceled' | 'refunded';
 export type TicketTypeAvailabilityData = {
   ticket_type_id: string;

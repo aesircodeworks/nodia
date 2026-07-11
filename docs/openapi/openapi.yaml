@@ -3866,6 +3866,90 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ValidationProblem'
+  /v1/storefront/orders/{order}:
+    parameters:
+      - name: order
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getStorefrontOrder
+      summary: Fetch an order for the buyer
+      description: >-
+        Storefront surface, customer bearer token required (stage-07
+        plan, Endpoints). Customers see only their own orders; anything
+        else is order_not_found.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The order.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          description: Missing or invalid customer bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '404':
+          description: >-
+            Missing, other tenant (via RLS), or other customer (code
+            order_not_found).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/OrderNotFoundProblem'
+  /v1/storefront/orders/{order}/tickets:
+    parameters:
+      - name: order
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getStorefrontOrderTickets
+      summary: Fetch an order's tickets with QR payloads
+      description: >-
+        Storefront surface, customer bearer token required (stage-07
+        plan, Endpoints). qr_payload is computed on render and never
+        stored; a rotation-counter bump invalidates previously rendered
+        payloads (system-design 8.3, 14.4). The list is empty until the
+        paid transition issues the tickets.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The order's tickets; empty before paid.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketList'
+        '401':
+          description: Missing or invalid customer bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '404':
+          description: >-
+            Missing, other tenant (via RLS), or other customer (code
+            order_not_found).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/OrderNotFoundProblem'
   /v1/storefront/orders/{order}/cancel:
     parameters:
       - name: order
@@ -5292,6 +5376,58 @@ components:
               type: string
               enum: [hold_not_found]
       unevaluatedProperties: false
+    Ticket:
+      type: object
+      description: >-
+        One ticket in the buyer's tickets response (stage-07 plan,
+        Endpoints). qr_payload is computed on render over ticket id,
+        event id, and the per-ticket rotation counter; it is never
+        stored and stops verifying after a rotation bump.
+      required:
+        - id
+        - ticket_type_id
+        - event_seat_id
+        - status
+        - attendee_name
+        - issued_at
+        - qr_payload
+      properties:
+        id:
+          type: string
+          format: uuid
+        ticket_type_id:
+          type: string
+          format: uuid
+        event_seat_id:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+          enum: [issued, canceled, refunded]
+        attendee_name:
+          type: string
+          nullable: true
+        issued_at:
+          type: string
+          format: date-time
+        qr_payload:
+          type: string
+      additionalProperties: false
+    TicketList:
+      type: object
+      description: >-
+        The bounded, unpaginated data envelope for one order's tickets
+        (docs/api-conventions.md collection shape; no top-level bare
+        arrays in this spec).
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ticket'
+      additionalProperties: false
     OrderNotFoundProblem:
       description: >-
         Problem document for the storefront and staff order surfaces
