@@ -80,10 +80,20 @@ final class UpdateTicketType
             ]);
         }
 
+        $wasSeated = $ticketType->requires_seat;
+
         $ticketType->update($attributes);
 
         if (! $requiresSeat && ! $data->quantity instanceof Optional) {
             ($this->setQuantity)($ticketType->tenant_id, $ticketType->id, $data->quantity);
+        } elseif ($requiresSeat && ! $wasSeated) {
+            // Converting a GA type to seated: its GA counter still carries the
+            // old absolute quantity, which is meaningless for a seated type
+            // whose availability comes from zoned event_seats. Reset it to 0,
+            // matching MaterializeEventSeats' zero seed on publish, so the
+            // seated type never reports stale GA availability. The conditional
+            // decrease guards against zeroing out already sold or held units.
+            ($this->setQuantity)($ticketType->tenant_id, $ticketType->id, 0);
         }
 
         $this->outbox->record(EventUpdated::fromEvent($event));

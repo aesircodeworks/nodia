@@ -3,6 +3,7 @@
 namespace App\Inventory\Actions\Concerns;
 
 use App\Inventory\Enums\EventSeatStatus;
+use App\Inventory\Exceptions\HoldInventoryReleaseFailedException;
 use App\Inventory\Models\EventSeat;
 use App\Inventory\Models\Hold;
 use App\Inventory\Models\HoldItem;
@@ -75,12 +76,21 @@ trait ReleasesHoldInventory
      */
     private function releaseHeldQuantity(HoldItem $item): void
     {
-        TicketTypeInventory::query()
+        $affected = TicketTypeInventory::query()
             ->where('ticket_type_id', $item->ticket_type_id)
             ->where('held', '>=', $item->quantity)
             ->update([
                 'held' => DB::raw(sprintf('held - %d', $item->quantity)),
                 'updated_at' => Date::now(),
             ]);
+
+        // Zero affected rows means the counter is missing or holds fewer than
+        // this item's units: a broken invariant, since an active hold's units
+        // were counted into held at claim time. Rolling the whole release or
+        // expiry back is the only safe outcome; recording HoldReleased or
+        // HoldExpired here would leave inventory permanently inconsistent.
+        if ($affected === 0) {
+            throw HoldInventoryReleaseFailedException::forTicketType($item->ticket_type_id, $item->quantity);
+        }
     }
 }

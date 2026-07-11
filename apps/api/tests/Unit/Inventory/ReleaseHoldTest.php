@@ -7,6 +7,7 @@ use App\Inventory\Actions\CreateHold;
 use App\Inventory\Actions\ReleaseHold;
 use App\Inventory\Data\CreateHoldData;
 use App\Inventory\Enums\HoldStatus;
+use App\Inventory\Exceptions\HoldInventoryReleaseFailedException;
 use App\Inventory\Exceptions\HoldNotFoundException;
 use App\Inventory\Exceptions\HoldNotReleasableException;
 use App\Inventory\Models\Hold;
@@ -153,6 +154,30 @@ it('throws HoldNotFoundException for an unknown hold', function (): void {
     );
 
     expect($invoke)->toThrow(HoldNotFoundException::class);
+});
+
+it('rolls back and records no HoldReleased when the counter holds fewer units than the hold', function (): void {
+    ['ticketTypeId' => $ticketTypeId, 'holdId' => $holdId] = releaseHoldFixture($this->tenantId, held: 3);
+
+    // Corrupt the counter so the held-decrement guard (held >= 3) matches no
+    // row: the release must roll the whole transaction back rather than
+    // recording HoldReleased against inconsistent inventory.
+    app(TenantTransaction::class)->asTenant($this->tenantId, function () use ($ticketTypeId): void {
+        TicketTypeInventory::query()->where('ticket_type_id', $ticketTypeId)->update(['held' => 1]);
+    });
+
+    $invoke = fn () => app(TenantTransaction::class)->asTenant($this->tenantId, fn () => app(ReleaseHold::class)($holdId));
+
+    expect($invoke)->toThrow(HoldInventoryReleaseFailedException::class);
+
+    $hold = app(TenantTransaction::class)->asTenant($this->tenantId, fn () => Hold::query()->findOrFail($holdId));
+    $eventCount = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => OutboxEvent::query()->where('tenant_id', $this->tenantId)->where('type', 'HoldReleased')->count(),
+    );
+
+    expect($hold->status)->toBe(HoldStatus::Active)
+        ->and($eventCount)->toBe(0);
 });
 
 it('rolls back the release and the outbox row together on failure', function (): void {

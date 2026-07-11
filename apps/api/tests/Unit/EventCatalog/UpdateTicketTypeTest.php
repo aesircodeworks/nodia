@@ -204,6 +204,27 @@ it('leaves the counter row untouched when quantity is absent from the payload', 
     expect($inventory->quantity)->toBe(50);
 });
 
+it('resets the counter quantity to zero when converting a GA ticket type to requires_seat', function () {
+    app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(InitializeTicketTypeInventory::class)($this->tenantId, $this->ticketType->id, 50),
+    );
+
+    $data = UpdateTicketTypeData::from(['requires_seat' => true]);
+
+    app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(UpdateTicketType::class)($this->ticketType, $data),
+    );
+
+    $inventory = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => TicketTypeInventory::query()->where('ticket_type_id', $this->ticketType->id)->first(),
+    );
+
+    expect($inventory)->not->toBeNull()->and($inventory->quantity)->toBe(0);
+});
+
 it('throws a validation exception for a quantity given on a requires_seat ticket type', function () {
     $seatedTicketType = app(TenantTransaction::class)->asTenant(
         $this->tenantId,
