@@ -255,3 +255,29 @@ Deviations from the plan:
 - None. All items in the plan's task breakdown 9, TDD sequencing Slice 6 (feature tests), Endpoints "Storefront search", and Exit criteria 5, 6, 8 are satisfied by the code found in the working tree; no further changes were needed beyond verification, running the full gate suite, and committing.
 
 Committed as `8321df0` `feat(catalog): q parameter on the storefront events list with relevance ranking`.
+
+#### task-10, 2026-07-11
+
+Landed the `search:rebuild` artisan command and its equivalence test (plan task breakdown item 10, TDD sequencing Slice 7, Domain events rebuild paragraph, Exit criterion 7), the last EventCatalog task in this stage.
+
+What landed:
+
+- Feature test first, confirmed red (`The command "search:rebuild" does not exist`, then re-confirmed green): `tests/Feature/EventCatalog/SearchRebuildCommandTest.php`. Two tests: the equivalence test plants a published event, a draft, and a canceled event in one tenant plus a published event in a second tenant, all through the real admin HTTP endpoints so `RefreshSearchIndex` (task-07) builds the "before" index the ordinary way; deletes every `event_search_documents` row for both tenants (functionally a truncate, since `nodia_platform` has no write grant on this table per task-06's own posture, so a literal `TRUNCATE` statement is unavailable to the test); runs `Artisan::call('search:rebuild')`; and asserts the "after" rows are identical to "before" per `(event_id, locale)` once `id`, `created_at`, and `updated_at` are excluded (a fresh id and timestamps are expected on every write per `SearchDocumentWriter::upsert()`'s own precedent, so "row-for-row identical" means identical content, not identical row identity). The second test asserts a draft and a canceled event are never indexed by a rebuild.
+- `App\Tenancy\Actions\ListTenantIds`: a new Tenancy read Action (`Tenant::query()->pluck('id')`) so the rebuilder can iterate every tenant without EventCatalog importing `App\Tenancy\Models\Tenant` directly (system-design 3.1 boundary rule), mirroring `ResolveTenantLocaleSettings`'s own precedent for the identical crossing; its own unit test, `tests/Unit/Tenancy/ListTenantIdsTest.php`.
+- `App\EventCatalog\Support\Search\SearchDocumentWriter`: the upsert/delete SQL extracted verbatim out of `RefreshSearchIndex` (task-07) into its own class, so both the projector and the rebuild command embed the exact same `INSERT ... ON CONFLICT` and delete statements rather than maintaining two copies; `RefreshSearchIndex` itself now delegates to it and lost its two private methods.
+- `App\EventCatalog\Support\Search\SearchIndexRebuilder`: `rebuild()` lists every tenant through `ListTenantIds` under the platform posture (the only cross-tenant read, mirroring `App\Support\Outbox\OutboxSweeper`'s own precedent), then for each tenant opens a real `TenantTransaction::asTenant()` transaction — never bypassing RLS — that deletes every existing row for that tenant and rewrites one row per locale for every currently published event via `EventSearchDocumentBuilder`/`SearchDocumentWriter`. Deleting a tenant's rows unconditionally before rewriting (rather than trusting the upsert's ON CONFLICT alone) is what makes the command converge on the same state a truncate-then-rebuild produces even when run over an already-populated table: the upsert alone would never remove a row belonging to an event that has since moved to draft or canceled.
+- `App\Console\Commands\SearchRebuildCommand`: `search:rebuild`, no arguments, reports the tenant count rebuilt.
+
+Deviations from the plan:
+
+- None in scope or behavior. One incidental test-infrastructure discovery, not a deviation from what shipped: writing the equivalence test's second HTTP call to a different tenant within the same test surfaced that Laravel's `'staff'` auth guard caches its resolved user for the lifetime of a test's container instance, so a second `postJson()` call with a different bearer token silently re-authenticates as the *first* tenant's user unless `Illuminate\Support\Facades\Auth::forgetGuards()` runs first — a pre-existing multi-tenant testing hazard this task's test is the first in the codebase to exercise (every other multi-tenant test either issues only one HTTP call per tenant, or switches tenants without an intervening real request from the first), not a defect in `search:rebuild`, `ResolveTenantFromHeader`, or any other production code. `Auth::forgetGuards()` is already this codebase's own established fix for the identical hazard elsewhere (`tests/Unit/RequireCapabilityTest.php`, `tests/Feature/Identity/StaffRefreshTest.php`), so the test uses that precedent rather than inventing a new workaround.
+
+Test evidence:
+
+- `tests/Feature/EventCatalog/SearchRebuildCommandTest.php`: 2/2 green (confirmed red first: command did not exist).
+- `tests/Unit/Tenancy/ListTenantIdsTest.php`: 1/1 green.
+- `tests/Architecture` (full suite): 38/38 green, confirming `SearchIndexRebuilder`'s use of `ListTenantIds` (a Tenancy Action) rather than `App\Tenancy\Models\Tenant` directly satisfies `ContextBoundariesTest` (this was caught by a first full-suite run naming the model-import violation directly, then fixed before landing).
+- Full `composer test` (Feature, Unit, Contract, Architecture, Isolation, Concurrency): 1732/1732 passed, 6912 assertions (up from task-09's 1729/1729; this task's 2 feature tests plus 1 new unit test account for the delta).
+- `composer lint` (Pint): passed. `composer analyse` (Larastan): passed, 0 errors. `composer types:generate`: no diff (no laravel-data class or endpoint changed; every new class in this task is plain PHP).
+
+This closes out Stage 5c's task breakdown items 1 through 10; only task 11 (docs: mark Stage 5c in the master plan status table, error code registry entries) remains for this stage.
