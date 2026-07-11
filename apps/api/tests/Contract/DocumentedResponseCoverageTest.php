@@ -2048,6 +2048,11 @@ function documentedResponseExercisers(): array
 
             return test()->getJson('http://'.$host.'/v1/storefront/events');
         },
+        'get /v1/storefront/events 422' => function (): TestResponse {
+            [, $host] = contractCustomerTenant();
+
+            return test()->getJson('http://'.$host.'/v1/storefront/events?q=a');
+        },
         'get /v1/storefront/events/{event} 200' => function (): TestResponse {
             [$tenant, $host] = contractCustomerTenant();
             $event = contractEvent($tenant, ['status' => EventStatus::Published]);

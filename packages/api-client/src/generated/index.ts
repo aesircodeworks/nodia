@@ -386,6 +386,9 @@ export type StorefrontEventData = {
   cover_image: MediaImageData | null;
   gallery: MediaImageData[];
 };
+export type StorefrontEventSearchQueryData = {
+  q: string | null;
+};
 export type StorefrontTicketTypeData = {
   id: string;
   name: string;

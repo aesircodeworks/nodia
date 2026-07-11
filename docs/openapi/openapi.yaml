@@ -3270,7 +3270,13 @@ paths:
         (explicit locale query parameter, then Accept-Language, then the
         tenant default; only tenant-supported locales are honored, and a
         missing translation falls back to the tenant default) and the
-        response carries a Content-Language header.
+        response carries a Content-Language header. When q is present
+        (stage-05c plan, Endpoints "Storefront search"), the response is
+        instead ranked by relevance against the negotiated locale's search
+        documents (PostgreSQL full-text search, ts_rank_cd, tie-broken on
+        start_at ascending then id ascending for deterministic ordering);
+        draft, canceled, and any other tenant's events are never returned
+        even if a stale search document exists for them.
       parameters:
         - name: locale
           in: query
@@ -3278,6 +3284,17 @@ paths:
           description: Preferred locale; honored only when the tenant supports it.
           schema:
             type: string
+        - name: q
+          in: query
+          required: false
+          description: >-
+            Full-text search query against the negotiated locale's search
+            documents. 2 to 200 characters; omit for the plain published
+            list, unchanged from stage 5a.
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 200
         - name: page
           in: query
           required: false
@@ -3296,6 +3313,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StorefrontEventPage'
+        '422':
+          description: >-
+            q is present but shorter than 2 or longer than 200 characters
+            (code request.validation_failed, with the errors map).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
   /v1/storefront/events/{event}:
     parameters:
       - name: event
