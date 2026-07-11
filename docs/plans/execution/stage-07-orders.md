@@ -80,6 +80,18 @@ Two important findings, no blocking. Disposition:
    conditional UPDATE with usage_count = 0 checked by affected-row
    count.
 
+#### Round 3 (2026-07-11, Codex)
+
+One blocking finding, confirmed and fixed: AttachHoldCustomer's
+conditional UPDATE guarded only ownership, so a sweeper expiry or a
+release racing in between ConvertHoldToOrder's liveness checks and the
+attach could still let an invalid hold convert. The UPDATE now also
+guards status = active and expires_at > now() (failing unit spread
+first: expired, released, committed, and clock-expired holds all refuse
+attachment), and ConvertHoldToOrder maps a lost attach onto
+checkout.hold_expired versus hold_not_found by re-reading the hold.
+Full suite re-run green after the fix (2201 tests, 8806 assertions).
+
 ### Decisions and deviations
 
 #### Task 07-01: error codes and Orders enums (2026-07-11)
