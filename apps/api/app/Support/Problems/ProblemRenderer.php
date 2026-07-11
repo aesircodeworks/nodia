@@ -160,6 +160,17 @@ class ProblemRenderer
             ErrorCode::SeatUnavailable => 'One or more of the requested seats are held, sold, blocked, or do not belong to the given event and ticket type.',
             ErrorCode::EventNotSeated => 'This event has no seat map; there is no seat inventory to read.',
             ErrorCode::SeatNotModifiable => 'One or more of the requested seats could not be transitioned by this operation.',
+            ErrorCode::CheckoutHoldExpired => 'This hold has expired and can no longer be converted to an order.',
+            ErrorCode::HoldAlreadyConverted => 'An order already references this hold.',
+            ErrorCode::OrderNotFound => 'No order has this id for the resolved tenant.',
+            ErrorCode::OrderNotCancelable => 'Only a pending order can be canceled.',
+            ErrorCode::OrderNotPaid => 'This order has no issued tickets to resend.',
+            ErrorCode::InvalidOrderTransition => 'The order is not in a state this transition applies to.',
+            ErrorCode::PromoCodeInvalid => 'No promo code with this code exists for the resolved tenant.',
+            ErrorCode::PromoCodeNotActive => 'This promo code is outside its validity window.',
+            ErrorCode::PromoCodeExhausted => 'This promo code has reached its usage limit.',
+            ErrorCode::PromoCodeCurrencyMismatch => "This promo code's currency does not match the order currency.",
+            ErrorCode::PromoCodeImmutableField => 'This field cannot be changed once the promo code has been used.',
         };
     }
 }

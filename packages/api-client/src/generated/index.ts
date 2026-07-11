@@ -204,7 +204,18 @@ export type ErrorCode =
   | 'seat_selection_invalid'
   | 'seat_unavailable'
   | 'event_not_seated'
-  | 'seat_not_modifiable';
+  | 'seat_not_modifiable'
+  | 'checkout.hold_expired'
+  | 'hold_already_converted'
+  | 'order_not_found'
+  | 'order_not_cancelable'
+  | 'order_not_paid'
+  | 'invalid_order_transition'
+  | 'promo_code_invalid'
+  | 'promo_code_not_active'
+  | 'promo_code_exhausted'
+  | 'promo_code_currency_mismatch'
+  | 'promo_code_immutable_field';
 export type EventAvailabilityData = {
   event_id: string;
   ticket_types: TicketTypeAvailabilityData[];
@@ -362,6 +373,15 @@ export type Money = {
   amount: number;
   currency: string;
 };
+export type OrderStatus =
+  | 'pending'
+  | 'awaiting_payment'
+  | 'paid'
+  | 'expired'
+  | 'failed'
+  | 'canceled'
+  | 'partially_refunded'
+  | 'refunded';
 export type PaginatedDataCollection<TKey, TValue> = LengthAwarePaginator<TKey, TValue>;
 export type ProblemData = {
   type: string;
@@ -371,6 +391,7 @@ export type ProblemData = {
   code: string;
   correlation_id?: string;
 };
+export type PromoCodeDiscountType = 'percentage' | 'fixed_amount';
 export type RefreshTokenRequestData = {
   refresh_token: string;
 };
@@ -492,6 +513,7 @@ export type TenantMediaUploadData = {
   file: File;
   collection: string;
 };
+export type TicketStatus = 'issued' | 'canceled' | 'refunded';
 export type TicketTypeAvailabilityData = {
   ticket_type_id: string;
   available: number;

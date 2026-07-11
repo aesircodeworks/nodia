@@ -71,6 +71,9 @@ use App\Inventory\Exceptions\SeatUnavailableException;
 use App\Inventory\Exceptions\TicketTypeInventoryNotFoundException;
 use App\Inventory\Exceptions\TicketTypeNotInEventException;
 use App\Inventory\InventoryServiceProvider;
+use App\Orders\Enums\OrderStatus;
+use App\Orders\Enums\PromoCodeDiscountType;
+use App\Orders\Enums\TicketStatus;
 use App\Support\Media\Exceptions\MediaNotFoundException;
 use App\Support\Money\CurrencyMismatchException;
 use App\Support\Outbox\Enums\OutboxDeliveryStatus;
@@ -158,6 +161,9 @@ arch()->preset()->security();
 // HoldInventoryReleaseFailedException (stage-06 review) is the same
 // story: an Inventory HasErrorCode guard exception living with its
 // bounded context, not App\Exceptions.
+// OrderStatus, TicketStatus, and PromoCodeDiscountType (stage-07 task-01)
+// are Orders' own status registries and live with their bounded context
+// like HoldStatus and EventStatus, not App\Enums.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -167,6 +173,9 @@ arch()->preset()->laravel()->ignoring([
     EventStatus::class,
     HoldStatus::class,
     EventSeatStatus::class,
+    OrderStatus::class,
+    TicketStatus::class,
+    PromoCodeDiscountType::class,
     'App\Support\Outbox\Jobs',
     CurrencyMismatchException::class,
     InvalidEventVenueConfigurationException::class,

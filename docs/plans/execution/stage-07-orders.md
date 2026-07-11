@@ -9,7 +9,7 @@
 
 ### Task checklist
 
-- [ ] 07-01 Error code registry additions plus OrderStatus, TicketStatus, PromoCodeDiscountType enums with unit tests (plan task 1)
+- [x] 07-01 Error code registry additions plus OrderStatus, TicketStatus, PromoCodeDiscountType enums with unit tests (plan task 1)
 - [ ] 07-02 orders and order_items migration with RLS, models, factories, isolation tests (plan task 2)
 - [ ] 07-03 ConvertHoldToOrder plus POST /v1/storefront/orders end to end, OrderCreated producer, double-conversion and anonymous-hold attachment races (plan slice 1, task 3)
 - [ ] 07-04 Transition Actions and the state machine table test (plan slice 2, task 4)
@@ -28,3 +28,17 @@
 ### Review rounds
 
 ### Decisions and deviations
+
+#### Task 07-01: error codes and Orders enums (2026-07-11)
+
+Added the eleven Stage 7 error codes from the plan's registry table to
+`App\Support\Problems\ErrorCode` with statuses, titles, and
+`ProblemRenderer` details (`hold_not_found` already existed from Stage 6
+and is reused). Created `App\Orders\Enums\{OrderStatus, TicketStatus,
+PromoCodeDiscountType}` including the Stage 8b refund statuses in the
+enum from day one per the plan. Tests first: extended
+`ErrorCodeTest` expectations and added `OrdersEnumsTest` (both failed
+before the implementation). Allowlisted the three enums in
+`PresetTest` following the HoldStatus precedent. Regenerated TS types
+(ErrorCode union grew). Evidence: `php artisan test
+--filter='OrdersEnums|ErrorCode|Preset'` 87 passed.

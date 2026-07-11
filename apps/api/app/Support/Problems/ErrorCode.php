@@ -75,6 +75,17 @@ enum ErrorCode: string
     case SeatUnavailable = 'seat_unavailable';
     case EventNotSeated = 'event_not_seated';
     case SeatNotModifiable = 'seat_not_modifiable';
+    case CheckoutHoldExpired = 'checkout.hold_expired';
+    case HoldAlreadyConverted = 'hold_already_converted';
+    case OrderNotFound = 'order_not_found';
+    case OrderNotCancelable = 'order_not_cancelable';
+    case OrderNotPaid = 'order_not_paid';
+    case InvalidOrderTransition = 'invalid_order_transition';
+    case PromoCodeInvalid = 'promo_code_invalid';
+    case PromoCodeNotActive = 'promo_code_not_active';
+    case PromoCodeExhausted = 'promo_code_exhausted';
+    case PromoCodeCurrencyMismatch = 'promo_code_currency_mismatch';
+    case PromoCodeImmutableField = 'promo_code_immutable_field';
 
     public function status(): int
     {
@@ -147,6 +158,17 @@ enum ErrorCode: string
             self::SeatUnavailable => 409,
             self::EventNotSeated => 409,
             self::SeatNotModifiable => 409,
+            self::CheckoutHoldExpired => 409,
+            self::HoldAlreadyConverted => 409,
+            self::OrderNotFound => 404,
+            self::OrderNotCancelable => 409,
+            self::OrderNotPaid => 409,
+            self::InvalidOrderTransition => 409,
+            self::PromoCodeInvalid => 422,
+            self::PromoCodeNotActive => 422,
+            self::PromoCodeExhausted => 422,
+            self::PromoCodeCurrencyMismatch => 422,
+            self::PromoCodeImmutableField => 422,
         };
     }
 
@@ -221,6 +243,17 @@ enum ErrorCode: string
             self::SeatUnavailable => 'Seat unavailable',
             self::EventNotSeated => 'Event not seated',
             self::SeatNotModifiable => 'Seat not modifiable',
+            self::CheckoutHoldExpired => 'Hold expired',
+            self::HoldAlreadyConverted => 'Hold already converted',
+            self::OrderNotFound => 'Order not found',
+            self::OrderNotCancelable => 'Order not cancelable',
+            self::OrderNotPaid => 'Order not paid',
+            self::InvalidOrderTransition => 'Invalid order transition',
+            self::PromoCodeInvalid => 'Promo code invalid',
+            self::PromoCodeNotActive => 'Promo code not active',
+            self::PromoCodeExhausted => 'Promo code exhausted',
+            self::PromoCodeCurrencyMismatch => 'Promo code currency mismatch',
+            self::PromoCodeImmutableField => 'Promo code immutable field',
         };
     }
 

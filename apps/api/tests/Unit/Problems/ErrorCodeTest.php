@@ -72,6 +72,17 @@ test('the registry holds exactly the known codes', function () {
         'seat_unavailable',
         'event_not_seated',
         'seat_not_modifiable',
+        'checkout.hold_expired',
+        'hold_already_converted',
+        'order_not_found',
+        'order_not_cancelable',
+        'order_not_paid',
+        'invalid_order_transition',
+        'promo_code_invalid',
+        'promo_code_not_active',
+        'promo_code_exhausted',
+        'promo_code_currency_mismatch',
+        'promo_code_immutable_field',
     ]);
 });
 
@@ -148,6 +159,17 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'seat_unavailable' => [ErrorCode::SeatUnavailable, 409, 'Seat unavailable', '/problems/seat-unavailable'],
     'event_not_seated' => [ErrorCode::EventNotSeated, 409, 'Event not seated', '/problems/event-not-seated'],
     'seat_not_modifiable' => [ErrorCode::SeatNotModifiable, 409, 'Seat not modifiable', '/problems/seat-not-modifiable'],
+    'checkout.hold_expired' => [ErrorCode::CheckoutHoldExpired, 409, 'Hold expired', '/problems/checkout-hold-expired'],
+    'hold_already_converted' => [ErrorCode::HoldAlreadyConverted, 409, 'Hold already converted', '/problems/hold-already-converted'],
+    'order_not_found' => [ErrorCode::OrderNotFound, 404, 'Order not found', '/problems/order-not-found'],
+    'order_not_cancelable' => [ErrorCode::OrderNotCancelable, 409, 'Order not cancelable', '/problems/order-not-cancelable'],
+    'order_not_paid' => [ErrorCode::OrderNotPaid, 409, 'Order not paid', '/problems/order-not-paid'],
+    'invalid_order_transition' => [ErrorCode::InvalidOrderTransition, 409, 'Invalid order transition', '/problems/invalid-order-transition'],
+    'promo_code_invalid' => [ErrorCode::PromoCodeInvalid, 422, 'Promo code invalid', '/problems/promo-code-invalid'],
+    'promo_code_not_active' => [ErrorCode::PromoCodeNotActive, 422, 'Promo code not active', '/problems/promo-code-not-active'],
+    'promo_code_exhausted' => [ErrorCode::PromoCodeExhausted, 422, 'Promo code exhausted', '/problems/promo-code-exhausted'],
+    'promo_code_currency_mismatch' => [ErrorCode::PromoCodeCurrencyMismatch, 422, 'Promo code currency mismatch', '/problems/promo-code-currency-mismatch'],
+    'promo_code_immutable_field' => [ErrorCode::PromoCodeImmutableField, 422, 'Promo code immutable field', '/problems/promo-code-immutable-field'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {
