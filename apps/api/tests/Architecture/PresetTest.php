@@ -57,6 +57,7 @@ use App\Inventory\Enums\EventSeatStatus;
 use App\Inventory\Enums\HoldStatus;
 use App\Inventory\Exceptions\EventNotSeatedException;
 use App\Inventory\Exceptions\HoldEventNotFoundException;
+use App\Inventory\Exceptions\HoldInventoryReleaseFailedException;
 use App\Inventory\Exceptions\HoldNotCommittableException;
 use App\Inventory\Exceptions\HoldNotExtendableException;
 use App\Inventory\Exceptions\HoldNotFoundException;
@@ -154,6 +155,9 @@ arch()->preset()->security();
 // InsufficientInventoryException (stage-06 task-02) lives in
 // App\Inventory\Exceptions like every other HasErrorCode exception in
 // this codebase, not App\Exceptions.
+// HoldInventoryReleaseFailedException (stage-06 review) is the same
+// story: an Inventory HasErrorCode guard exception living with its
+// bounded context, not App\Exceptions.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -227,6 +231,7 @@ arch()->preset()->laravel()->ignoring([
     TicketTypeNotInEventException::class,
     SalesWindowClosedException::class,
     InsufficientHoldInventoryException::class,
+    HoldInventoryReleaseFailedException::class,
     HoldNotFoundException::class,
     HoldNotReleasableException::class,
     HoldNotExtendableException::class,
