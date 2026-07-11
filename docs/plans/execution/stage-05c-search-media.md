@@ -302,3 +302,19 @@ Test evidence (full gate, run after the docs-only change above; no product code 
 Deviations from the plan: none. Both items exit criteria 3 and 9 name (error code registry, endpoint isolation coverage) were already satisfied by prior tasks in this run; this task's own contribution is the verification itself plus the docs flip.
 
 This closes Stage 5c: Search and Media. All eleven task breakdown items are done; the full gate (Feature, Unit, Contract, Architecture, Isolation, Concurrency, Larastan, Pint, TypeScript drift) is green.
+
+### Gate: 2026-07-11 00:38 -03
+
+Post-implementation quality-gate sweep for stage 5c.
+
+Local results (repo root):
+
+- `composer -d apps/api run lint` (Pint): passed.
+- `composer -d apps/api run analyse` (Larastan): passed, 0 errors.
+- `composer -d apps/api run test` (Pest, all suites): 1732 passed, 6912 assertions, no flake.
+- `composer -d apps/api run types:generate` then `git status --short packages/api-client/src/generated`: no drift.
+- `pnpm typecheck`: not run; no TypeScript changed (generated contracts had zero drift and the working tree was clean).
+
+No fixes were needed: every gate passed on the first run at HEAD `e8edc6a`.
+
+CI, all five workflows concluded success on `e8edc6a`: API [29138245767](https://github.com/aesircodeworks/nodia/actions/runs/29138245767), Packages [29138245765](https://github.com/aesircodeworks/nodia/actions/runs/29138245765), Storefront [29138245769](https://github.com/aesircodeworks/nodia/actions/runs/29138245769), Admin [29138245799](https://github.com/aesircodeworks/nodia/actions/runs/29138245799), Checkin [29138245771](https://github.com/aesircodeworks/nodia/actions/runs/29138245771).
