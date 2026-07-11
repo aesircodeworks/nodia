@@ -20,6 +20,7 @@ class OrdersServiceProvider extends ServiceProvider
     public function boot(EventTypeRegistry $registry, SubscriberRegistry $subscribers): void
     {
         $registry->register('OrderCreated');
+        $registry->register('TicketIssued');
 
         $subscribers->register(
             CancelOrderOnHoldExpired::NAME,

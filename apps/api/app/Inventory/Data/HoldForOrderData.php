@@ -37,7 +37,8 @@ class HoldForOrderData extends Data
             ->where('hold_id', $hold->id)
             ->get(['id', 'ticket_type_id'])
             ->groupBy('ticket_type_id')
-            ->map(fn ($seats) => $seats->pluck('id')->all());
+            ->map(fn ($seats) => $seats->pluck('id')->all())
+            ->all();
 
         return new self(
             $hold->id,
@@ -48,7 +49,7 @@ class HoldForOrderData extends Data
             $hold->items->map(fn (HoldItem $item): HoldForOrderItemData => new HoldForOrderItemData(
                 $item->ticket_type_id,
                 $item->quantity,
-                $seatIdsByTicketType->get($item->ticket_type_id, collect())->toArray(),
+                $seatIdsByTicketType[$item->ticket_type_id] ?? [],
             ))->all(),
         );
     }
