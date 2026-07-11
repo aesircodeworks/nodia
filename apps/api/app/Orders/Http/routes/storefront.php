@@ -11,4 +11,5 @@ use Illuminate\Support\Facades\Route;
  */
 Route::middleware('auth:customer')->group(function (): void {
     Route::post('/storefront/orders', [OrderController::class, 'store']);
+    Route::post('/storefront/orders/{order}/cancel', [OrderController::class, 'cancel'])->whereUuid('order');
 });

@@ -2894,6 +2894,49 @@ function documentedResponseExercisers(): array
                 'Authorization' => 'Bearer '.$token,
             ]);
         },
+        'post /v1/storefront/orders/{order}/cancel 200' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            ['event' => $event, 'ticketType' => $ticketType] = contractHoldFixture($tenant);
+            $token = contractOrderCustomerBearer($tenant, $host);
+
+            $orderId = test()->postJson('http://'.$host.'/v1/storefront/orders', [
+                'hold_id' => contractOrderHold($host, $event->id, $ticketType->id),
+            ], ['Authorization' => 'Bearer '.$token])->json('id');
+
+            return test()->postJson('http://'.$host.'/v1/storefront/orders/'.$orderId.'/cancel', [], [
+                'Authorization' => 'Bearer '.$token,
+            ]);
+        },
+        'post /v1/storefront/orders/{order}/cancel 401' => function (): TestResponse {
+            ['host' => $host] = contractHoldTenant();
+
+            return test()->postJson('http://'.$host.'/v1/storefront/orders/'.Str::uuid7().'/cancel');
+        },
+        'post /v1/storefront/orders/{order}/cancel 404' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            $token = contractOrderCustomerBearer($tenant, $host);
+
+            return test()->postJson('http://'.$host.'/v1/storefront/orders/'.Str::uuid7().'/cancel', [], [
+                'Authorization' => 'Bearer '.$token,
+            ]);
+        },
+        'post /v1/storefront/orders/{order}/cancel 409' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            ['event' => $event, 'ticketType' => $ticketType] = contractHoldFixture($tenant);
+            $token = contractOrderCustomerBearer($tenant, $host);
+
+            $orderId = test()->postJson('http://'.$host.'/v1/storefront/orders', [
+                'hold_id' => contractOrderHold($host, $event->id, $ticketType->id),
+            ], ['Authorization' => 'Bearer '.$token])->json('id');
+
+            test()->postJson('http://'.$host.'/v1/storefront/orders/'.$orderId.'/cancel', [], [
+                'Authorization' => 'Bearer '.$token,
+            ]);
+
+            return test()->postJson('http://'.$host.'/v1/storefront/orders/'.$orderId.'/cancel', [], [
+                'Authorization' => 'Bearer '.$token,
+            ]);
+        },
     ];
 }
 

@@ -3866,6 +3866,54 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ValidationProblem'
+  /v1/storefront/orders/{order}/cancel:
+    parameters:
+      - name: order
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: cancelOrder
+      summary: Cancel a pending order
+      description: >-
+        Storefront surface, customer bearer token required (stage-07
+        plan, Endpoints). Only a pending order cancels (system-design
+        7.1 draws canceled only out of pending); the hold is released in
+        the same transaction so availability recovers exactly.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The canceled order.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          description: Missing or invalid customer bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '404':
+          description: >-
+            Missing, other tenant (via RLS), or other customer (code
+            order_not_found).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/OrderNotFoundProblem'
+        '409':
+          description: Cancel attempted on a non-pending order.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/OrderNotCancelableProblem'
 components:
   securitySchemes:
     BearerAuth:
@@ -5243,6 +5291,37 @@ components:
             code:
               type: string
               enum: [hold_not_found]
+      unevaluatedProperties: false
+    OrderNotFoundProblem:
+      description: >-
+        Problem document for the storefront and staff order surfaces
+        when the order is missing, belongs to another tenant (via RLS),
+        or belongs to another customer (stage-07 plan, Error codes).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [404]
+            code:
+              type: string
+              enum: [order_not_found]
+      unevaluatedProperties: false
+    OrderNotCancelableProblem:
+      description: >-
+        Problem document for POST /v1/storefront/orders/{order}/cancel
+        when the order is not pending (stage-07 plan, Error codes).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [order_not_cancelable]
       unevaluatedProperties: false
     OrderCreateConflictProblem:
       description: >-
