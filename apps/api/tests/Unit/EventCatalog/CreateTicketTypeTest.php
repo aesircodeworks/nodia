@@ -218,6 +218,39 @@ it('does not seed a counter row for a requires_seat ticket type', function () {
     expect($inventory)->toBeNull();
 });
 
+it('seeds a zero-quantity counter row for a requires_seat ticket type added to a published event', function () {
+    $publishedEvent = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => Event::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'status' => 'published',
+        ]),
+    );
+
+    $data = CreateTicketTypeData::from([
+        'name' => 'Reserved',
+        'price' => ['amount' => 5000, 'currency' => 'USD'],
+        'sales_start' => null,
+        'sales_end' => null,
+        'requires_seat' => true,
+    ]);
+
+    $result = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(CreateTicketType::class)($publishedEvent, $data),
+    );
+
+    $inventory = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => TicketTypeInventory::query()->where('ticket_type_id', $result->id)->first(),
+    );
+
+    expect($inventory)->not->toBeNull()
+        ->and($inventory->quantity)->toBe(0)
+        ->and($inventory->held)->toBe(0)
+        ->and($inventory->sold)->toBe(0);
+});
+
 it('throws a validation exception for a quantity given on a requires_seat ticket type', function () {
     $data = CreateTicketTypeData::from([
         'name' => 'Reserved',

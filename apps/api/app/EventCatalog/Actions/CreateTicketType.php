@@ -11,6 +11,7 @@ use App\EventCatalog\Exceptions\EventImmutableException;
 use App\EventCatalog\Exceptions\EventNotFoundException;
 use App\EventCatalog\Models\Event;
 use App\EventCatalog\Models\TicketType;
+use App\Inventory\Actions\InitializeTicketTypeInventory;
 use App\Inventory\Actions\SetTicketTypeQuantity;
 use App\Support\Outbox\OutboxRecorder;
 use App\Tenancy\Actions\ResolveTenantSettlementCurrency;
@@ -32,6 +33,7 @@ final class CreateTicketType
         private readonly OutboxRecorder $outbox,
         private readonly ResolveTenantSettlementCurrency $resolveSettlementCurrency,
         private readonly SetTicketTypeQuantity $setQuantity,
+        private readonly InitializeTicketTypeInventory $initializeInventory,
     ) {}
 
     public function __invoke(Event $event, CreateTicketTypeData $data): TicketTypeData
@@ -67,11 +69,16 @@ final class CreateTicketType
             'requires_seat' => $requiresSeat,
         ]);
 
-        // Seated counters are seeded at 0 by MaterializeEventSeats on
-        // publish (task 9), not here (Risks: "Quantity input ownership").
         if (! $requiresSeat) {
             $quantity = $data->quantity instanceof Optional ? 0 : $data->quantity;
             ($this->setQuantity)($event->tenant_id, $ticketType->id, $quantity);
+        } elseif ($event->status === EventStatus::Published) {
+            // On a draft event, seated counters are seeded at 0 by
+            // MaterializeEventSeats on publish (task 9); a seated type added
+            // after publish never reaches that path, so its counter is seeded
+            // here at 0 for zoning to adjust, otherwise availability and holds
+            // treat it as permanently unavailable.
+            ($this->initializeInventory)($event->tenant_id, $ticketType->id, 0);
         }
 
         $this->outbox->record(EventUpdated::fromEvent($event));
