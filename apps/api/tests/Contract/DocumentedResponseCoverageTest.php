@@ -2898,6 +2898,33 @@ function documentedResponseExercisers(): array
                 'Authorization' => 'Bearer '.$token,
             ]);
         },
+        // Stage-07 plan, task breakdown item 10: the staff customer lookup.
+        'get /v1/customers 200' => function (): TestResponse {
+            $tenant = contractTenant();
+            contractCustomer($tenant, ['email' => 'contract-lookup@example.com', 'name' => 'Look Up']);
+
+            return test()->getJson('/v1/customers?filter[email]=contract-lookup@example.com', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['customers.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/customers 400' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->getJson('/v1/customers?filter[phone]=555', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['customers.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/customers 401' => fn (): TestResponse => test()->getJson('/v1/customers'),
+        'get /v1/customers 403' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->getJson('/v1/customers', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
         'get /v1/storefront/orders/{order} 200' => function (): TestResponse {
             ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
             ['event' => $event, 'ticketType' => $ticketType] = contractHoldFixture($tenant);

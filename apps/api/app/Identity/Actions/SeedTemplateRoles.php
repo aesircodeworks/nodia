@@ -52,6 +52,9 @@ final class SeedTemplateRoles
                 Capability::CheckinScan,
                 Capability::SeatMapsManage,
                 Capability::EventsManageSeating,
+                Capability::OrdersResendTickets,
+                Capability::PromoCodesManage,
+                Capability::CustomersView,
             ],
             'Event Manager' => [
                 Capability::EventsView,
@@ -61,17 +64,21 @@ final class SeedTemplateRoles
                 Capability::CheckinScan,
                 Capability::SeatMapsManage,
                 Capability::EventsManageSeating,
+                Capability::PromoCodesManage,
             ],
             'Box Office' => [
                 Capability::EventsView,
                 Capability::OrdersView,
                 Capability::CheckinScan,
+                Capability::OrdersResendTickets,
+                Capability::CustomersView,
             ],
             'Finance' => [
                 Capability::EventsView,
                 Capability::OrdersView,
                 Capability::OrdersRefund,
                 Capability::PayoutsView,
+                Capability::CustomersView,
             ],
             'Check-in Agent' => [
                 Capability::EventsView,

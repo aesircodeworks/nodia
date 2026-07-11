@@ -22,7 +22,10 @@ export type Capability =
   | 'payouts.view'
   | 'checkin.scan'
   | 'seat_maps.manage'
-  | 'events.manage_seating';
+  | 'events.manage_seating'
+  | 'orders.resend_tickets'
+  | 'promo_codes.manage'
+  | 'customers.view';
 export type CapabilityData = {
   name: string;
   is_financially_privileged: boolean;
@@ -129,6 +132,12 @@ export type CustomerData = {
   name: string;
   locale: string;
   is_claimed: boolean;
+};
+export type CustomerSummaryData = {
+  id: string;
+  email: string;
+  name: string | null;
+  created_at: string;
 };
 export type CustomerTokenRequestData = {
   email: string;

@@ -8,6 +8,9 @@ use App\Identity\Capability;
  * test signals exactly that kind of accidental rename or removal.
  * seat_maps.manage is stage-05b's addition (Task breakdown item 1).
  * events.manage_seating is stage-06's addition (Task breakdown item 10a).
+ * orders.resend_tickets, promo_codes.manage, and customers.view are
+ * stage-07's additions (Endpoints, "New capabilities registered in the
+ * Stage 3 RBAC capability set").
  */
 
 it('carries the exact capability registry, no more and no less', function () {
@@ -26,6 +29,9 @@ it('carries the exact capability registry, no more and no less', function () {
         'checkin.scan',
         'seat_maps.manage',
         'events.manage_seating',
+        'orders.resend_tickets',
+        'promo_codes.manage',
+        'customers.view',
     ]);
 });
 
