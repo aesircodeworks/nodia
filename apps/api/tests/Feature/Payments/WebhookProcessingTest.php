@@ -282,6 +282,20 @@ describe('webhook-driven payment processing', function (): void {
             ->and($row->status)->toBe(GatewayWebhookStatus::Ignored->value);
     });
 
+    it('ignores a confirmation carrying a negative fee instead of failing the job', function (): void {
+        $fixture = processingFixture();
+
+        deliverWebhook(app(FakeGateway::class)->confirmationWebhook($fixture['reference'], Money::of(-1, 'USD')))->assertStatus(200);
+
+        [$payment, $row] = app(TenantTransaction::class)->asPlatform(fn (): array => [
+            Payment::query()->findOrFail($fixture['paymentId']),
+            DB::table('gateway_webhook_events')->first(),
+        ]);
+
+        expect($payment->status)->toBe(PaymentStatus::Initiated)
+            ->and($row->status)->toBe(GatewayWebhookStatus::Ignored->value);
+    });
+
     it('marks an unmatched gateway reference ignored', function (): void {
         processingFixture();
 

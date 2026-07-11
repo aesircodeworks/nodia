@@ -218,6 +218,45 @@ describe('POST /v1/storefront/orders/{order}/payments (sync)', function (): void
         expect($count)->toBe(1);
     });
 
+    it('rejects reusing an Idempotency-Key against a different order', function (): void {
+        $fixture = initFixture();
+        $key = (string) Str::uuid7();
+        $body = ['method' => 'card', 'details' => ['token' => 'tok_approve']];
+
+        initiatePayment($fixture, $body, $key)->assertStatus(201);
+
+        $secondHoldId = app(TenantTransaction::class)->asTenant($fixture['tenantId'], function () use ($fixture): string {
+            $customer = Customer::query()->where('email', 'init-buyer@example.com')->firstOrFail();
+            $eventId = DB::table('events')->where('tenant_id', $fixture['tenantId'])->value('id');
+            $ticketTypeId = DB::table('ticket_types')->where('tenant_id', $fixture['tenantId'])->value('id');
+
+            return app(CreateHold::class)(
+                CreateHoldData::from([
+                    'event_id' => $eventId,
+                    'items' => [['ticket_type_id' => $ticketTypeId, 'quantity' => 1]],
+                ]),
+                $customer->id,
+            )->id;
+        });
+
+        Auth::forgetGuards();
+
+        $secondOrderId = test()->postJson('http://'.$fixture['host'].'/v1/storefront/orders', [
+            'hold_id' => $secondHoldId,
+        ], ['Authorization' => 'Bearer '.$fixture['token']])->assertStatus(201)->json('id');
+
+        $response = initiatePayment(['orderId' => $secondOrderId] + $fixture, $body, $key);
+
+        $response->assertStatus(409)->assertConformsToOpenApi();
+        $response->assertJsonPath('code', 'idempotency_key_reuse_mismatch');
+
+        $count = app(TenantTransaction::class)->asTenant(
+            $fixture['tenantId'],
+            fn () => Payment::query()->where('order_id', $secondOrderId)->count(),
+        );
+        expect($count)->toBe(0);
+    });
+
     it('rejects the same Idempotency-Key with a different payload', function (): void {
         $fixture = initFixture();
         $key = (string) Str::uuid7();

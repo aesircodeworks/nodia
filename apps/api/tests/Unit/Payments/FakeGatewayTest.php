@@ -158,6 +158,7 @@ it('refuses to normalize a confirmation fee that is not integer minor units with
         ->and($this->gateway->normalizeWebhook($base + ['fee' => ['amount' => '363', 'currency' => 'BRL']]))->toBeNull()
         ->and($this->gateway->normalizeWebhook($base + ['fee' => ['amount' => 363]]))->toBeNull()
         ->and($this->gateway->normalizeWebhook($base + ['fee' => ['amount' => 363, 'currency' => 'reais']]))->toBeNull()
+        ->and($this->gateway->normalizeWebhook($base + ['fee' => ['amount' => -1, 'currency' => 'BRL']]))->toBeNull()
         ->and($this->gateway->normalizeWebhook($base))->toBeNull();
 });
 

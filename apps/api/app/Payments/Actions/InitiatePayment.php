@@ -67,7 +67,7 @@ final class InitiatePayment
         $existing = Payment::query()->where('idempotency_key', $idempotencyKey)->first();
 
         if ($existing !== null) {
-            return $this->replay($existing, $requestHash);
+            return $this->replay($existing, $requestHash, $order->id);
         }
 
         if ($order->status !== OrderStatus::Pending) {
@@ -94,7 +94,7 @@ final class InitiatePayment
         } catch (UniqueConstraintViolationException) {
             $existing = Payment::query()->where('idempotency_key', $idempotencyKey)->firstOrFail();
 
-            return $this->replay($existing, $requestHash);
+            return $this->replay($existing, $requestHash, $order->id);
         }
 
         $adapter = $this->gateways->get($offered->gateway) ?? throw PaymentMethodNotAvailableException::forMethod($data->method);
@@ -127,9 +127,12 @@ final class InitiatePayment
         };
     }
 
-    private function replay(Payment $existing, string $requestHash): PaymentInitiationResult
+    private function replay(Payment $existing, string $requestHash, string $orderId): PaymentInitiationResult
     {
-        if (! hash_equals($existing->request_hash, $requestHash)) {
+        // A key reused against a different order is a mismatch even with
+        // an identical payload; replaying would hand back another order's
+        // payment.
+        if ($existing->order_id !== $orderId || ! hash_equals($existing->request_hash, $requestHash)) {
             throw IdempotencyKeyReuseMismatchException::make();
         }
 

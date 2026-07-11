@@ -138,7 +138,7 @@ final class FakeGateway implements GatewayAdapter
 
         // A fee that is not integer minor units with a valid currency is
         // never coerced; the event routes to the ignored path instead.
-        if (! is_int($amount) || ! is_string($currency) || preg_match('/^[A-Z]{3}$/', $currency) !== 1) {
+        if (! is_int($amount) || $amount < 0 || ! is_string($currency) || preg_match('/^[A-Z]{3}$/', $currency) !== 1) {
             return null;
         }
 
