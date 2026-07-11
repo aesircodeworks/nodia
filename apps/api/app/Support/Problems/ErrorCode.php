@@ -68,6 +68,8 @@ enum ErrorCode: string
     case SalesWindowClosed = 'sales_window_closed';
     case HoldNotFound = 'hold_not_found';
     case HoldNotReleasable = 'hold_not_releasable';
+    case HoldNotExtendable = 'hold_not_extendable';
+    case HoldNotCommittable = 'hold_not_committable';
 
     public function status(): int
     {
@@ -133,6 +135,8 @@ enum ErrorCode: string
             self::SalesWindowClosed => 409,
             self::HoldNotFound => 404,
             self::HoldNotReleasable => 409,
+            self::HoldNotExtendable => 409,
+            self::HoldNotCommittable => 409,
         };
     }
 
@@ -200,6 +204,8 @@ enum ErrorCode: string
             self::SalesWindowClosed => 'Sales window closed',
             self::HoldNotFound => 'Hold not found',
             self::HoldNotReleasable => 'Hold not releasable',
+            self::HoldNotExtendable => 'Hold not extendable',
+            self::HoldNotCommittable => 'Hold not committable',
         };
     }
 

@@ -54,6 +54,8 @@ use App\Identity\Mail\PasswordResetMail;
 use App\Identity\Mail\StaffInvitationMail;
 use App\Inventory\Enums\HoldStatus;
 use App\Inventory\Exceptions\HoldEventNotFoundException;
+use App\Inventory\Exceptions\HoldNotCommittableException;
+use App\Inventory\Exceptions\HoldNotExtendableException;
 use App\Inventory\Exceptions\HoldNotFoundException;
 use App\Inventory\Exceptions\HoldNotReleasableException;
 use App\Inventory\Exceptions\InsufficientHoldInventoryException;
@@ -219,6 +221,8 @@ arch()->preset()->laravel()->ignoring([
     InsufficientHoldInventoryException::class,
     HoldNotFoundException::class,
     HoldNotReleasableException::class,
+    HoldNotExtendableException::class,
+    HoldNotCommittableException::class,
     TicketTypeInventoryNotFoundException::class,
     MissingTenantHeaderException::class,
     InvalidTenantHeaderException::class,

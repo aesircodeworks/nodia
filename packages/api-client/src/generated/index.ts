@@ -36,6 +36,9 @@ export type CheckResult = 'ok' | 'failed';
 export type ClaimRequestData = {
   email: string;
 };
+export type CommitHoldData = {
+  holdId: string;
+};
 export type ConfirmClaimData = {
   token: string;
   password: string;
@@ -192,7 +195,9 @@ export type ErrorCode =
   | 'ticket_type_not_in_event'
   | 'sales_window_closed'
   | 'hold_not_found'
-  | 'hold_not_releasable';
+  | 'hold_not_releasable'
+  | 'hold_not_extendable'
+  | 'hold_not_committable';
 export type EventAvailabilityData = {
   event_id: string;
   ticket_types: TicketTypeAvailabilityData[];
@@ -224,6 +229,10 @@ export type EventMediaUploadData = {
   collection: string;
 };
 export type EventStatus = 'draft' | 'published' | 'canceled';
+export type ExtendHoldData = {
+  holdId: string;
+  expiresAt: string;
+};
 export type HealthChecksData = {
   database: CheckResult;
   redis: CheckResult;
