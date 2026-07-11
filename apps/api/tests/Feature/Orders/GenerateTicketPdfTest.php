@@ -7,9 +7,8 @@ use App\Identity\Models\Customer;
 use App\Inventory\Actions\CreateHold;
 use App\Inventory\Data\CreateHoldData;
 use App\Inventory\Models\TicketTypeInventory;
-use App\Orders\Jobs\SendOrderConfirmation;
-use App\Orders\Mail\OrderConfirmationMail;
-use App\Orders\Models\Order;
+use App\Orders\Jobs\GenerateTicketPdf;
+use App\Orders\Models\Ticket;
 use App\Support\Outbox\Models\OutboxEvent;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
@@ -17,21 +16,22 @@ use App\Tenancy\Models\TenantDomain;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\Support\MigratedDatabase;
 use Tests\Support\PostgresTestDatabase;
 
 /*
- * Stage-08a plan, Slice 9: one confirmation email per order. TicketIssued
- * is recorded per ticket, so a two-ticket order yields two events; the
- * confirmation_sent_at claim makes exactly one send win, and duplicate
- * delivery of any single event is a no-op (the mandated
- * duplicate-delivery test, written first).
+ * Stage-08a plan, Slice 10: one PDF per ticket through medialibrary's
+ * ticket_pdf single-file collection, idempotent under duplicate
+ * delivery because the collection replaces rather than accumulates
+ * (the mandated duplicate-delivery test, written first).
  */
 
 beforeEach(function (): void {
     PostgresTestDatabase::use();
     MigratedDatabase::ensure();
+    Storage::fake('media');
     Mail::fake();
 });
 
@@ -44,10 +44,10 @@ afterEach(function (): void {
 
     foreach ($tenantIds as $tenantId) {
         app(TenantTransaction::class)->asTenant($tenantId, function () use ($tenantId): void {
+            DB::table('media')->where('tenant_id', $tenantId)->delete();
             DB::table('payments')->where('tenant_id', $tenantId)->delete();
             DB::table('outbox_deliveries')->where('tenant_id', $tenantId)->delete();
             DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
-            DB::table('media')->where('tenant_id', $tenantId)->delete();
             DB::table('tickets')->where('tenant_id', $tenantId)->delete();
             DB::table('order_items')->where('tenant_id', $tenantId)->delete();
             DB::table('orders')->where('tenant_id', $tenantId)->delete();
@@ -67,12 +67,11 @@ afterEach(function (): void {
 });
 
 /**
- * A paid two-ticket order driven over the real sync-approve endpoint,
- * so two TicketIssued events were recorded and delivered.
+ * A paid two-ticket order driven over the real sync-approve endpoint.
  *
  * @return array{tenantId: string, orderId: string}
  */
-function confirmationFixture(string $locale = 'pt_BR'): array
+function ticketPdfFixture(): array
 {
     ['tenant' => $tenant, 'host' => $host] = app(TenantTransaction::class)->asPlatform(function (): array {
         $tenant = Tenant::factory()->create(['enabled_gateways' => ['fake']]);
@@ -100,14 +99,13 @@ function confirmationFixture(string $locale = 'pt_BR'): array
         $tenant->id,
         fn () => Customer::factory()->create([
             'tenant_id' => $tenant->id,
-            'email' => 'confirmation-buyer@example.com',
+            'email' => 'pdf-buyer@example.com',
             'password' => 'password',
-            'locale' => $locale,
         ]),
     );
 
     $token = test()->postJson('http://'.$host.'/v1/auth/customer/token', [
-        'email' => 'confirmation-buyer@example.com',
+        'email' => 'pdf-buyer@example.com',
         'password' => 'password',
     ])->json('access_token');
 
@@ -136,67 +134,45 @@ function confirmationFixture(string $locale = 'pt_BR'): array
     return ['tenantId' => $tenant->id, 'orderId' => $orderId];
 }
 
-describe('SendOrderConfirmation', function (): void {
-    it('sends exactly one localized email for a two-ticket order and claims confirmation_sent_at', function (): void {
-        $fixture = confirmationFixture();
+describe('GenerateTicketPdf', function (): void {
+    it('produces one non-trivial PDF per ticket on the paid path', function (): void {
+        $fixture = ticketPdfFixture();
 
-        Mail::assertSentCount(1);
-        Mail::assertSent(OrderConfirmationMail::class, function (OrderConfirmationMail $mail): bool {
-            return $mail->hasTo('confirmation-buyer@example.com')
-                && $mail->locale === 'pt_BR'
-                && $mail->ticketCount === 2;
-        });
+        app(TenantTransaction::class)->asTenant($fixture['tenantId'], function () use ($fixture): void {
+            $tickets = Ticket::query()->where('order_id', $fixture['orderId'])->get();
 
-        $order = app(TenantTransaction::class)->asTenant(
-            $fixture['tenantId'],
-            fn () => Order::query()->findOrFail($fixture['orderId']),
-        );
+            expect($tickets)->toHaveCount(2);
 
-        expect($order->confirmation_sent_at)->not->toBeNull();
-    });
+            foreach ($tickets as $ticket) {
+                $media = $ticket->getMedia('ticket_pdf');
 
-    it('does not embed any QR payload in the mail', function (): void {
-        confirmationFixture();
+                expect($media)->toHaveCount(1)
+                    ->and($media->first()->mime_type)->toBe('application/pdf')
+                    ->and($media->first()->size)->toBeGreaterThan(500);
 
-        Mail::assertSent(OrderConfirmationMail::class, function (OrderConfirmationMail $mail): bool {
-            $html = $mail->render();
+                $bytes = Storage::disk('media')->get($media->first()->getPathRelativeToRoot());
 
-            return ! str_contains(strtolower($html), 'qr');
+                expect(substr($bytes, 0, 5))->toBe('%PDF-');
+            }
         });
     });
 
-    it('sends nothing more when a TicketIssued delivery repeats', function (): void {
-        $fixture = confirmationFixture();
+    it('converges to exactly one attachment when a TicketIssued delivery repeats', function (): void {
+        $fixture = ticketPdfFixture();
 
         $events = app(TenantTransaction::class)->asTenant(
             $fixture['tenantId'],
             fn () => OutboxEvent::query()->where('type', 'TicketIssued')->pluck('id')->all(),
         );
 
-        expect($events)->toHaveCount(2);
-
         foreach ($events as $eventId) {
-            processOutboxDeliveryTwice($eventId, SendOrderConfirmation::NAME);
+            processOutboxDeliveryTwice($eventId, GenerateTicketPdf::NAME);
         }
 
-        Mail::assertSentCount(1);
-    });
-
-    it('claims the send with a conditional UPDATE checked by affected rows', function (): void {
-        $fixture = confirmationFixture();
-
-        $eventId = app(TenantTransaction::class)->asTenant(
-            $fixture['tenantId'],
-            fn () => OutboxEvent::query()->where('type', 'TicketIssued')->value('id'),
-        );
-
-        // The claim is already taken; running the consumer directly against
-        // the order must not send again.
-        app(TenantTransaction::class)->asTenant($fixture['tenantId'], function () use ($eventId): void {
-            $event = OutboxEvent::query()->findOrFail($eventId);
-            app(SendOrderConfirmation::class)->handle($event);
+        app(TenantTransaction::class)->asTenant($fixture['tenantId'], function () use ($fixture): void {
+            foreach (Ticket::query()->where('order_id', $fixture['orderId'])->get() as $ticket) {
+                expect($ticket->getMedia('ticket_pdf'))->toHaveCount(1);
+            }
         });
-
-        Mail::assertSentCount(1);
     });
 });

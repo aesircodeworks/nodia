@@ -85,6 +85,7 @@ use App\Orders\Exceptions\PromoCodeExhaustedException;
 use App\Orders\Exceptions\PromoCodeImmutableFieldException;
 use App\Orders\Exceptions\PromoCodeInvalidException;
 use App\Orders\Exceptions\PromoCodeNotActiveException;
+use App\Orders\Mail\OrderConfirmationMail;
 use App\Orders\OrdersServiceProvider;
 use App\Payments\Enums\GatewayWebhookStatus;
 use App\Payments\Enums\PaymentMethodConfirmation;
@@ -242,6 +243,7 @@ arch()->preset()->laravel()->ignoring([
     StaffInvitationMail::class,
     CustomerClaimMail::class,
     PasswordResetMail::class,
+    OrderConfirmationMail::class,
     DefaultLocaleNotSupportedException::class,
     DomainAlreadyRegisteredException::class,
     InvalidDomainNameException::class,

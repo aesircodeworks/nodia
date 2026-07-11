@@ -4,6 +4,7 @@ namespace Tests;
 
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Assert;
 use Spectator\Spectator;
@@ -17,6 +18,12 @@ abstract class TestCase extends BaseTestCase
         parent::setUp();
 
         OAuthKeys::ensure();
+
+        // The paid transition's TicketIssued consumers attach PDFs to the
+        // media disk (stage-08a plan, Slice 10), so every suite gets a
+        // faked media disk by default; media-focused tests that fake it
+        // again in their own beforeEach simply re-fake harmlessly.
+        Storage::fake('media');
 
         config()->set('spectator.sources.local.base_path', dirname(OpenApiSpec::path()));
         Spectator::using(basename(OpenApiSpec::path()));

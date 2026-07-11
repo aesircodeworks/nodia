@@ -3,11 +3,14 @@
 namespace App\Orders;
 
 use App\Orders\Jobs\CancelOrderOnHoldExpired;
+use App\Orders\Jobs\GenerateTicketPdf;
 use App\Orders\Jobs\HandlePaymentConfirmed;
 use App\Orders\Jobs\HandlePaymentExpired;
 use App\Orders\Jobs\HandlePaymentFailed;
 use App\Orders\Jobs\SendOrderConfirmation;
 use App\Orders\Support\DerivedTicketSigningKeyProvider;
+use App\Orders\Support\DompdfTicketPdfRenderer;
+use App\Orders\Support\TicketPdfRenderer;
 use App\Orders\Support\TicketSigningKeyProvider;
 use App\Support\Outbox\EventTypeRegistry;
 use App\Support\Outbox\SubscriberRegistry;
@@ -26,6 +29,7 @@ class OrdersServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(TicketSigningKeyProvider::class, DerivedTicketSigningKeyProvider::class);
+        $this->app->bind(TicketPdfRenderer::class, DompdfTicketPdfRenderer::class);
     }
 
     public function boot(EventTypeRegistry $registry, SubscriberRegistry $subscribers): void
@@ -61,6 +65,12 @@ class OrdersServiceProvider extends ServiceProvider
             SendOrderConfirmation::NAME,
             ['TicketIssued'],
             $this->app->make(SendOrderConfirmation::class),
+        );
+
+        $subscribers->register(
+            GenerateTicketPdf::NAME,
+            ['TicketIssued'],
+            $this->app->make(GenerateTicketPdf::class),
         );
 
         Route::middleware('tenancy.storefront')

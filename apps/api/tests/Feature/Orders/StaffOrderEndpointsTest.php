@@ -41,6 +41,7 @@ afterEach(function (): void {
             DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
             DB::table('memberships')->where('tenant_id', $tenantId)->delete();
             DB::table('roles')->where('tenant_id', $tenantId)->delete();
+            DB::table('media')->where('tenant_id', $tenantId)->delete();
             DB::table('tickets')->where('tenant_id', $tenantId)->delete();
             DB::table('order_items')->where('tenant_id', $tenantId)->delete();
             DB::table('orders')->where('tenant_id', $tenantId)->delete();
