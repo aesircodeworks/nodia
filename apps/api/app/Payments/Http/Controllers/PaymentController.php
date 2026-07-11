@@ -8,6 +8,7 @@ use App\Payments\Data\InitiatePaymentData;
 use App\Payments\Data\PaymentData;
 use App\Payments\Exceptions\IdempotencyKeyMissingException;
 use App\Payments\Exceptions\PaymentOrderNotFoundException;
+use App\Payments\Models\Payment;
 use App\Support\Problems\ErrorCode;
 use App\Support\Problems\ProblemData;
 use Illuminate\Http\JsonResponse;
@@ -50,5 +51,25 @@ class PaymentController
         }
 
         return response()->json(PaymentData::fromModel($result->payment), $result->replayed ? 200 : 201);
+    }
+
+    /**
+     * The buyer polls the payment leg of an async initiation; the order
+     * status flip is polled on the Stage 7 order endpoint. Ownership is
+     * asserted through the owning order: a missing, cross-tenant (via
+     * RLS), or foreign-customer payment renders the same
+     * request.not_found (stage-08a plan, Endpoints).
+     */
+    public function show(Request $request, string $payment, ResolveOrderForPayment $resolveOrder): PaymentData
+    {
+        $model = Payment::query()->find($payment) ?? throw PaymentOrderNotFoundException::forOrder($payment);
+
+        $customerId = (string) $request->user('customer')->getAuthIdentifier();
+
+        if ($resolveOrder($model->order_id, $customerId) === null) {
+            throw PaymentOrderNotFoundException::forOrder($payment);
+        }
+
+        return PaymentData::fromModel($model);
     }
 }

@@ -13,6 +13,7 @@ use App\Orders\Data\CreateOrderData;
 use App\Orders\Models\Order;
 use App\Payments\Actions\InitiatePayment;
 use App\Payments\Data\InitiatePaymentData;
+use App\Payments\Exceptions\OrderNotPayableException;
 use App\Payments\Models\Payment;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
@@ -125,4 +126,68 @@ it('produces one payment row and identical results under parallel same-key initi
         ->and($ids)->toHaveCount(1)
         ->and($statuses)->toBe(['confirmed'])
         ->and($fresh)->toHaveCount(1);
+});
+
+it('lets exactly one of two different-key async initiations move the order to awaiting_payment', function (): void {
+    $tenantId = app(TenantTransaction::class)->asPlatform(
+        fn () => Tenant::factory()->create(['enabled_gateways' => ['fake']])->id,
+    );
+
+    $orderId = app(TenantTransaction::class)->asTenant($tenantId, function () use ($tenantId): string {
+        $event = Event::factory()->create(['tenant_id' => $tenantId, 'status' => EventStatus::Published]);
+        $ticketType = TicketType::factory()->create(['tenant_id' => $tenantId, 'event_id' => $event->id]);
+
+        TicketTypeInventory::factory()->create([
+            'tenant_id' => $tenantId,
+            'ticket_type_id' => $ticketType->id,
+            'quantity' => 100,
+            'held' => 0,
+            'sold' => 0,
+        ]);
+
+        $customer = Customer::factory()->create(['tenant_id' => $tenantId]);
+
+        $holdId = app(CreateHold::class)(
+            CreateHoldData::from([
+                'event_id' => $event->id,
+                'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+            ]),
+            $customer->id,
+        )->id;
+
+        return app(ConvertHoldToOrder::class)(CreateOrderData::from(['hold_id' => $holdId]), $customer->id)->id;
+    });
+
+    $results = ParallelRunner::runEach(...array_map(
+        fn (string $key): Closure => function () use ($tenantId, $orderId, $key): string {
+            try {
+                app(TenantTransaction::class)->asTenant($tenantId, function () use ($orderId, $key) {
+                    $customerId = Order::query()->findOrFail($orderId)->customer_id;
+                    $context = app(ResolveOrderForPayment::class)($orderId, $customerId);
+
+                    return app(InitiatePayment::class)(
+                        $context,
+                        InitiatePaymentData::from(['method' => 'pix']),
+                        $key,
+                    );
+                });
+
+                return 'won';
+            } catch (OrderNotPayableException) {
+                return 'lost';
+            }
+        },
+        ['race-key-a', 'race-key-b'],
+    ));
+
+    $winners = array_values(array_filter($results, fn (string $result): bool => $result === 'won'));
+
+    [$orderStatus, $paymentCount] = app(TenantTransaction::class)->asTenant($tenantId, fn (): array => [
+        Order::query()->findOrFail($orderId)->status->value,
+        Payment::query()->where('order_id', $orderId)->count(),
+    ]);
+
+    expect($winners)->toHaveCount(1)
+        ->and($orderStatus)->toBe('awaiting_payment')
+        ->and($paymentCount)->toBe(1);
 });

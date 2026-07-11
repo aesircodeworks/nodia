@@ -4706,6 +4706,48 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/GatewayUnavailableProblem'
+  /v1/storefront/payments/{payment}:
+    parameters:
+      - name: payment
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getStorefrontPayment
+      summary: Poll a payment
+      description: >-
+        Storefront surface, customer bearer token required (stage-08a
+        plan, Endpoints). Reports the payment leg of an async initiation
+        and re-serves next_action (e.g. the Pix code); the storefront
+        polls the order endpoint for the order status flip.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The payment.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '401':
+          description: Missing or invalid customer bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '404':
+          description: >-
+            Missing, other tenant (via RLS), or other customer (code
+            request.not_found).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
 components:
   securitySchemes:
     BearerAuth:
