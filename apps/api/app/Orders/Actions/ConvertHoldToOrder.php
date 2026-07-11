@@ -73,7 +73,17 @@ final class ConvertHoldToOrder
         }
 
         if (! ($this->attachCustomer)($hold->id, $customerId)) {
-            throw HoldNotFoundException::forId($data->holdId);
+            // The attach guard lost a race: re-read to render the honest
+            // code. An expiry racing in is checkout.hold_expired; anything
+            // else (release, foreign owner) stays hold_not_found.
+            $current = ($this->resolveHold)($hold->id);
+
+            $expired = $current !== null && ($current->status === HoldStatus::Expired
+                || ($current->status === HoldStatus::Active && $current->expiresAt->lessThanOrEqualTo(Date::now())));
+
+            throw $expired
+                ? HoldExpiredException::forId($data->holdId)
+                : HoldNotFoundException::forId($data->holdId);
         }
 
         $prices = ($this->pricing)(array_map(
