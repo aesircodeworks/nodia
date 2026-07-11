@@ -13,6 +13,7 @@ use App\Payments\Data\InitiatePaymentData;
 use App\Payments\Data\PaymentMethodOfferData;
 use App\Payments\Enums\PaymentStatus;
 use App\Payments\Events\PaymentInitiated;
+use App\Payments\Exceptions\GatewayUnavailableException;
 use App\Payments\Exceptions\IdempotencyKeyReuseMismatchException;
 use App\Payments\Exceptions\OrderNotPayableException;
 use App\Payments\Exceptions\PaymentMethodNotAvailableException;
@@ -20,6 +21,7 @@ use App\Payments\Gateways\GatewayPaymentOutcome;
 use App\Payments\Gateways\GatewayPaymentRequest;
 use App\Payments\Gateways\GatewayRegistry;
 use App\Payments\Models\Payment;
+use App\Payments\Support\CircuitBreaker;
 use App\Payments\Support\RequestHash;
 use App\Support\Money\Money;
 use App\Support\Outbox\OutboxRecorder;
@@ -55,6 +57,7 @@ final class InitiatePayment
         private readonly MarkOrderPaid $markOrderPaid,
         private readonly ExtendHold $extendHold,
         private readonly OutboxRecorder $outbox,
+        private readonly CircuitBreaker $breaker,
     ) {}
 
     public function __invoke(OrderPaymentContextData $order, InitiatePaymentData $data, string $idempotencyKey): PaymentInitiationResult
@@ -72,6 +75,10 @@ final class InitiatePayment
         }
 
         $offered = $this->offeredMethod($order, $data->method);
+
+        if (! $this->breaker->allowsRequest($offered->gateway)) {
+            throw GatewayUnavailableException::forGateway($offered->gateway);
+        }
 
         try {
             $payment = DB::transaction(fn (): Payment => Payment::query()->create([
@@ -92,13 +99,21 @@ final class InitiatePayment
 
         $adapter = $this->gateways->get($offered->gateway) ?? throw PaymentMethodNotAvailableException::forMethod($data->method);
 
-        $result = $adapter->createPayment(new GatewayPaymentRequest(
-            paymentId: $payment->id,
-            orderId: $order->id,
-            method: $offered->method,
-            amount: $order->total,
-            details: $data->details,
-        ));
+        try {
+            $result = $adapter->createPayment(new GatewayPaymentRequest(
+                paymentId: $payment->id,
+                orderId: $order->id,
+                method: $offered->method,
+                amount: $order->total,
+                details: $data->details,
+            ));
+        } catch (GatewayUnavailableException $e) {
+            $this->breaker->recordFailure($offered->gateway);
+
+            throw $e;
+        }
+
+        $this->breaker->recordSuccess($offered->gateway);
 
         $payment->update([
             'gateway_reference' => $result->gatewayReference,
@@ -123,7 +138,7 @@ final class InitiatePayment
 
     private function offeredMethod(OrderPaymentContextData $order, string $method): PaymentMethodOfferData
     {
-        foreach (($this->buildOffer)($order) as $item) {
+        foreach (($this->buildOffer)($order, excludeOpenBreakers: false) as $item) {
             if ($item->method === $method) {
                 return $item;
             }

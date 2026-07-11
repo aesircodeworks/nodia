@@ -8,6 +8,7 @@ use App\Inventory\Data\TicketTypeAvailabilityData;
 use App\Orders\Data\OrderPaymentContextData;
 use App\Payments\Data\PaymentMethodOfferData;
 use App\Payments\Gateways\GatewayRegistry;
+use App\Payments\Support\CircuitBreaker;
 use App\Payments\Support\OfferAssembler;
 use App\Support\Tenancy\TenantContext;
 use App\Tenancy\Actions\ResolveEnabledGateways;
@@ -29,16 +30,27 @@ final class BuildPaymentMethodOffer
         private readonly GetEventAvailability $availability,
         private readonly GatewayRegistry $gateways,
         private readonly OfferAssembler $assembler,
+        private readonly CircuitBreaker $breaker,
     ) {}
 
     /**
+     * An open breaker removes that gateway's methods from the offer
+     * instead of degrading the whole checkout (system-design 13);
+     * initiation passes false so it can distinguish an open breaker
+     * (503 gateway_unavailable) from a method that was never offered
+     * (422 payment_method_not_available).
+     *
      * @return list<PaymentMethodOfferData>
      */
-    public function __invoke(OrderPaymentContextData $order): array
+    public function __invoke(OrderPaymentContextData $order, bool $excludeOpenBreakers = true): array
     {
         $capabilities = [];
 
         foreach (($this->enabledGateways)((string) $this->tenantContext->tenantId()) as $identifier) {
+            if ($excludeOpenBreakers && $this->breaker->isOpen($identifier)) {
+                continue;
+            }
+
             $adapter = $this->gateways->get($identifier);
 
             if ($adapter !== null) {

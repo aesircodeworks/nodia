@@ -26,11 +26,12 @@ final class FakeGateway implements GatewayAdapter
 
     public function __construct(
         private readonly FakeGatewayScenarios $scenarios,
+        private readonly string $identifier = self::IDENTIFIER,
     ) {}
 
     public function identifier(): string
     {
-        return self::IDENTIFIER;
+        return $this->identifier;
     }
 
     public function capabilities(): GatewayCapabilities
@@ -50,7 +51,7 @@ final class FakeGateway implements GatewayAdapter
     public function createPayment(GatewayPaymentRequest $request): GatewayPaymentResult
     {
         if ($this->scenarios->consumeCreateFailure()) {
-            throw GatewayUnavailableException::forGateway(self::IDENTIFIER);
+            throw GatewayUnavailableException::forGateway($this->identifier);
         }
 
         $reference = 'fake_'.$request->paymentId;
@@ -100,13 +101,13 @@ final class FakeGateway implements GatewayAdapter
         $signature = $this->headerValue($headers, self::SIGNATURE_HEADER);
 
         if ($signature === null || ! hash_equals($this->signatureFor($body), $signature)) {
-            throw WebhookSignatureInvalidException::forGateway(self::IDENTIFIER);
+            throw WebhookSignatureInvalidException::forGateway($this->identifier);
         }
 
         $payload = json_decode($body, associative: true);
 
         if (! is_array($payload) || ! is_string($payload['id'] ?? null) || $payload['id'] === '') {
-            throw WebhookUnparseableException::forGateway(self::IDENTIFIER);
+            throw WebhookUnparseableException::forGateway($this->identifier);
         }
 
         return new ParsedWebhook($payload['id'], $payload);

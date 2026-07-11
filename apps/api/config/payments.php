@@ -69,4 +69,21 @@ return [
 
     'reconcile_grace_seconds' => (int) env('PAYMENTS_RECONCILE_GRACE_SECONDS', 300),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Circuit Breaker
+    |--------------------------------------------------------------------------
+    |
+    | Per-gateway breaker thresholds (system-design 13). Consecutive
+    | transport failures at or above the threshold open the breaker for
+    | the cooldown; the first request after the cooldown is the half-open
+    | probe. Tuned only under Stage 12 load tests.
+    |
+    */
+
+    'circuit_breaker' => [
+        'failure_threshold' => (int) env('PAYMENTS_BREAKER_FAILURE_THRESHOLD', 5),
+        'cooldown_seconds' => (int) env('PAYMENTS_BREAKER_COOLDOWN_SECONDS', 60),
+    ],
+
 ];
