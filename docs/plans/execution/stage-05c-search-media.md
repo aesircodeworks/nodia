@@ -23,7 +23,7 @@ Open decision flagged by the plan (Risks): public-read media bucket versus signe
 - [x] task-06: `event_search_documents` migration with RLS and GIN index, document builder with locale fallback and regconfig mapping, Tenancy read Action for `supported_locales` and `default_locale` (plan task 6, slice 5)
 - [x] task-07: `RefreshSearchIndex` outbox consumer with subscription routing, duplicate-delivery, out-of-order, and lifecycle tests (plan task 7, slice 5)
 - [x] task-08: `EventSearcher` interface, `PostgresEventSearcher`, config-selected container binding (plan task 8, slice 6)
-- [ ] task-09: `q` parameter on the storefront events list with relevance smoke tests, pagination, OpenAPI parameter, fake-searcher seam proof (plan task 9, slice 6)
+- [x] task-09: `q` parameter on the storefront events list with relevance smoke tests, pagination, OpenAPI parameter, fake-searcher seam proof (plan task 9, slice 6)
 - [ ] task-10: `search:rebuild` artisan command with the state-scan-versus-replay equivalence test (plan task 10, slice 7)
 - [ ] task-11: Sweep: error code registry entries (`payload_too_large` if absent), endpoint-level isolation coverage check, master plan status flip to Done (plan task 11)
 
@@ -231,3 +231,27 @@ Test evidence:
 - `composer lint` (Pint): passed. `composer analyse` (Larastan): passed, 0 errors. `composer types:generate`: no diff (no laravel-data class or endpoint changed; `EventSearcher`/`PostgresEventSearcher` are plain PHP, not wire shapes).
 
 Committed as `bb3561e` `feat(catalog): EventSearcher interface, PostgresEventSearcher, and config-selected search binding`.
+
+#### task-09, 2026-07-11
+
+Landed the `q` parameter on `GET /v1/storefront/events` (plan task breakdown item 9, TDD sequencing Slice 6's feature/contract portion; the `EventSearcher` interface and `PostgresEventSearcher` themselves were task-08).
+
+Starting-state note: this task began with a complete, uncommitted implementation already present in the working tree (untracked `StorefrontEventSearchQueryData.php` and `StorefrontEventSearchTest.php`, and modifications to `StorefrontEventController.php`, `docs/openapi/openapi.yaml`, and `DocumentedResponseCoverageTest.php`; no matching commit, not mentioned in this journal before now). Read file by file against the stage-05c plan's Endpoints and TDD sequencing sections and the task instructions' explicit test list before treating it as done, then verified for real:
+
+- `app/EventCatalog/Data/StorefrontEventSearchQueryData.php`: a laravel-data request object (`#[MapName(SnakeCaseMapper::class)]`) with a nullable `q` (absent means "no search," matching `StorefrontEventController`'s branch on `$query->q === null`) and validation `sometimes|string|min:2|max:200`, giving the required 422 `request.validation_failed` for a 1-character `q` and accepting up to 200.
+- `app/EventCatalog/Http/Controllers/StorefrontEventController.php`: `index()` now takes the request object, branches to the existing plain published list when `q` is absent (stage-5a behavior, unchanged) or to a new `search()` method when present, which delegates to the container-bound `EventSearcher` (never `PostgresEventSearcher` directly, per `tests/Architecture/SearchSeamTest.php`) and eager-loads `ticketTypes`/`media` on the result collection (the searcher's own query selects only `events.*`, so these are loaded here rather than assumed present). Response items stay `StorefrontEventData` (stage-5a's own Data object), matching the plan's "response items are the Stage 5a storefront list Data object" instruction.
+- `tests/Feature/EventCatalog/StorefrontEventSearchTest.php`: all eight smoke tests from the task instructions, each planting `event_search_documents` rows directly via a `plantStorefrontSearchDocument()` helper that reuses `EventSearchDocumentBuilder::searchVectorSql()`/`searchVectorBindings()` (task-08's own precedent), so assertions exercise genuine PostgreSQL ranking: name match outranks description-only match; a non-default locale (`fr`) query finds an event whose only document is the default-locale (`en`) fallback; a draft and a canceled event are excluded even with stale documents planted directly for them; `q=a` (1 character) returns 422; the standard `data`/`links`/`meta` envelope; deterministic tie-broken ordering across two identical requests; `q` absent leaves the stage-5a list unchanged; a container-swapped fake `EventSearcher` (`$this->app->instance(EventSearcher::class, $fake)`) proves the seam by returning a result the plain published-list query would never produce.
+- `docs/openapi/openapi.yaml`: `q` parameter (`minLength: 2`, `maxLength: 200`) documented on `GET /v1/storefront/events`, an added `422` response referencing `ValidationProblem`, and the path description extended to explain relevance ranking and the persistent visibility guarantee.
+- `tests/Contract/DocumentedResponseCoverageTest.php`: an exerciser added for `get /v1/storefront/events 422` (`q=a`), covering the new response code.
+
+Test evidence:
+
+- `tests/Feature/EventCatalog/StorefrontEventSearchTest.php`: 8/8 green, 36 assertions.
+- Full `composer test` (Feature, Unit, Contract, Architecture, Isolation, Concurrency): 1729/1729 passed, 6893 assertions (up from task-08's 1720/1720; this task's 8 new feature tests plus 1 new contract exerciser account for the delta plus the pre-existing coverage test's assertion growth).
+- `composer lint` (Pint): passed. `composer analyse` (Larastan): passed, 0 errors. `composer types:generate`: diff produced and committed — `StorefrontEventSearchQueryData` is a new request Data class, so `packages/api-client/src/generated/index.ts` and `typescript-transformer-manifest.json` both gained the new type.
+
+Deviations from the plan:
+
+- None. All items in the plan's task breakdown 9, TDD sequencing Slice 6 (feature tests), Endpoints "Storefront search", and Exit criteria 5, 6, 8 are satisfied by the code found in the working tree; no further changes were needed beyond verification, running the full gate suite, and committing.
+
+Committed as `8321df0` `feat(catalog): q parameter on the storefront events list with relevance ranking`.
