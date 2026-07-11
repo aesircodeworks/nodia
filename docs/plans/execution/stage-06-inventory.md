@@ -1031,3 +1031,15 @@ rather than re-doing the work, since the tests that depend on them were
 already green in the working tree and the omission would otherwise
 regress `composer test` for anyone starting from a clean checkout of
 commit 96a959e.
+
+## Gate
+
+Sat Jul 11 05:51:08 -03 2026
+
+Full quality gates re-run after Stage 6 implementation work, all green:
+
+- `composer -d apps/api run lint` (Pint): passed
+- `composer -d apps/api run analyse` (PHPStan/Larastan): passed, 0 errors
+- `composer -d apps/api run test` (Pest): 1961 passed, 7788 assertions
+- `composer -d apps/api run types:generate` + `git status --short packages/api-client/src/generated`: no contract drift
+- `pnpm typecheck`: skipped (no TypeScript changed)
