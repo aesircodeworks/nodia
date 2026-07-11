@@ -52,6 +52,7 @@ use App\Identity\IdentityServiceProvider;
 use App\Identity\Mail\CustomerClaimMail;
 use App\Identity\Mail\PasswordResetMail;
 use App\Identity\Mail\StaffInvitationMail;
+use App\Support\Media\Exceptions\MediaNotFoundException;
 use App\Support\Money\CurrencyMismatchException;
 use App\Support\Outbox\Enums\OutboxDeliveryStatus;
 use App\Support\Problems\ErrorCode;
@@ -123,7 +124,12 @@ arch()->preset()->security();
 // App\Support\Audit\Models\ActivityLogEntry and App\Support\Outbox\
 // Models: shared infrastructure with no single owning bounded context
 // (EventCatalog and Tenancy both attach collections to it here), so it
-// lives under App\Support rather than App\Models.
+// lives under App\Support rather than App\Models. MediaNotFoundException
+// (stage-05c task-02) is the same story for App\Support\Problems'
+// HasErrorCode exceptions: it guards the shared, no-single-owning-context
+// DELETE /v1/media/{media} route (App\Http\Controllers\MediaController),
+// so it lives under App\Support\Media\Exceptions rather than any one
+// bounded context's own Exceptions directory.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -205,4 +211,5 @@ arch()->preset()->laravel()->ignoring([
     'App\Support\Audit\Models',
     'App\Support\Outbox\Models',
     'App\Support\Media\Models',
+    MediaNotFoundException::class,
 ]);

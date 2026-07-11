@@ -13,6 +13,7 @@ enum ErrorCode: string
     case AuthUnauthenticated = 'auth.unauthenticated';
     case AuthForbidden = 'auth.forbidden';
     case RequestRateLimited = 'request.rate_limited';
+    case PayloadTooLarge = 'payload_too_large';
     case ServerInternalError = 'server.internal_error';
     case HealthDegraded = 'health.degraded';
     case InvalidQueryParameter = 'invalid_query_parameter';
@@ -71,6 +72,7 @@ enum ErrorCode: string
             self::AuthUnauthenticated => 401,
             self::AuthForbidden => 403,
             self::RequestRateLimited => 429,
+            self::PayloadTooLarge => 413,
             self::ServerInternalError => 500,
             self::HealthDegraded => 503,
             self::InvalidQueryParameter => 400,
@@ -131,6 +133,7 @@ enum ErrorCode: string
             self::AuthUnauthenticated => 'Unauthenticated',
             self::AuthForbidden => 'Forbidden',
             self::RequestRateLimited => 'Too many requests',
+            self::PayloadTooLarge => 'Payload too large',
             self::ServerInternalError => 'Internal server error',
             self::HealthDegraded => 'Service degraded',
             self::InvalidQueryParameter => 'Invalid query parameter',

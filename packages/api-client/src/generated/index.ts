@@ -133,6 +133,7 @@ export type ErrorCode =
   | 'auth.unauthenticated'
   | 'auth.forbidden'
   | 'request.rate_limited'
+  | 'payload_too_large'
   | 'server.internal_error'
   | 'health.degraded'
   | 'invalid_query_parameter'
@@ -200,6 +201,13 @@ export type EventData = {
   updated_at: string;
   ticket_types?: TicketTypeData[];
 };
+export type EventMediaListData = {
+  collection: string | null;
+};
+export type EventMediaUploadData = {
+  file: File;
+  collection: string;
+};
 export type EventStatus = 'draft' | 'published' | 'canceled';
 export type HealthChecksData = {
   database: CheckResult;
@@ -249,6 +257,23 @@ export type LengthAwarePaginator<TKey, TValue> = {
   };
 };
 export type LengthAwarePaginatorInterface<TKey, TValue> = LengthAwarePaginator<TKey, TValue>;
+export type MediaConversionsData = {
+  thumb: string | null;
+  card: string | null;
+  hero: string | null;
+};
+export type MediaData = {
+  id: string;
+  collection: string;
+  file_name: string;
+  mime_type: string;
+  size: number;
+  url: string;
+  conversions: MediaConversionsData;
+  alt_text: string | null;
+  order: number;
+  created_at: string;
+};
 export type MembershipData = {
   id: string;
   user_id: string;

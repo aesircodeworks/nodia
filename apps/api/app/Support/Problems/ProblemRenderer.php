@@ -69,6 +69,7 @@ class ProblemRenderer
                 405 => ErrorCode::RequestMethodNotAllowed,
                 401 => ErrorCode::AuthUnauthenticated,
                 403 => ErrorCode::AuthForbidden,
+                413 => ErrorCode::PayloadTooLarge,
                 429 => ErrorCode::RequestRateLimited,
                 default => ErrorCode::ServerInternalError,
             };
@@ -97,6 +98,7 @@ class ProblemRenderer
             ErrorCode::AuthUnauthenticated => 'Authentication is required to access this resource.',
             ErrorCode::AuthForbidden => 'You are not allowed to perform this action.',
             ErrorCode::RequestRateLimited => 'Too many requests were sent; retry after the interval in the Retry-After header.',
+            ErrorCode::PayloadTooLarge => 'The request body exceeds the maximum size this server accepts.',
             ErrorCode::ServerInternalError => 'An unexpected error occurred; quote the correlation ID when contacting support.',
             ErrorCode::HealthDegraded => 'One or more backing services failed their health check.',
             ErrorCode::InvalidQueryParameter => 'The request carries a filter or sort parameter outside the endpoint allowlist.',

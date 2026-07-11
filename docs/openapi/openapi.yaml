@@ -2989,6 +2989,197 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/TicketTypeUnprocessableProblem'
+  /v1/events/{event}/media:
+    parameters:
+      - name: event
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: uploadEventMedia
+      summary: Upload an event cover or gallery image
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the events.manage capability (stage-05c plan,
+        task breakdown item 2). Multipart request: file (image/jpeg,
+        image/png, or image/webp, up to the media.max_upload_kb config
+        ceiling) and collection (cover or gallery). Uploading to cover
+        replaces the existing cover file, since it is a single-file
+        collection; gallery accepts any number of files, ordered by
+        upload order. conversions is always { thumb: null, card: null,
+        hero: null } for now; a later task queues the conversions and
+        starts populating these URLs, additively, on the same field.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EventMediaUploadRequest'
+      responses:
+        '201':
+          description: Media uploaded.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Media'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.manage (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EventMediaForbiddenProblem'
+        '404':
+          description: No event is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '413':
+          description: >-
+            The request body exceeds the server's maximum accepted size,
+            rendered before request validation runs (code payload_too_large).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/PayloadTooLargeProblem'
+        '422':
+          description: >-
+            Request validation failed (code request.validation_failed,
+            with the errors map): the file field is missing, its mime
+            type is outside the image/jpeg, image/png, image/webp
+            allowlist, it exceeds the configured size ceiling, or
+            collection is not cover or gallery.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+    get:
+      operationId: listEventMedia
+      summary: List an event's cover and gallery media
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation, plus the events.view capability. Bounded list, no
+        pagination, ordered by collection then upload order (stage-05c
+        plan, Endpoints).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: collection
+          in: query
+          required: false
+          description: 'Filters to one collection: cover or gallery.'
+          schema:
+            type: string
+            enum: [cover, gallery]
+      responses:
+        '200':
+          description: The event's media.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventMediaList'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            events.view (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EventMediaForbiddenProblem'
+        '404':
+          description: No event is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '422':
+          description: >-
+            The collection query parameter is not cover or gallery (code
+            request.validation_failed, with the errors map).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+  /v1/media/{media}:
+    parameters:
+      - name: media
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: deleteMedia
+      summary: Delete a media file
+      description: >-
+        Tenant admin surface: Passport staff bearer, X-Tenant-Id membership
+        validation. A top-level route (api-conventions nesting rules) that
+        deletes the media row, its stored file, and its conversions.
+        Authorization delegates to the owning model's own capability:
+        event media requires events.manage; tenant logo (a later task)
+        requires tenants.manage (stage-05c plan, Endpoints).
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Media deleted.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            the owning model's required capability (code
+            missing_capability), or the acting membership mandates
+            confirmed MFA and has not confirmed it (code
+            mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EventMediaForbiddenProblem'
+        '404':
+          description: No media is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
   /v1/storefront/events:
     get:
       operationId: listStorefrontEvents
@@ -5386,3 +5577,144 @@ components:
     CheckResult:
       type: string
       enum: [ok, failed]
+    MediaConversions:
+      type: object
+      description: >-
+        Fixed conversion-name shape (stage-05c plan, Endpoints:
+        "conversions: { thumb, card, hero }"). Every value is null until
+        a later task registers and queues the actual conversions; the key
+        stays present from this task on so the wire shape never changes
+        underneath a client.
+      required:
+        - thumb
+        - card
+        - hero
+      properties:
+        thumb:
+          type: [string, 'null']
+        card:
+          type: [string, 'null']
+        hero:
+          type: [string, 'null']
+      additionalProperties: false
+    Media:
+      type: object
+      description: >-
+        Admin surface response shape for a medialibrary-backed file
+        (stage-05c plan, Endpoints: "Admin event media"), shared by every
+        collection this app registers (event cover and gallery now,
+        tenant logo in a later task).
+      required:
+        - id
+        - collection
+        - file_name
+        - mime_type
+        - size
+        - url
+        - conversions
+        - alt_text
+        - order
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        collection:
+          type: string
+          enum: [cover, gallery]
+        file_name:
+          type: string
+        mime_type:
+          type: string
+        size:
+          type: integer
+          description: File size in bytes.
+        url:
+          type: string
+          format: uri
+        conversions:
+          $ref: '#/components/schemas/MediaConversions'
+        alt_text:
+          type: [string, 'null']
+        order:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    EventMediaList:
+      type: object
+      description: >-
+        Bounded, unpaginated list envelope for GET
+        /v1/events/{event}/media (stage-05c plan, Endpoints: "Returns 200
+        with data array of MediaData"), unlike the standard
+        data/links/meta paginator envelope: this list is never large
+        enough to need pagination.
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Media'
+      additionalProperties: false
+    EventMediaUploadRequest:
+      type: object
+      description: >-
+        Multipart request body for POST /v1/events/{event}/media
+        (stage-05c plan, Endpoints).
+      required:
+        - file
+        - collection
+      properties:
+        file:
+          type: string
+          format: binary
+          description: >-
+            image/jpeg, image/png, or image/webp, up to the
+            media.max_upload_kb config ceiling.
+        collection:
+          type: string
+          enum: [cover, gallery]
+      additionalProperties: false
+    EventMediaForbiddenProblem:
+      description: >-
+        Problem document for a 403 on an event media endpoint or the
+        shared DELETE /v1/media/{media} endpoint: either the caller has no
+        membership in the asserted tenant (code tenant_access_denied,
+        raised by ResolveTenantFromHeader before the handler is reached),
+        the acting membership does not hold the required capability (code
+        missing_capability, resolved statically from events.manage/
+        events.view for the nested routes, or dynamically from the
+        media's own owning model for the shared delete route), or the
+        acting membership mandates confirmed MFA and has not confirmed it
+        (code mfa_enforcement_required).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [403]
+            code:
+              type: string
+              enum: [tenant_access_denied, missing_capability, mfa_enforcement_required]
+      unevaluatedProperties: false
+    PayloadTooLargeProblem:
+      description: >-
+        Problem document for a request body exceeding the server's
+        maximum accepted size (code payload_too_large), rendered by the
+        Stage 1 problem handler before request validation ever runs
+        (stage-05c plan, task-02: "Includes 413 payload_too_large problem
+        rendering via the Stage 1 handler").
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [413]
+            code:
+              type: string
+              enum: [payload_too_large]
+      unevaluatedProperties: false

@@ -5,6 +5,9 @@ namespace App\EventCatalog\Models;
 use App\EventCatalog\Data\AsyncPaymentPolicyData;
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Exceptions\InvalidEventVenueConfigurationException;
+use App\Identity\Capability;
+use App\Support\Media\Contracts\HasMediaCapability;
+use App\Support\Media\ImageMediaCollections;
 use Database\Factories\EventCatalog\Models\EventFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -13,6 +16,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 use Spatie\Translatable\HasTranslations;
 
 /**
@@ -58,10 +63,10 @@ use Spatie\Translatable\HasTranslations;
     'virtual_event_url',
     'async_payment_policy',
 ])]
-class Event extends Model
+class Event extends Model implements HasMedia, HasMediaCapability
 {
     /** @use HasFactory<EventFactory> */
-    use HasFactory, HasTranslations, HasUuids;
+    use HasFactory, HasTranslations, HasUuids, InteractsWithMedia;
 
     /** @var list<string> */
     public $translatable = ['name', 'description'];
@@ -106,6 +111,35 @@ class Event extends Model
     public function ticketTypes(): HasMany
     {
         return $this->hasMany(TicketType::class);
+    }
+
+    /**
+     * cover is single-file: re-uploading replaces the existing file
+     * (stage-05c plan, Data model: "cover (single file, replaced on
+     * re-upload)"); gallery accepts multiple, ordered by medialibrary's
+     * own order_column. Both share the same accepted mime types, factored
+     * out to App\Support\Media\ImageMediaCollections rather than
+     * repeated here (stage-05c plan: "same accepted types" as the later
+     * tenant logo collection).
+     */
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('cover')
+            ->singleFile()
+            ->acceptsMimeTypes(ImageMediaCollections::ACCEPTED_MIME_TYPES);
+
+        $this->addMediaCollection('gallery')
+            ->acceptsMimeTypes(ImageMediaCollections::ACCEPTED_MIME_TYPES);
+    }
+
+    /**
+     * Event media mutations gate on events.manage, the same capability
+     * every other event mutation already uses (stage-05c plan, Endpoints:
+     * "Capability events.manage via the EventCatalog policy").
+     */
+    public function mediaManageCapability(): Capability
+    {
+        return Capability::EventsManage;
     }
 
     /**

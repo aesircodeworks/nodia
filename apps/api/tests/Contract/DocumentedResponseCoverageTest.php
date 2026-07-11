@@ -16,12 +16,15 @@ use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Assert;
 use PragmaRX\Google2FA\Google2FA;
+use Spatie\MediaLibrary\MediaCollections\Models\Media as SpatieMedia;
 use Tests\Support\MigratedDatabase;
 use Tests\Support\OpenApiSpec;
 use Tests\Support\PostgresTestDatabase;
@@ -30,6 +33,7 @@ use Tests\Support\TotpCodes;
 beforeEach(function (): void {
     PostgresTestDatabase::use();
     MigratedDatabase::ensure();
+    Storage::fake('media');
 });
 
 afterEach(function (): void {
@@ -76,6 +80,13 @@ afterEach(function (): void {
             // needs this per-tenant nodia_app delete above rather than a
             // blanket nodia_platform one.
             DB::table('customers')->where('tenant_id', $tenantId)->delete();
+
+            // contractEventCoverMedia()'s exercisers (stage-05c plan, task
+            // breakdown item 2) write media rows scoped to a fresh event
+            // under contractEventMediaTenant(); media.tenant_id carries a
+            // real foreign key to tenants with no cascade, so it must be
+            // deleted before this tenant is deleted below.
+            DB::table('media')->where('tenant_id', $tenantId)->delete();
 
             // contractTicketTypeBearer()'s exercisers (stage-05a plan, task
             // breakdown item 8) write ticket_types scoped to a fresh event
@@ -434,6 +445,38 @@ function contractTicketTypeCreatePayload(array $overrides = []): array
         'sales_end' => null,
         ...$overrides,
     ];
+}
+
+/**
+ * A fresh tenant per call, mirroring contractTicketTypeTenant()'s own
+ * precedent (stage-05c plan, task breakdown item 2).
+ */
+function contractEventMediaTenant(): Tenant
+{
+    return contractTenant();
+}
+
+/**
+ * @param  list<string>  $capabilities
+ */
+function contractEventMediaBearer(Tenant $tenant, array $capabilities = ['events.view', 'events.manage']): string
+{
+    return contractVenueBearer($tenant, $capabilities);
+}
+
+/**
+ * Attaches a real cover file through the actual medialibrary upload path
+ * (Storage::fake('media'), this file's own beforeEach) so DELETE and GET
+ * exercisers have a genuine row to act on, mirroring contractTicketType()'s
+ * own precedent of writing through the real model rather than a raw insert.
+ */
+function contractEventCoverMedia(Tenant $tenant, string $eventId): SpatieMedia
+{
+    return app(TenantTransaction::class)->asTenant($tenant->id, function () use ($eventId): SpatieMedia {
+        $event = Event::query()->findOrFail($eventId);
+
+        return $event->addMedia(UploadedFile::fake()->image('contract-cover.jpg'))->toMediaCollection('cover');
+    });
 }
 
 /**
@@ -1765,6 +1808,162 @@ function documentedResponseExercisers(): array
                 ['price' => ['amount' => 5000, 'currency' => 'EUR']],
                 ['Authorization' => 'Bearer '.contractTicketTypeBearer($tenant), 'X-Tenant-Id' => $tenant->id],
             );
+        },
+        'post /v1/events/{event}/media 201' => function (): TestResponse {
+            $tenant = contractEventMediaTenant();
+            $event = contractEvent($tenant);
+
+            return test()->post(
+                "/v1/events/{$event->id}/media",
+                ['file' => UploadedFile::fake()->image('contract-cover.jpg'), 'collection' => 'cover'],
+                [
+                    'Authorization' => 'Bearer '.contractEventMediaBearer($tenant),
+                    'X-Tenant-Id' => $tenant->id,
+                    'Content-Type' => 'multipart/form-data',
+                    'Accept' => 'application/json',
+                ],
+            );
+        },
+        'post /v1/events/{event}/media 401' => function (): TestResponse {
+            $tenant = contractEventMediaTenant();
+            $event = contractEvent($tenant);
+
+            return test()->post(
+                "/v1/events/{$event->id}/media",
+                ['file' => UploadedFile::fake()->image('contract-cover.jpg'), 'collection' => 'cover'],
+                ['X-Tenant-Id' => $tenant->id, 'Content-Type' => 'multipart/form-data', 'Accept' => 'application/json'],
+            );
+        },
+        'post /v1/events/{event}/media 403' => function (): TestResponse {
+            $tenant = contractEventMediaTenant();
+            $event = contractEvent($tenant);
+
+            return test()->post(
+                "/v1/events/{$event->id}/media",
+                ['file' => UploadedFile::fake()->image('contract-cover.jpg'), 'collection' => 'cover'],
+                [
+                    'Authorization' => 'Bearer '.contractEventMediaBearer($tenant, ['events.view']),
+                    'X-Tenant-Id' => $tenant->id,
+                    'Content-Type' => 'multipart/form-data',
+                    'Accept' => 'application/json',
+                ],
+            );
+        },
+        'post /v1/events/{event}/media 404' => function (): TestResponse {
+            $tenant = contractEventMediaTenant();
+
+            return test()->post(
+                '/v1/events/'.Str::uuid7().'/media',
+                ['file' => UploadedFile::fake()->image('contract-cover.jpg'), 'collection' => 'cover'],
+                [
+                    'Authorization' => 'Bearer '.contractEventMediaBearer($tenant),
+                    'X-Tenant-Id' => $tenant->id,
+                    'Content-Type' => 'multipart/form-data',
+                    'Accept' => 'application/json',
+                ],
+            );
+        },
+        'post /v1/events/{event}/media 413' => function (): TestResponse {
+            $tenant = contractEventMediaTenant();
+            $event = contractEvent($tenant);
+            $token = contractEventMediaBearer($tenant);
+
+            return test()->call(
+                'POST',
+                "/v1/events/{$event->id}/media",
+                ['collection' => 'cover'],
+                [],
+                ['file' => UploadedFile::fake()->image('contract-cover.jpg')],
+                [
+                    'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+                    'HTTP_X_TENANT_ID' => $tenant->id,
+                    'CONTENT_TYPE' => 'multipart/form-data',
+                    'HTTP_ACCEPT' => 'application/json',
+                    'CONTENT_LENGTH' => (string) (500 * 1024 * 1024),
+                ],
+            );
+        },
+        'post /v1/events/{event}/media 422' => function (): TestResponse {
+            $tenant = contractEventMediaTenant();
+            $event = contractEvent($tenant);
+
+            return test()->post(
+                "/v1/events/{$event->id}/media",
+                ['file' => UploadedFile::fake()->image('contract-cover.jpg'), 'collection' => 'banner'],
+                [
+                    'Authorization' => 'Bearer '.contractEventMediaBearer($tenant),
+                    'X-Tenant-Id' => $tenant->id,
+                    'Content-Type' => 'multipart/form-data',
+                    'Accept' => 'application/json',
+                ],
+            );
+        },
+        'get /v1/events/{event}/media 200' => function (): TestResponse {
+            $tenant = contractEventMediaTenant();
+            $event = contractEvent($tenant);
+            contractEventCoverMedia($tenant, $event->id);
+
+            return test()->getJson("/v1/events/{$event->id}/media", [
+                'Authorization' => 'Bearer '.contractEventMediaBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/events/{event}/media 401' => function (): TestResponse {
+            $tenant = contractEventMediaTenant();
+            $event = contractEvent($tenant);
+
+            return test()->getJson("/v1/events/{$event->id}/media", ['X-Tenant-Id' => $tenant->id]);
+        },
+        'get /v1/events/{event}/media 403' => function (): TestResponse {
+            $tenant = contractEventMediaTenant();
+            $event = contractEvent($tenant);
+
+            return test()->getJson("/v1/events/{$event->id}/media", [
+                'Authorization' => 'Bearer '.contractEventMediaBearer($tenant, ['events.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/events/{event}/media 404' => function (): TestResponse {
+            $tenant = contractEventMediaTenant();
+
+            return test()->getJson('/v1/events/'.Str::uuid7().'/media', [
+                'Authorization' => 'Bearer '.contractEventMediaBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/events/{event}/media 422' => function (): TestResponse {
+            $tenant = contractEventMediaTenant();
+            $event = contractEvent($tenant);
+
+            return test()->getJson("/v1/events/{$event->id}/media?collection=banner", [
+                'Authorization' => 'Bearer '.contractEventMediaBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'delete /v1/media/{media} 401' => function (): TestResponse {
+            $tenant = contractEventMediaTenant();
+            $event = contractEvent($tenant);
+            $media = contractEventCoverMedia($tenant, $event->id);
+
+            return test()->deleteJson('/v1/media/'.$media->id, [], ['X-Tenant-Id' => $tenant->id]);
+        },
+        'delete /v1/media/{media} 403' => function (): TestResponse {
+            $tenant = contractEventMediaTenant();
+            $event = contractEvent($tenant);
+            $media = contractEventCoverMedia($tenant, $event->id);
+
+            return test()->deleteJson('/v1/media/'.$media->id, [], [
+                'Authorization' => 'Bearer '.contractEventMediaBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'delete /v1/media/{media} 404' => function (): TestResponse {
+            $tenant = contractEventMediaTenant();
+
+            return test()->deleteJson('/v1/media/'.Str::uuid7(), [], [
+                'Authorization' => 'Bearer '.contractEventMediaBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
         },
         'get /v1/storefront/events 200' => function (): TestResponse {
             [$tenant, $host] = contractCustomerTenant();

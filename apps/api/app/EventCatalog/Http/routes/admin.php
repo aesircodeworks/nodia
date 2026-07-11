@@ -17,8 +17,16 @@
 // (TDD slice 4) adds the publish/cancel routes below, gated by their own
 // events.publish capability rather than events.manage: a third,
 // dedicated group so RequireCapability checks the right one.
+// Stage-05c plan, task breakdown item 2 (TDD slice 2) adds the event
+// media routes below: upload and list nest under the owning event and
+// gate on events.manage/events.view like every other event mutation and
+// read here. Deletion is not here: DELETE /v1/media/{media} is a
+// top-level route in routes/api.php, since that one route also serves
+// the later tenant-logo collection this context never touches
+// (App\Http\Controllers\MediaController's own docblock).
 
 use App\EventCatalog\Http\Controllers\EventController;
+use App\EventCatalog\Http\Controllers\EventMediaController;
 use App\EventCatalog\Http\Controllers\SeatMapController;
 use App\EventCatalog\Http\Controllers\TicketTypeController;
 use App\EventCatalog\Http\Controllers\VenueController;
@@ -36,6 +44,7 @@ Route::middleware(RequireCapability::class.':'.Capability::EventsView->value)->g
     Route::get('/events/{event}', [EventController::class, 'show'])->whereUuid('event');
     Route::get('/events/{event}/ticket-types', [TicketTypeController::class, 'index'])->whereUuid('event');
     Route::get('/ticket-types/{ticket_type}', [TicketTypeController::class, 'show'])->whereUuid('ticket_type');
+    Route::get('/events/{event}/media', [EventMediaController::class, 'index'])->whereUuid('event');
 });
 
 Route::middleware([RequireCapability::class.':'.Capability::EventsManage->value, RecordActivityAudit::class])->group(function (): void {
@@ -45,6 +54,7 @@ Route::middleware([RequireCapability::class.':'.Capability::EventsManage->value,
     Route::patch('/events/{event}', [EventController::class, 'update'])->whereUuid('event');
     Route::post('/events/{event}/ticket-types', [TicketTypeController::class, 'store'])->whereUuid('event');
     Route::patch('/ticket-types/{ticket_type}', [TicketTypeController::class, 'update'])->whereUuid('ticket_type');
+    Route::post('/events/{event}/media', [EventMediaController::class, 'store'])->whereUuid('event');
 });
 
 // Task breakdown item 2 (TDD slice 2, stage-05b plan): the seat map
