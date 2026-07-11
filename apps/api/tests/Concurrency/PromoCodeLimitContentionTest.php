@@ -17,6 +17,7 @@ use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\Concurrency\Support\ParallelRunner;
 use Tests\Support\MigratedDatabase;
 
@@ -78,7 +79,7 @@ it('never redeems a promo code past its usage limit under parallel conversion', 
         $customer = Customer::factory()->create(['tenant_id' => $tenantId, 'email' => 'promo-race@example.com']);
 
         DB::table('ticket_type_inventory')->insert([
-            'id' => Illuminate\Support\Str::uuid7()->toString(),
+            'id' => Str::uuid7()->toString(),
             'tenant_id' => $tenantId,
             'ticket_type_id' => $ticketType->id,
             'quantity' => 50,

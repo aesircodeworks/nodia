@@ -135,7 +135,7 @@ final class ConvertHoldToOrder
     private function createOrder(HoldForOrderData $hold, string $customerId, Money $subtotal, ?AppliedPromoCode $applied): Order
     {
         $zero = Money::of(0, $subtotal->currency);
-        $discount = $applied?->discount ?? $zero;
+        $discount = $applied === null ? $zero : $applied->discount;
 
         try {
             return Order::query()->create([

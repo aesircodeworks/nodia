@@ -13,6 +13,7 @@ use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\Support\MigratedDatabase;
 use Tests\Support\PostgresTestDatabase;
 
@@ -87,7 +88,7 @@ function promoCheckoutFixture(): array
         ]);
 
         DB::table('ticket_type_inventory')->insert([
-            'id' => Illuminate\Support\Str::uuid7()->toString(),
+            'id' => Str::uuid7()->toString(),
             'tenant_id' => $tenant->id,
             'ticket_type_id' => $ticketType->id,
             'quantity' => 10,
