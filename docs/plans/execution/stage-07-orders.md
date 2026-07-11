@@ -18,9 +18,9 @@
 - [x] 07-07 Paid path: MarkOrderPaid exactly-once simulation, tickets migration with RLS, IssueTickets, CommitHold wiring, TicketIssued (plan slice 3, task 7)
 - [x] 07-08 Buyer order status and tickets endpoints with contract coverage (plan task 8)
 - [x] 07-09 QR codec, key provider, render integration, rotation invalidation tests (plan slice 4, task 9)
-- [ ] 07-10 Identity: GET /v1/customers lookup endpoint with customers.view capability (plan task 10)
-- [ ] 07-11 Promo codes core: limit race simulation, migration with RLS, ApplyPromoCode, discount math, check endpoint (plan slice 5, task 11)
-- [ ] 07-12 Promo code admin CRUD with capability gates, uniqueness, immutability after first use (plan task 12)
+- [x] 07-10 Identity: GET /v1/customers lookup endpoint with customers.view capability (plan task 10)
+- [x] 07-11 Promo codes core: limit race simulation, migration with RLS, ApplyPromoCode, discount math, check endpoint (plan slice 5, task 11)
+- [x] 07-12 Promo code admin CRUD with capability gates, uniqueness, immutability after first use (plan task 12)
 - [ ] 07-13 Staff order list and detail with query-builder allowlists and cursor pagination (plan slice 6, task 13)
 - [ ] 07-14 Resend-tickets endpoint with audit and the Stage 8a dispatch seam (plan task 14)
 - [ ] 07-15 Registry and docs sync, status table update (plan task 15)
@@ -140,3 +140,39 @@ the contract strictness gate cannot assert a bare-array schema
 (api-conventions collection shape). Evidence: paid-path set 52 passed,
 read endpoints 7 passed, codec 5 passed, Contract 284 passed,
 Isolation 227 passed, Architecture 38 passed.
+
+#### Tasks 07-10 to 07-12: capabilities, customer lookup, promo codes (2026-07-11)
+
+07-10: all three stage-7 capabilities (orders.resend_tickets,
+promo_codes.manage, customers.view) added to the registry in one pass
+with template wiring (Owner all three; Event Manager promo_codes.manage;
+Box Office resend plus customers.view; Finance customers.view), then
+GET /v1/customers in Identity: cursor-paginated CustomerSummaryData
+over descending UUIDv7 id, filters email exact and name prefix,
+customers.view gate, OpenAPI plus exercisers. Deviation: the cursor
+orders by id desc alone rather than (created_at desc, id) because the
+cursor paginator derives the next cursor from the transformed Data
+items, which carry id; UUIDv7 makes the order identical.
+
+07-11: failing tests first (committed separately): the 6-worker
+usage_limit=3 race (exactly 3 discounted orders, usage_count 3, losers
+promo_code_exhausted with holds still active), promo_codes isolation
+including the shared-code-two-tenants case, discount math units
+(basis-point floor 999*1250/10000=124, fixed cap at subtotal, currency
+mismatch, windows on the fake clock, conditional increment,
+preview-no-increment), and the checkout feature spread. Implementation:
+promo_codes migration with RLS, CHECKs, and the deferred
+orders.promo_code_id FK; EvaluatePromoCode (read-only, shared) plus
+ApplyPromoCode (conditional usage UPDATE); CreateOrderData gains the
+optional promo_code (additive); ConvertHoldToOrder prices discount and
+total; POST /v1/storefront/promo-codes/check preview endpoint.
+
+07-12: promo admin CRUD behind promo_codes.manage with
+RecordActivityAudit on mutations; (tenant_id, code) uniqueness rides
+the DB unique index surfaced as request.validation_failed; code,
+discount_type, discount_value, and currency lock once usage_count > 0
+(promo_code_immutable_field), windows stay editable; unknown ids are
+request.not_found per the roles and ticket types precedent. OpenAPI
+paths, schemas, and 17 new contract exercisers. Evidence: promo suites
+28 passed, Contract 309 passed, Architecture 38 passed, Isolation 234
+passed.
