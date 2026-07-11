@@ -169,7 +169,7 @@ apps/api/
       Models/                     Payment, Refund, LedgerEntry, Payout
       Gateways/                   GatewayAdapter interface plus one adapter per gateway
       Actions/                    InitiatePayment, ConfirmPayment, ExecuteRefund, IngestWebhook
-      Events/                     PaymentInitiated, PaymentConfirmed, PaymentFailed, RefundInitiated, RefundCompleted, PayoutExecuted
+      Events/                     PaymentInitiated, PaymentConfirmed, PaymentFailed, PaymentExpired, RefundInitiated, RefundCompleted, PayoutExecuted
       Jobs/                       ProjectLedgerEntries, ProcessGatewayWebhook
       Console/                    ReconcilePendingPayments (scheduled poller)
       Http/
@@ -724,7 +724,7 @@ Should an extracted service or throughput ever demand a dedicated broker, the ou
 3. **Catalog**: EventCreated, EventUpdated, EventPublished, EventCanceled
 4. **Inventory**: HoldCreated, HoldExpired, HoldReleased
 5. **Orders**: OrderCreated, TicketIssued, TicketCanceled, TicketRefunded
-6. **Payments**: PaymentInitiated, PaymentConfirmed, PaymentFailed, RefundInitiated, RefundCompleted, PayoutExecuted
+6. **Payments**: PaymentInitiated, PaymentConfirmed, PaymentFailed, PaymentExpired, RefundInitiated, RefundCompleted, PayoutExecuted
 7. **Check-in**: TicketCheckedIn, DuplicateScanDetected
 
 ## 10. High-Demand On-Sales
