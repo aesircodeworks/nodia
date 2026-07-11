@@ -324,3 +324,30 @@ CI, all five workflows concluded success on `e8edc6a`: API [29138245767](https:/
 Codex review of stage 5c, round 1. One important finding, applied.
 
 1. important, apps/api/app/EventCatalog/Jobs/RefreshSearchIndex.php:53, "Search index refresh does not remove documents for locales removed from supported_locales". Confirmed: the upsert path wrote one row per currently-supported locale but never deleted rows for locales dropped from supported_locales, so the normal outbox-delivery path (unlike the rebuild command, which clears first) accumulated stale searchable locale rows. Fixed by adding SearchDocumentWriter::deleteForExceptLocales(eventId, locales) and calling it in RefreshSearchIndex::handle after the upsert loop, pruning any row whose locale is not in the freshly built set (an empty set delegates to deleteFor as a guard, though the upsert path always yields at least one locale). Added a Feature test in RefreshSearchIndexTest that publishes an event under supported_locales ['en','fr'], drops 'fr', triggers EventUpdated, and asserts only the 'en' row survives. Gates green: Pint passed, Larastan 0 errors, Pest 1733 passed (one flaky parallel-isolation run recovered clean on rerun).
+
+### Review round 2: 2026-07-11 01:00 -03
+
+Codex review of stage 5c, round 2, re-reviewing after the round 1 fix (`102d40a`). Verdict: approve, zero actionable and zero minor findings. Review clean.
+
+### Close-out: 2026-07-11 01:05 -03
+
+Final summary for the 2026-07-10 run.
+
+- Tasks: 11 of 11 planned tasks completed (task entries above, commits `c8e1004` through `df99a54` plus the task-11 sweep `e8edc6a`). No blockers.
+- Gate: green locally and on CI. Local at the review-fix HEAD: Pint passed, Larastan 0 errors, Pest 1733 passed (1732 pre-fix plus the round 1 regression test), no contract drift after `composer types:generate`. CI: all five workflows succeeded at the final HEAD `c38567b` — API [29138847872](https://github.com/aesircodeworks/nodia/actions/runs/29138847872), Packages [29138847871](https://github.com/aesircodeworks/nodia/actions/runs/29138847871), Storefront [29138847916](https://github.com/aesircodeworks/nodia/actions/runs/29138847916), Admin [29138847867](https://github.com/aesircodeworks/nodia/actions/runs/29138847867), Checkin [29138847873](https://github.com/aesircodeworks/nodia/actions/runs/29138847873). Earlier green runs at `e8edc6a` and `664e56d` are recorded in the Gate entry above.
+- Review: two rounds. Round 1 found one important issue (stale search documents for locales removed from `supported_locales`), fixed in `102d40a` with a regression test. Round 2 approved with no findings. No unresolved or declined findings.
+- One known pre-existing condition, recorded in task-04 and deliberately not fixed in this stage: Spectator's OpenAPI conformance middleware only attaches to routes registered in `routes/api.php`, so `assertConformsToOpenApi()` is a no-op on context-provider routes. Cross-cutting, needs its own task; this stage's contract shapes were hand-verified instead.
+
+Exit criteria walk (plan section "Exit criteria"):
+
+1. Met. Cover and gallery attach over the API and surface on the published storefront read: `tests/Feature/EventCatalog/EventMediaEndpointsTest.php` (upload, replace, order, delete) and the `storefront media exposure` block in `tests/Feature/EventCatalog/StorefrontEventEndpointsTest.php` (URLs on published events, draft invisibility unchanged). Commits `4ee9e5f`, `8de1cde`, `1be0bc0`.
+2. Met. `tests/Feature/Tenancy/TenantMediaEndpointsTest.php`: logo upload, replace, delete, and `GET /v1/tenants/{tenant}` returning `branding_settings.logo_url`. Commit `a8935a0`. No storefront branding endpoint added, per the criterion's own carve-out.
+3. Met. `tests/Isolation/MediaIsolationTest.php` (8 probes) and `tests/Isolation/EventSearchDocumentsIsolationTest.php` (9 probes) prove RLS at the table level; `EventMediaEndpointsIsolationTest.php` and `TenantMediaEndpointsIsolationTest.php` cover every new endpoint; the task-11 sweep recorded why `?q=` needs no fresh endpoint-level test.
+4. Met. `tests/Feature/EventCatalog/RefreshSearchIndexTest.php`: duplicate delivery of `EventPublished` yields exactly one document set; out-of-order `EventUpdated` after `EventCanceled` converges on the canceled (deleted) state. Commit `edb569a`, hardened by `102d40a`.
+5. Met. `tests/Feature/EventCatalog/StorefrontEventSearchTest.php`: name match outranks description-only match, `fr` query finds the `en` fallback document, ordering deterministic across repeated identical requests. Commit `8321df0`.
+6. Met. Same file: draft and canceled events excluded even with stale projection rows planted directly; `tests/Unit/EventCatalog/Search/PostgresEventSearcherTest.php` proves the published-status join at query time.
+7. Met. `tests/Feature/EventCatalog/SearchRebuildCommandTest.php`: truncate-equivalent then `search:rebuild` reproduces content-identical rows per `(event_id, locale)` across two tenants under RLS; drafts and canceled events never indexed. Commit `df99a54`.
+8. Met. `tests/Architecture/SearchSeamTest.php` (controllers never reference `PostgresEventSearcher`) plus the container-swapped fake `EventSearcher` feature test in `StorefrontEventSearchTest.php`. Commit `bb3561e`.
+9. Met. All new endpoints documented in `docs/openapi/openapi.yaml` with `DocumentedResponseCoverageTest` exercisers (subject to the Spectator caveat above); generated TypeScript committed with zero drift; Feature, Unit, Contract, Architecture, Isolation, and Concurrency suites green (1733 passed); Larastan and Pint clean; CI green at `c38567b`.
+
+All nine exit criteria are met. The master plan status table entry for Stage 5c reads Done (flipped in task-11, `e8edc6a`, and re-verified at close-out). Stage 5c is closed.
