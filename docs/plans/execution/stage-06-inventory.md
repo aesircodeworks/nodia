@@ -1043,3 +1043,45 @@ Full quality gates re-run after Stage 6 implementation work, all green:
 - `composer -d apps/api run test` (Pest): 1961 passed, 7788 assertions
 - `composer -d apps/api run types:generate` + `git status --short packages/api-client/src/generated`: no contract drift
 - `pnpm typecheck`: skipped (no TypeScript changed)
+
+## Review round 1
+
+2026-07-11 05:56:56 -03
+
+Codex review of the stage-06 diff surfaced two important findings; both
+were fixed test-first.
+
+1. important, apps/api/app/Inventory/Actions/Concerns/ReleasesHoldInventory.php:78
+   The guarded `held` decrement ignored its affected-row count, so a
+   missing or under-count counter row still let the hold transition and
+   its HoldReleased/HoldExpired event record, leaving inventory
+   permanently inconsistent (violates the guarded-transition
+   affected-row-check convention).
+   Fixed: `releaseHeldQuantity` now captures the affected-row count and
+   throws a new App\Inventory\Exceptions\HoldInventoryReleaseFailedException
+   (HasErrorCode -> server.internal_error, 500) when it is zero, so the
+   surrounding release or expiry transaction rolls back instead of
+   recording an event against broken inventory. Added a failing-first
+   test to tests/Unit/Inventory/ReleaseHoldTest.php ("rolls back and
+   records no HoldReleased when the counter holds fewer units than the
+   hold").
+
+2. important, apps/api/app/EventCatalog/Actions/UpdateTicketType.php:83
+   Changing an existing GA ticket type to requires_seat=true left its GA
+   inventory counter (and its absolute quantity) intact; because
+   MaterializeEventSeats only seeds a zero counter when none exists, the
+   converted seated type kept its stale GA quantity and reported wrong
+   availability.
+   Fixed: UpdateTicketType now captures the pre-update requires_seat
+   value and, on a GA -> seated transition, calls SetTicketTypeQuantity
+   with 0 to reset the counter, matching MaterializeEventSeats' zero
+   seed; the conditional decrease also guards against zeroing out already
+   sold or held units. Added a failing-first test to
+   tests/Unit/EventCatalog/UpdateTicketTypeTest.php ("resets the counter
+   quantity to zero when converting a GA ticket type to requires_seat").
+
+Verification: `php artisan test` for the touched Unit/Feature/Concurrency
+files (ReleaseHoldTest, ReleaseExpiredHoldsTest, UpdateTicketTypeTest,
+MaterializeEventSeatsTest, TicketTypeEndpointsTest,
+HoldExpiryRecoveryContentionTest) all green; `composer -d apps/api run
+lint` passed. No findings declined.
