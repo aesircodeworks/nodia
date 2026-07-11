@@ -331,7 +331,7 @@ export type HoldItemInputData = {
 export type HoldStatus = 'active' | 'released' | 'expired' | 'committed';
 export type InitiatePaymentData = {
   method: string;
-  details: Record<string, any>;
+  details?: Record<string, any>;
 };
 export type InviteUserData = {
   email: string;

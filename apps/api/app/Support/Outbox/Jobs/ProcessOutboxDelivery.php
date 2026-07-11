@@ -47,10 +47,28 @@ class ProcessOutboxDelivery implements ShouldQueue
      */
     public int $tries = 40;
 
+    /**
+     * Seconds between attempts; null keeps the queue default. Set from a
+     * per-subscriber policy below.
+     */
+    public ?int $backoff = null;
+
     public function __construct(
         public readonly string $eventId,
         public readonly string $subscriber,
-    ) {}
+    ) {
+        // Consumers with an externally mandated retry budget (stage-08a
+        // plan Slice 9: SendOrderConfirmation retries 5 times with linear
+        // 1-minute backoff per system-design 13) declare it in
+        // config/outbox.php; everything else keeps the outbox-wide
+        // defaults above.
+        $policy = config("outbox.subscriber_retries.{$subscriber}");
+
+        if (is_array($policy)) {
+            $this->tries = (int) ($policy['tries'] ?? $this->tries);
+            $this->backoff = isset($policy['backoff_seconds']) ? (int) $policy['backoff_seconds'] : $this->backoff;
+        }
+    }
 
     public function handle(
         TenantTransaction $transactions,

@@ -91,6 +91,13 @@ No push yet; push and CI verification happen once after the review loop.
 
 ### Review rounds
 
+#### Round 1 (2026-07-11 19:20 -03, codex): needs-fixes, 1 blocking, 2 important, 1 minor
+
+1. Blocking, InitiatePayment.php:84, "transport failures leave a persisted initiated payment row behind because the insert commits before createPayment": declined as factually wrong. The insert's DB::transaction is a savepoint inside the request transaction the tenancy middleware opens; a rendered gateway_unavailable rolls the whole request transaction back (Stage 2's RenderedErrorRollback), so nothing persists, exactly what the passing test the finding itself cites (InitiatePaymentSyncTest "leaving nothing behind", asserting zero rows and a clean same-key retry) proves against real PostgreSQL. Reasoning recorded here instead of a code change.
+2. Important, generated index.ts marks InitiatePaymentData.details required while the wire contract treats it as optional: fixed. details became array|Optional following CreateOrderData's precedent, detailsArray() normalizes at the call sites, regenerated TS now reads `details?: Record<string, any>`.
+3. Important, SendOrderConfirmation lacks the plan's 5-attempt linear 1-minute retry budget: fixed, upgrading the earlier recorded deviation. config/outbox.php gained subscriber_retries; ProcessOutboxDelivery applies a per-subscriber tries/backoff override at dispatch; unit test asserts 5/60 for send_order_confirmation and outbox defaults elsewhere.
+4. Minor, PDF text-extraction spot-check absent: already journaled as a deliberate deviation (magic bytes, mime, size asserted instead); no change.
+
 ### Decisions and deviations
 
 - payments carries a nullable next_action jsonb column beyond the plan's column list: the plan requires replays and GET /v1/storefront/payments/{payment} to re-serve next_action byte-identically, and deriving it from the adapter on read would couple reads to gateway determinism. Added while the creating migration is still unmerged on this branch, so no merged migration was edited.

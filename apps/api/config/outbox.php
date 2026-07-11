@@ -48,4 +48,20 @@ return [
 
     'ordered_defer_seconds' => (int) env('OUTBOX_ORDERED_DEFER_SECONDS', 15),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Per-Subscriber Retry Budgets
+    |--------------------------------------------------------------------------
+    |
+    | Overrides ProcessOutboxDelivery's outbox-wide tries and backoff for
+    | subscribers whose retry policy is externally mandated. The email
+    | confirmation retries 5 times with linear 1-minute backoff
+    | (stage-08a plan Slice 9; system-design 13).
+    |
+    */
+
+    'subscriber_retries' => [
+        'send_order_confirmation' => ['tries' => 5, 'backoff_seconds' => 60],
+    ],
+
 ];

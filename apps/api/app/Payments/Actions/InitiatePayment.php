@@ -62,7 +62,7 @@ final class InitiatePayment
 
     public function __invoke(OrderPaymentContextData $order, InitiatePaymentData $data, string $idempotencyKey): PaymentInitiationResult
     {
-        $requestHash = RequestHash::compute($data->method, $data->details);
+        $requestHash = RequestHash::compute($data->method, $data->detailsArray());
 
         $existing = Payment::query()->where('idempotency_key', $idempotencyKey)->first();
 
@@ -105,7 +105,7 @@ final class InitiatePayment
                 orderId: $order->id,
                 method: $offered->method,
                 amount: $order->total,
-                details: $data->details,
+                details: $data->detailsArray(),
             ));
         } catch (GatewayUnavailableException $e) {
             $this->breaker->recordFailure($offered->gateway);
