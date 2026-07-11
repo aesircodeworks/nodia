@@ -318,3 +318,9 @@ Local results (repo root):
 No fixes were needed: every gate passed on the first run at HEAD `e8edc6a`.
 
 CI, all five workflows concluded success on `e8edc6a`: API [29138245767](https://github.com/aesircodeworks/nodia/actions/runs/29138245767), Packages [29138245765](https://github.com/aesircodeworks/nodia/actions/runs/29138245765), Storefront [29138245769](https://github.com/aesircodeworks/nodia/actions/runs/29138245769), Admin [29138245799](https://github.com/aesircodeworks/nodia/actions/runs/29138245799), Checkin [29138245771](https://github.com/aesircodeworks/nodia/actions/runs/29138245771).
+
+### Review round 1: 2026-07-11 00:54 -03
+
+Codex review of stage 5c, round 1. One important finding, applied.
+
+1. important, apps/api/app/EventCatalog/Jobs/RefreshSearchIndex.php:53, "Search index refresh does not remove documents for locales removed from supported_locales". Confirmed: the upsert path wrote one row per currently-supported locale but never deleted rows for locales dropped from supported_locales, so the normal outbox-delivery path (unlike the rebuild command, which clears first) accumulated stale searchable locale rows. Fixed by adding SearchDocumentWriter::deleteForExceptLocales(eventId, locales) and calling it in RefreshSearchIndex::handle after the upsert loop, pruning any row whose locale is not in the freshly built set (an empty set delegates to deleteFor as a guard, though the upsert path always yields at least one locale). Added a Feature test in RefreshSearchIndexTest that publishes an event under supported_locales ['en','fr'], drops 'fr', triggers EventUpdated, and asserts only the 'en' row survives. Gates green: Pint passed, Larastan 0 errors, Pest 1733 passed (one flaky parallel-isolation run recovered clean on rerun).
