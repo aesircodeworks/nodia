@@ -14,7 +14,7 @@ Nothing from this stage has landed: there is no `app/CheckIn` bounded context, n
 ### Task checklist
 
 - [x] T1 `checkin.manage` capability and template-role wiring (identity)
-- [ ] T2 `check_ins` table with RLS, model, enum, factory, isolation tests (checkin)
+- [x] T2 `check_ins` table with RLS, model, enum, factory, isolation tests (checkin)
 - [ ] T3 `check_in_assignments` table with RLS, model, factory, isolation tests (checkin)
 - [ ] T4 `event_signing_keys` table with RLS, model, enum, encrypted cast, factory, isolation tests (orders)
 - [ ] T5 Key rotation and get-or-create Actions, provider swap behind `TicketSigningKeyProvider`, deployment-transition and rotation concurrency tests (orders)
@@ -41,5 +41,19 @@ TDD: extended `CapabilityTest` (`carries the exact capability registry`, `marks 
 Test evidence: `php artisan test tests/Unit/Identity/CapabilityTest.php tests/Unit/Identity/SeedTemplateRolesTest.php tests/Unit/Identity/CapabilityGateTest.php tests/Isolation/RolesIsolationTest.php` (41 passed, 66 assertions); `php artisan test --testsuite=Feature --filter=Identity` (285 passed, 1553 assertions). No Data class changed, so `composer types:generate` was not run.
 
 Commit: `0c333ce` feat(identity): add checkin.manage capability and template wiring.
+
+No deviations from the plan.
+
+#### T2: 2026-07-12
+
+Added the `check_ins` table (migration, RLS policy in the same migration, `check_ins_accepted_ticket_idx` partial unique index on `ticket_id` where `result = 'accepted'`, unique `(tenant_id, device_id, client_scan_id)`, index `(event_id, synced_at)`), the new `App\CheckIn` bounded context with `Enums\CheckInResult`, `Models\CheckIn` (`HasUuids`, enum cast, `Fillable`), and a factory. `event_id` denormalizes the same way `tickets.event_id` does, per the stage-09 plan's rationale. `ticket_id` and `user_id` are DB-level FKs into Orders and Identity tables, permitted under the boundary rule (FKs concern storage, not code imports or cross-context queries).
+
+TDD: `tests/Isolation/CheckInsIsolationTest.php` and its `CheckInFixture` (building on `TicketFixture`, with two inline `users` rows since `users` carries no `tenant_id`) written first against the standard `Rls::applyTenantPolicies` posture mirroring `TicketsIsolationTest`; confirmed failing (table did not exist) before the migration landed. `tests/Unit/CheckIn/CheckInConstraintsTest.php` written first for the two DB-level invariants: the partial unique index rejects a second `accepted` row per ticket, the `(tenant_id, device_id, client_scan_id)` unique index rejects a replay, a second `duplicate` row is allowed alongside the one `accepted` row, and the `CheckInResult` enum cast throws `ValueError` when a row inserted with an out-of-enum `result` (there is no DB-level `CHECK` constraint on `result`, matching the existing `tickets.status` and `orders.status` precedent in this codebase, so the enum boundary is enforced at the application layer via the Eloquent cast) is read back; confirmed failing (missing table/class) before the model and migration landed.
+
+`tests/Architecture/PresetTest.php` needed `App\CheckIn\Models` and `CheckInResult` added to the Laravel preset's `ignoring()` list, the same treatment every other context's Models directory and status enum already receives; `ContextBoundariesTest` already listed `CheckIn` as a registered context from T1, so no change was needed there.
+
+Test evidence: `php artisan test tests/Isolation/CheckInsIsolationTest.php tests/Unit/CheckIn/CheckInConstraintsTest.php` (13 passed, 19 assertions); `php artisan test --testsuite=Isolation` (278 passed, 552 assertions); `php artisan test --testsuite=Architecture` (40 passed, 97 assertions); `composer lint` clean after Pint auto-fixed import ordering in the two touched files. No Data class changed, so `composer types:generate` was not run.
+
+Commit: `<pending>` feat(checkin): add check_ins table with RLS, model, enum, factory.
 
 No deviations from the plan.

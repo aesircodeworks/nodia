@@ -1,5 +1,6 @@
 <?php
 
+use App\CheckIn\Enums\CheckInResult;
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\EventCatalogServiceProvider;
 use App\EventCatalog\Exceptions\CurrencyMismatchException as TicketTypeCurrencyMismatchException;
@@ -200,6 +201,11 @@ arch()->preset()->security();
 // DELETE /v1/media/{media} route (App\Http\Controllers\MediaController),
 // so it lives under App\Support\Media\Exceptions rather than any one
 // bounded context's own Exceptions directory.
+// CheckInResult (stage-09 task-02) is check_ins.result's registry and
+// lives with the CheckIn context like OrderStatus and TicketStatus live
+// with Orders, not App\Enums. App\CheckIn\Models\CheckIn lives with its
+// own bounded context like every other context's Models directory
+// already ignored above, not App\Models.
 // App\Inventory\Models\TicketTypeInventory (stage-06 task-02) lives with
 // its own bounded context like every other context's Models directory
 // already ignored above, not App\Models.
@@ -370,4 +376,6 @@ arch()->preset()->laravel()->ignoring([
     'App\Support\Outbox\Models',
     'App\Support\Media\Models',
     MediaNotFoundException::class,
+    CheckInResult::class,
+    'App\CheckIn\Models',
 ]);
