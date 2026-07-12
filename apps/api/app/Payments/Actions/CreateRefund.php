@@ -80,13 +80,18 @@ final class CreateRefund
         $policy = $config['refund_commission_policy'];
 
         $amount = $this->resolveAmount($payment, $data);
-        $isFullRefund = $payment->refunded_amount + $amount->amount === $payment->amount;
-        $ticketIds = $this->resolveTicketSelection($order->issuedTicketIds, $data->ticketIds, $order->id, $isFullRefund);
         $commission = $this->returnedCommission($payment, $amount, $policy);
 
+        // The full-refund void-all decision reads the reservation's own
+        // outcome, so validate the requested selection here but defer the
+        // selection itself to the guarded transaction.
+        $this->assertTicketsInOrder($order->issuedTicketIds, $data->ticketIds, $order->id);
+
         try {
-            $refund = DB::transaction(function () use ($payment, $order, $amount, $commission, $ticketIds, $policy, $data, $idempotencyKey, $requestHash): Refund {
-                $this->reserve($payment, $amount, $commission);
+            $refund = DB::transaction(function () use ($payment, $order, $amount, $commission, $policy, $data, $idempotencyKey, $requestHash): Refund {
+                $reservedTotal = $this->reserve($payment, $amount, $commission);
+
+                $ticketIds = $this->resolveTicketSelection($data->ticketIds, $reservedTotal === $payment->amount);
 
                 $refund = Refund::query()->create([
                     'tenant_id' => (string) $this->tenantContext->tenantId(),
@@ -134,22 +139,30 @@ final class CreateRefund
     }
 
     /**
-     * A full refund voids every issued ticket regardless of the request
-     * (stage-08b plan, Endpoints). A partial refund voids only the
-     * explicitly requested tickets, so an absent selection persists an
-     * empty list (void none), never null (which the completion path reads
-     * as the full-refund void-all marker).
-     *
      * @param  list<string>  $issuedTicketIds
      * @param  list<string>|null  $requested
-     * @return list<string>|null
      */
-    private function resolveTicketSelection(array $issuedTicketIds, ?array $requested, string $orderId, bool $isFullRefund): ?array
+    private function assertTicketsInOrder(array $issuedTicketIds, ?array $requested, string $orderId): void
     {
         if ($requested !== null && array_diff($requested, $issuedTicketIds) !== []) {
             throw RefundTicketsNotInOrderException::forOrder($orderId);
         }
+    }
 
+    /**
+     * A full refund voids every issued ticket regardless of the request
+     * (stage-08b plan, Endpoints). A partial refund voids only the
+     * explicitly requested tickets, so an absent selection persists an
+     * empty list (void none), never null (which the completion path reads
+     * as the full-refund void-all marker). Full-refund status is the
+     * reservation's own outcome, so concurrent partials never persist an
+     * empty list for the refund that actually completes the payment.
+     *
+     * @param  list<string>|null  $requested
+     * @return list<string>|null
+     */
+    private function resolveTicketSelection(?array $requested, bool $isFullRefund): ?array
+    {
         if ($isFullRefund) {
             return null;
         }
@@ -179,7 +192,13 @@ final class CreateRefund
         return Money::of(min($proportional, max($remainder, 0)), $payment->currency);
     }
 
-    private function reserve(Payment $payment, Money $amount, Money $commission): void
+    /**
+     * Reserves the refundable amount with one conditional UPDATE and
+     * returns the resulting refunded_amount so the caller can decide
+     * full-refund status from the reservation's own outcome rather than a
+     * stale pre-reservation snapshot.
+     */
+    private function reserve(Payment $payment, Money $amount, Money $commission): int
     {
         $affected = DB::table('payments')
             ->where('id', $payment->id)
@@ -193,7 +212,7 @@ final class CreateRefund
             ]);
 
         if ($affected === 1) {
-            return;
+            return (int) DB::table('payments')->where('id', $payment->id)->value('refunded_amount');
         }
 
         $fresh = Payment::query()->findOrFail($payment->id);

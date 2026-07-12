@@ -94,3 +94,65 @@ it('never reserves past the payment amount under parallel partial refunds', func
         Tenant::query()->whereKey($tenantId)->delete();
     });
 });
+
+it('marks exactly the payment-completing refund void-all when parallel partials race to full', function (): void {
+    $tenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);
+
+    $paymentId = app(TenantTransaction::class)->asTenant($tenantId, function () use ($tenantId): string {
+        $customer = Customer::factory()->create(['tenant_id' => $tenantId]);
+        $event = Event::factory()->create(['tenant_id' => $tenantId]);
+        $order = Order::factory()->create([
+            'tenant_id' => $tenantId,
+            'customer_id' => $customer->id,
+            'event_id' => $event->id,
+            'status' => OrderStatus::Paid,
+        ]);
+
+        return Payment::factory()->create([
+            'tenant_id' => $tenantId,
+            'order_id' => $order->id,
+            'status' => PaymentStatus::Confirmed,
+            'money' => Money::of(5_000, 'USD'),
+            'gateway_reference' => 'fake_'.Str::uuid7(),
+        ])->id;
+    });
+
+    // Both workers cross the start barrier together and read the same
+    // pre-reservation snapshot (refunded_amount 0); whichever reserves
+    // last brings the payment to full. Full-refund status must follow the
+    // reservation's own outcome, so exactly one refund carries the
+    // void-all (null) selection rather than an empty list.
+    $results = ParallelRunner::run(2, function () use ($tenantId, $paymentId): string {
+        app(TenantTransaction::class)->asTenant(
+            $tenantId,
+            fn () => app(CreateRefund::class)(
+                $paymentId,
+                CreateRefundData::from(['amount' => ['amount' => 2_500, 'currency' => 'USD']]),
+                (string) Str::uuid7(),
+            ),
+        );
+
+        return 'created';
+    });
+
+    [$payment, $voidAllCount, $refundCount] = app(TenantTransaction::class)->asTenant($tenantId, fn (): array => [
+        Payment::query()->findOrFail($paymentId),
+        DB::table('refunds')->where('payment_id', $paymentId)->whereNull('ticket_ids')->count(),
+        DB::table('refunds')->where('payment_id', $paymentId)->count(),
+    ]);
+
+    expect(array_count_values($results)['created'] ?? 0)->toBe(2)
+        ->and($payment->refunded_amount)->toBe(5_000)
+        ->and($refundCount)->toBe(2)
+        ->and($voidAllCount)->toBe(1);
+
+    app(TenantTransaction::class)->asTenant($tenantId, function () use ($tenantId): void {
+        foreach (['outbox_deliveries', 'outbox_events', 'refunds', 'payments', 'orders', 'customers', 'events'] as $table) {
+            DB::table($table)->where('tenant_id', $tenantId)->delete();
+        }
+    });
+
+    app(TenantTransaction::class)->asPlatform(function () use ($tenantId): void {
+        Tenant::query()->whereKey($tenantId)->delete();
+    });
+});
