@@ -6,6 +6,7 @@ use App\Payments\Enums\PayoutStatus;
 use App\Payments\Events\PayoutExecuted;
 use App\Payments\Gateways\NormalizedPayoutEvent;
 use App\Payments\Models\Payout;
+use App\Support\Audit\ActivityLogger;
 use App\Support\Outbox\OutboxRecorder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Date;
@@ -36,7 +37,10 @@ final class RecordGatewayPayout
         PayoutStatus::Canceled->value => [PayoutStatus::Pending, PayoutStatus::InTransit],
     ];
 
-    public function __construct(private readonly OutboxRecorder $outbox) {}
+    public function __construct(
+        private readonly OutboxRecorder $outbox,
+        private readonly ActivityLogger $activityLogger,
+    ) {}
 
     public function __invoke(string $tenantId, string $gateway, NormalizedPayoutEvent $event): ?Payout
     {
@@ -70,12 +74,16 @@ final class RecordGatewayPayout
                     'gateway_reference' => $event->gatewayReference,
                     'money' => $event->amount,
                     'status' => $event->status,
-                    'executed_at' => $event->executedAt,
+                    'executed_at' => $event->status === PayoutStatus::Paid
+                        ? ($event->executedAt ?? Date::now())
+                        : $event->executedAt,
                 ]);
 
                 if ($event->status === PayoutStatus::Paid) {
                     $this->outbox->record(PayoutExecuted::fromPayout($payout));
                 }
+
+                $this->logStateChange($payout);
 
                 return $payout;
             });
@@ -122,7 +130,24 @@ final class RecordGatewayPayout
                 $this->outbox->record(PayoutExecuted::fromPayout($fresh));
             }
 
+            $this->logStateChange($fresh);
+
             return $fresh;
         });
+    }
+
+    private function logStateChange(Payout $payout): void
+    {
+        $this->activityLogger->record(
+            description: sprintf('Payout %s moved to %s', $payout->id, $payout->status->value),
+            causer: null,
+            event: 'payout_state_changed',
+            properties: [
+                'payout_id' => $payout->id,
+                'gateway' => $payout->gateway,
+                'gateway_reference' => $payout->gateway_reference,
+                'status' => $payout->status->value,
+            ],
+        );
     }
 }

@@ -148,6 +148,41 @@ it('flags a discrepancy and writes an activity log entry when the gateway amount
         ->and($entry->properties['discrepancy_amount'])->toBe(200);
 });
 
+it('flags a discrepancy when the gateway amount matches in minor units but differs in currency', function (): void {
+    $mirrored = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => Payout::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'gateway_reference' => 'fake_po_currency',
+            'money' => Money::of(5000, 'USD'),
+            'status' => PayoutStatus::Paid,
+        ]),
+    );
+
+    app(FakeGatewayScenarios::class)->scriptPayouts([
+        new GatewayPayoutRecord($this->accountReference, 'fake_po_currency', Money::of(5000, 'EUR'), PayoutStatus::Paid, CarbonImmutable::now()),
+    ]);
+
+    app(ReconcilePayouts::class)();
+
+    $fresh = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => Payout::query()->whereKey($mirrored->id)->firstOrFail(),
+    );
+
+    expect($fresh->discrepancy_amount)->not->toBeNull();
+
+    $count = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => ActivityLogEntry::query()
+            ->where('event', 'payout_discrepancy')
+            ->where('properties->payout_id', $mirrored->id)
+            ->count(),
+    );
+
+    expect($count)->toBe(1);
+});
+
 it('does not flag a discrepancy or log an entry when the gateway record matches the mirror exactly', function (): void {
     $mirrored = app(TenantTransaction::class)->asTenant(
         $this->tenantId,

@@ -108,7 +108,7 @@ final readonly class ReconcilePayouts
 
     private function flagDiscrepancy(Payout $payout, GatewayPayoutRecord $record): void
     {
-        $discrepancy = $record->amount->amount === $payout->amount
+        $discrepancy = $record->amount->equals($payout->money)
             ? null
             : abs($record->amount->amount - $payout->amount);
 

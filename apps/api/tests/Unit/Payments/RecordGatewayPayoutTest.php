@@ -4,6 +4,7 @@ use App\Payments\Actions\RecordGatewayPayout;
 use App\Payments\Enums\PayoutStatus;
 use App\Payments\Gateways\NormalizedPayoutEvent;
 use App\Payments\Models\Payout;
+use App\Support\Audit\Models\ActivityLogEntry;
 use App\Support\Money\Money;
 use App\Support\Outbox\Models\OutboxEvent;
 use App\Support\Tenancy\TenantTransaction;
@@ -138,6 +139,50 @@ it('skips forward from pending straight to paid, sets executed_at, and records P
         ->and($event->payload['gateway_reference'])->toBe('fake_po_1')
         ->and($event->payload['amount']['amount'])->toBe(1500)
         ->and($event->payload['amount']['currency'])->toBe('BRL');
+});
+
+it('inserts a paid payout.created with no executed_at, stamping now and recording PayoutExecuted', function (): void {
+    $event = new NormalizedPayoutEvent('fakesm_ref', 'fake_po_paid', PayoutStatus::Paid, Money::of(1500, 'BRL'), null);
+
+    $payout = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(RecordGatewayPayout::class)($this->tenantId, 'fake', $event),
+    );
+
+    expect($payout)->not->toBeNull()
+        ->and($payout->status)->toBe(PayoutStatus::Paid)
+        ->and($payout->executed_at)->not->toBeNull();
+
+    $eventCount = app(TenantTransaction::class)->asPlatform(
+        fn () => OutboxEvent::query()->where('type', 'PayoutExecuted')->where('aggregate_id', $payout->id)->count(),
+    );
+
+    expect($eventCount)->toBe(1);
+});
+
+it('records a payout_state_changed activity entry on insert and on transition', function (): void {
+    app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(RecordGatewayPayout::class)($this->tenantId, 'fake', createdPayoutEvent('fake_po_audit')),
+    );
+
+    app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(RecordGatewayPayout::class)($this->tenantId, 'fake', statusPayoutEvent(PayoutStatus::Paid, 'fake_po_audit')),
+    );
+
+    $entries = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => ActivityLogEntry::query()
+            ->where('event', 'payout_state_changed')
+            ->where('properties->gateway_reference', 'fake_po_audit')
+            ->orderBy('created_at')
+            ->pluck('properties'),
+    );
+
+    expect($entries)->toHaveCount(2)
+        ->and($entries[0]['status'])->toBe(PayoutStatus::Pending->value)
+        ->and($entries[1]['status'])->toBe(PayoutStatus::Paid->value);
 });
 
 it('a late in_transit after paid affects zero rows and is dropped', function (): void {

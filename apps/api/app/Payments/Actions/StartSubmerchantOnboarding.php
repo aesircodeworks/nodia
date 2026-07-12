@@ -38,6 +38,7 @@ final class StartSubmerchantOnboarding
         private readonly ResolveTenantPayoutSchedule $resolvePayoutSchedule,
         private readonly GatewayRegistry $gateways,
         private readonly CircuitBreaker $breaker,
+        private readonly TransitionSubmerchantAccount $transition,
     ) {}
 
     public function __invoke(StartSubmerchantOnboardingData $data): SubmerchantAccount
@@ -87,13 +88,19 @@ final class StartSubmerchantOnboarding
         $this->breaker->recordSuccess($data->gateway);
 
         $account->update([
-            'status' => $result->status,
             'gateway_account_reference' => $result->gatewayAccountReference,
             'onboarding_url' => $result->onboardingUrl,
             'requirements' => $result->requirements,
-            'activated_at' => $result->status === SubmerchantStatus::Active ? now() : null,
         ]);
 
-        return $account;
+        // The gateway may acknowledge synchronously with a status past
+        // pending; that move goes through the same guarded conditional
+        // transition (and activity log) as the webhook and refresh paths,
+        // never a blind status overwrite.
+        if ($result->status !== SubmerchantStatus::Pending) {
+            ($this->transition)($account->id, $result->status, $result->requirements);
+        }
+
+        return SubmerchantAccount::query()->findOrFail($account->id);
     }
 }

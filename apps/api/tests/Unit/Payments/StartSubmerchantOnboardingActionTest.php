@@ -7,7 +7,9 @@ use App\Payments\Exceptions\GatewayNotEnabledException;
 use App\Payments\Exceptions\GatewayUnknownException;
 use App\Payments\Exceptions\SubmerchantAlreadyOnboardedException;
 use App\Payments\Gateways\FakeGatewayScenarios;
+use App\Payments\Gateways\GatewaySubmerchantResult;
 use App\Payments\Models\SubmerchantAccount;
+use App\Support\Audit\Models\ActivityLogEntry;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use Illuminate\Support\Facades\DB;
@@ -52,6 +54,29 @@ it('creates a pending row, calls the gateway once, and persists its result', fun
         ->and($account->status)->toBe(SubmerchantStatus::Pending)
         ->and($account->gateway_account_reference)->not->toBeNull()
         ->and(app(FakeGatewayScenarios::class)->submerchantCreationCallCountFor($this->tenantId, 'fake'))->toBe(1);
+});
+
+it('applies a synchronous approval through the guarded transition, landing active with an audit entry', function (): void {
+    app(FakeGatewayScenarios::class)->scriptSubmerchantCreation(GatewaySubmerchantResult::active('sm_ref_sync'));
+
+    $account = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(StartSubmerchantOnboarding::class)(StartSubmerchantOnboardingData::from(['gateway' => 'fake'])),
+    );
+
+    expect($account->status)->toBe(SubmerchantStatus::Active)
+        ->and($account->activated_at)->not->toBeNull();
+
+    $count = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => ActivityLogEntry::query()
+            ->where('event', 'submerchant_state_changed')
+            ->where('properties->submerchant_account_id', $account->id)
+            ->where('properties->status', SubmerchantStatus::Active->value)
+            ->count(),
+    );
+
+    expect($count)->toBe(1);
 });
 
 it('throws gateway_unknown for an unregistered adapter without inserting a row', function (): void {

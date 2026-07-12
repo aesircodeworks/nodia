@@ -4,6 +4,7 @@ namespace App\Payments\Actions;
 
 use App\Payments\Enums\SubmerchantStatus;
 use App\Payments\Models\SubmerchantAccount;
+use App\Support\Audit\ActivityLogger;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 
@@ -41,20 +42,18 @@ final class TransitionSubmerchantAccount
         SubmerchantStatus::Pending->value => [SubmerchantStatus::Rejected],
     ];
 
+    public function __construct(private readonly ActivityLogger $activityLogger) {}
+
     /**
      * @param  list<string>  $requirements
      */
     public function __invoke(string $accountId, SubmerchantStatus $target, array $requirements = []): ?SubmerchantAccount
     {
-        $sources = self::SOURCES[$target->value] ?? [];
-
-        if ($sources === []) {
-            return null;
-        }
+        $sources = self::SOURCES[$target->value];
 
         $updates = [
             'status' => $target->value,
-            'requirements' => json_encode(array_values($requirements)),
+            'requirements' => json_encode($requirements),
             'updated_at' => Date::now(),
         ];
 
@@ -71,6 +70,19 @@ final class TransitionSubmerchantAccount
             return null;
         }
 
-        return SubmerchantAccount::query()->findOrFail($accountId);
+        $account = SubmerchantAccount::query()->findOrFail($accountId);
+
+        $this->activityLogger->record(
+            description: sprintf('Sub-merchant account %s moved to %s', $accountId, $target->value),
+            causer: null,
+            event: 'submerchant_state_changed',
+            properties: [
+                'submerchant_account_id' => $accountId,
+                'gateway' => $account->gateway,
+                'status' => $target->value,
+            ],
+        );
+
+        return $account;
     }
 }
