@@ -123,6 +123,7 @@ afterEach(function (): void {
             // write orders, order_items, and tickets referencing customers,
             // events, ticket_types, and holds with no cascade, so they go
             // first.
+            DB::table('event_signing_keys')->where('tenant_id', $tenantId)->delete();
             DB::table('tickets')->where('tenant_id', $tenantId)->delete();
             DB::table('order_items')->where('tenant_id', $tenantId)->delete();
             DB::table('orders')->where('tenant_id', $tenantId)->delete();

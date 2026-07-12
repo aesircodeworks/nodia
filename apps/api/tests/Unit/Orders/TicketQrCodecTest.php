@@ -31,6 +31,7 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     app(TenantTransaction::class)->asTenant($this->tenantId, function (): void {
+        DB::table('event_signing_keys')->where('tenant_id', $this->tenantId)->delete();
         DB::table('tickets')->where('tenant_id', $this->tenantId)->delete();
         DB::table('order_items')->where('tenant_id', $this->tenantId)->delete();
         DB::table('orders')->where('tenant_id', $this->tenantId)->delete();
@@ -74,7 +75,7 @@ it('round-trips sign and verify', function (): void {
     $ticket = qrTicket($this->tenantId);
 
     $codec = app(TicketQrCodec::class);
-    $payload = $codec->sign($ticket);
+    $payload = app(TenantTransaction::class)->asTenant($this->tenantId, fn () => $codec->sign($ticket));
 
     $result = app(TenantTransaction::class)->asTenant(
         $this->tenantId,
@@ -90,7 +91,12 @@ it('is deterministic for fixed inputs', function (): void {
 
     $codec = app(TicketQrCodec::class);
 
-    expect($codec->sign($ticket))->toBe($codec->sign($ticket));
+    $signatures = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => [$codec->sign($ticket), $codec->sign($ticket)],
+    );
+
+    expect($signatures[0])->toBe($signatures[1]);
 });
 
 it('rejects a tampered payload', function (): void {
@@ -99,7 +105,8 @@ it('rejects a tampered payload', function (): void {
 
     $codec = app(TicketQrCodec::class);
 
-    $decoded = json_decode(base64_decode(strtr($codec->sign($ticket), '-_', '+/')), true);
+    $signed = app(TenantTransaction::class)->asTenant($this->tenantId, fn () => $codec->sign($ticket));
+    $decoded = json_decode(base64_decode(strtr($signed, '-_', '+/')), true);
     $decoded['ticket_id'] = $other->id;
     $tampered = rtrim(strtr(base64_encode((string) json_encode($decoded)), '+/', '-_'), '=');
 
@@ -129,7 +136,7 @@ it('rejects a payload signed with a different event\'s key', function (): void {
     $cross->event_id = $otherEvent->event_id;
 
     $codec = app(TicketQrCodec::class);
-    $payload = $codec->sign($cross);
+    $payload = app(TenantTransaction::class)->asTenant($this->tenantId, fn () => $codec->sign($cross));
 
     $decoded = json_decode(base64_decode(strtr($payload, '-_', '+/')), true);
     $decoded['event_id'] = $ticket->event_id;
@@ -147,7 +154,7 @@ it('invalidates old payloads after a rotation bump and verifies a fresh render',
     $ticket = qrTicket($this->tenantId);
 
     $codec = app(TicketQrCodec::class);
-    $before = $codec->sign($ticket);
+    $before = app(TenantTransaction::class)->asTenant($this->tenantId, fn () => $codec->sign($ticket));
 
     app(TenantTransaction::class)->asTenant($this->tenantId, function () use ($ticket): void {
         DB::table('tickets')->where('id', $ticket->id)->update(['qr_rotation_counter' => 1]);

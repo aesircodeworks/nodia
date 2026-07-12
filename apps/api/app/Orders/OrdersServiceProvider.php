@@ -8,8 +8,8 @@ use App\Orders\Jobs\HandlePaymentConfirmed;
 use App\Orders\Jobs\HandlePaymentExpired;
 use App\Orders\Jobs\HandlePaymentFailed;
 use App\Orders\Jobs\SendOrderConfirmation;
-use App\Orders\Support\DerivedTicketSigningKeyProvider;
 use App\Orders\Support\DompdfTicketPdfRenderer;
+use App\Orders\Support\EventSigningKeyProvider;
 use App\Orders\Support\TicketPdfRenderer;
 use App\Orders\Support\TicketSigningKeyProvider;
 use App\Support\Outbox\EventTypeRegistry;
@@ -28,7 +28,7 @@ class OrdersServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->app->bind(TicketSigningKeyProvider::class, DerivedTicketSigningKeyProvider::class);
+        $this->app->bind(TicketSigningKeyProvider::class, EventSigningKeyProvider::class);
         $this->app->bind(TicketPdfRenderer::class, DompdfTicketPdfRenderer::class);
     }
 
