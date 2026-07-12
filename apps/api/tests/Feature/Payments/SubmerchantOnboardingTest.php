@@ -180,6 +180,32 @@ describe('POST /v1/submerchant-accounts', function (): void {
         expect($response->headers->get('Retry-After'))->not->toBeNull();
     });
 
+    it('rejects a registered-but-unconfigured gateway with gateway_not_configured', function (): void {
+        config(['payments.gateways.pending.enabled' => true]);
+        app()->forgetScopedInstances();
+
+        app(TenantTransaction::class)->asPlatform(function (): void {
+            Tenant::query()->whereKey($this->tenantId)->update(['enabled_gateways' => ['pending']]);
+        });
+
+        $response = $this->postJson(
+            '/v1/submerchant-accounts',
+            ['gateway' => 'pending'],
+            submerchantHeaders($this->tenantId, Capability::PayoutsManage),
+        );
+
+        $response->assertStatus(409)
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'gateway_not_configured');
+
+        $stranded = app(TenantTransaction::class)->asTenant(
+            $this->tenantId,
+            fn () => SubmerchantAccount::query()->where('gateway', 'pending')->count(),
+        );
+
+        expect($stranded)->toBe(0);
+    });
+
     it('fails validation for a missing gateway', function (): void {
         $this->postJson('/v1/submerchant-accounts', [], submerchantHeaders($this->tenantId, Capability::PayoutsManage))
             ->assertStatus(422)

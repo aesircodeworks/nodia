@@ -28,18 +28,40 @@ final class GatewayFixtureLoader
     {
         $exchanges = $this->load($gateway);
 
-        Http::fake(function (ClientRequest $request) use ($gateway, $exchanges) {
-            foreach ($exchanges as $exchange) {
+        // Per-signature replay cursors: when a fixture set records several
+        // exchanges that all match the same request (a poll that returns
+        // pending then active, a retry that fails then succeeds), repeated
+        // identical requests advance through them in recorded order instead
+        // of replaying the first one forever, which would strand an async
+        // scenario on its initial response. Once the recorded sequence is
+        // exhausted the last exchange keeps replaying, so a single-exchange
+        // signature still answers every call the way it did before.
+        $cursors = [];
+
+        Http::fake(function (ClientRequest $request) use ($gateway, $exchanges, &$cursors) {
+            $matching = [];
+
+            foreach ($exchanges as $index => $exchange) {
                 if ($this->matches($exchange['request'], $request)) {
-                    return Http::response(
-                        $exchange['response']['body'] ?? null,
-                        $exchange['response']['status'] ?? 200,
-                        $exchange['response']['headers'] ?? [],
-                    );
+                    $matching[] = $index;
                 }
             }
 
-            throw GatewayFixtureNotCoveredException::forRequest($gateway, $request->method(), $request->url());
+            if ($matching === []) {
+                throw GatewayFixtureNotCoveredException::forRequest($gateway, $request->method(), $request->url());
+            }
+
+            $key = implode(',', $matching);
+            $cursor = $cursors[$key] ?? 0;
+            $cursors[$key] = $cursor + 1;
+
+            $exchange = $exchanges[$matching[min($cursor, count($matching) - 1)]];
+
+            return Http::response(
+                $exchange['response']['body'] ?? null,
+                $exchange['response']['status'] ?? 200,
+                $exchange['response']['headers'] ?? [],
+            );
         });
     }
 

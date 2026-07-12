@@ -16,6 +16,18 @@ it('fakes http with the recorded exchanges for a gateway slug', function (): voi
         ->and($response->json('id'))->toBe('pay_examplegw_001');
 });
 
+it('replays multiple exchanges matching the same request in recorded order, clamping to the last', function (): void {
+    $loader = new GatewayFixtureLoader(base_path('tests/Fixtures/gateways'));
+
+    $loader->fake('pollinggw');
+
+    $poll = fn (): string => Http::get('https://sandbox.pollinggw.test/v1/submerchants/sm_1')->json('status');
+
+    expect($poll())->toBe('pending')
+        ->and($poll())->toBe('active')
+        ->and($poll())->toBe('active');
+});
+
 it('fails loudly when a required header the fixture matches on is absent from the request', function (): void {
     $loader = new GatewayFixtureLoader(base_path('tests/Fixtures/gateways'));
 

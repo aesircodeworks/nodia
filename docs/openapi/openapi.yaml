@@ -4883,9 +4883,11 @@ paths:
         '409':
           description: >-
             The gateway is not in the tenant's enabled_gateways (code
-            gateway_not_enabled), or a sub-merchant account for this
+            gateway_not_enabled), a sub-merchant account for this
             tenant and gateway already exists (code
-            submerchant_already_onboarded, with existing_id).
+            submerchant_already_onboarded, with existing_id), or the
+            gateway is registered but not configured (code
+            gateway_not_configured).
           content:
             application/problem+json:
               schema:
@@ -8015,9 +8017,11 @@ components:
     SubmerchantOnboardingConflictProblem:
       description: >-
         Problem document for onboarding-start conflicts (stage-08c
-        plan, Endpoints): the gateway is not enabled for the tenant, or
-        a sub-merchant account for this tenant and gateway already
-        exists, in which case existing_id names the pre-existing row.
+        plan, Endpoints): the gateway is not enabled for the tenant, a
+        sub-merchant account for this tenant and gateway already
+        exists, in which case existing_id names the pre-existing row, or
+        the gateway is registered but not configured
+        (gateway_not_configured).
       allOf:
         - $ref: '#/components/schemas/Problem'
         - type: object
@@ -8027,7 +8031,7 @@ components:
               enum: [409]
             code:
               type: string
-              enum: [gateway_not_enabled, submerchant_already_onboarded]
+              enum: [gateway_not_enabled, submerchant_already_onboarded, gateway_not_configured]
             existing_id:
               type: string
               format: uuid
