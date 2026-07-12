@@ -27,7 +27,8 @@ export type Capability =
   | 'events.manage_seating'
   | 'orders.resend_tickets'
   | 'promo_codes.manage'
-  | 'customers.view';
+  | 'customers.view'
+  | 'checkin.manage';
 export type CapabilityData = {
   name: string;
   is_financially_privileged: boolean;
@@ -38,6 +39,12 @@ export type CapabilityListData = {
 export type ChangeMembershipRoleData = {
   role_id: string;
 };
+export type CheckEventAssignmentData = {
+  user_id: string;
+  event_id: string;
+  capabilities: string[];
+};
+export type CheckInResult = 'accepted' | 'duplicate';
 export type CheckPromoCodeData = {
   code: string;
   hold_id: string;
@@ -259,7 +266,11 @@ export type ErrorCode =
   | 'gateway_not_enabled'
   | 'gateway_not_configured'
   | 'submerchant_already_onboarded'
-  | 'submerchant_not_active';
+  | 'submerchant_not_active'
+  | 'checkin_not_assigned';
+export type EventAssignmentData = {
+  authorized: boolean;
+};
 export type EventAvailabilityData = {
   event_id: string;
   ticket_types: TicketTypeAvailabilityData[];
@@ -614,6 +625,7 @@ export type SeatMapSummaryData = {
   created_at: string;
   updated_at: string;
 };
+export type SigningKeyStatus = 'active' | 'retired' | 'revoked';
 export type StaffTokenRequestData = {
   email: string;
   password: string;

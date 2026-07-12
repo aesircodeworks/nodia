@@ -102,6 +102,7 @@ test('the registry holds exactly the known codes', function () {
         'gateway_not_configured',
         'submerchant_already_onboarded',
         'submerchant_not_active',
+        'checkin_not_assigned',
     ]);
 });
 
@@ -202,6 +203,7 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'gateway_not_configured' => [ErrorCode::GatewayNotConfigured, 409, 'Gateway not configured', '/problems/gateway-not-configured'],
     'submerchant_already_onboarded' => [ErrorCode::SubmerchantAlreadyOnboarded, 409, 'Submerchant already onboarded', '/problems/submerchant-already-onboarded'],
     'submerchant_not_active' => [ErrorCode::SubmerchantNotActive, 409, 'Submerchant not active', '/problems/submerchant-not-active'],
+    'checkin_not_assigned' => [ErrorCode::CheckinNotAssigned, 403, 'Not assigned to event', '/problems/checkin-not-assigned'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

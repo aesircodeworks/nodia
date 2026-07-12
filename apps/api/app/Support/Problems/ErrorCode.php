@@ -105,6 +105,7 @@ enum ErrorCode: string
     case GatewayNotConfigured = 'gateway_not_configured';
     case SubmerchantAlreadyOnboarded = 'submerchant_already_onboarded';
     case SubmerchantNotActive = 'submerchant_not_active';
+    case CheckinNotAssigned = 'checkin_not_assigned';
 
     public function status(): int
     {
@@ -207,6 +208,7 @@ enum ErrorCode: string
             self::GatewayNotConfigured => 409,
             self::SubmerchantAlreadyOnboarded => 409,
             self::SubmerchantNotActive => 409,
+            self::CheckinNotAssigned => 403,
         };
     }
 
@@ -311,6 +313,7 @@ enum ErrorCode: string
             self::GatewayNotConfigured => 'Gateway not configured',
             self::SubmerchantAlreadyOnboarded => 'Submerchant already onboarded',
             self::SubmerchantNotActive => 'Submerchant not active',
+            self::CheckinNotAssigned => 'Not assigned to event',
         };
     }
 
