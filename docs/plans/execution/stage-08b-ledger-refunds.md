@@ -129,10 +129,22 @@ Run 2 recorded its header and stopped before executing tasks. Verified against t
 
 ### Task checklist
 
-- [ ] T13: finish and land the read endpoints: refund show and list, ledger entries with cursor pagination, ledger balances; contract, isolation, and drift gates green (slice 8)
+- [x] T13: finish and land the read endpoints: refund show and list, ledger entries with cursor pagination, ledger balances; contract, isolation, and drift gates green (slice 8)
 - [ ] T14: balance invariant scenario harness; roadmap and master-plan status table updates (slice 9)
 
 ### Task entries
+
+#### T13: land the refund and ledger read endpoints (2026-07-12 03:20 -03)
+
+Verified the uncommitted slice 8 implementation against the plan rather than rewriting it: RefundAndLedgerReadTest already covered refund show (200, cross-tenant/unknown 404, capability denial), refund index (cursor pagination newest-first, the payment_id/status/order_id allowlist, unknown-filter 400, tenant isolation), ledger-entries (cursor pagination, the five-filter allowlist including the created_at window, tenant isolation, capability denial), and ledger-balances (hand-computed per-currency/per-account sums with the debit-positive-for-receivable sign convention, tenant isolation, capability denial); all 12 tests passed on first run, so no test gaps needed filling. Confirmed the contract exercisers for all documented responses on the four endpoints already existed in DocumentedResponseCoverageTest and the ledger.view capability wiring (routes/admin.php, Capability::isFinanciallyPrivileged) was in place.
+
+While running the isolation suite I found a pre-existing bug, not introduced by this task's diff: LedgerEntryFixture (landed in T4) seeds two persistent tenants that the append-only ledger_entries trigger prevents deleting, but TenantFixture::clean (used by every other isolation test) deletes all tenants except the platform tenant, so any isolation test that ran after LedgerEntriesIsolationTest in the same process hit a foreign-key violation trying to sweep those two tenants, cascading into unique-constraint failures for every isolation test after that. Confirmed this predates T13 by stashing the working tree and rerunning the isolation suite against the committed state (same 97/256 failure). Fixed by excluding LedgerEntryFixture's two tenant ids from TenantFixture::clean's delete, scoped to test support code only.
+
+Landed: no application-code changes beyond the fix above; the read endpoints, Data classes, exception, OpenAPI paths, and generated types were already correct in the working tree. Also folded in the small already-present cleanups riding in the same uncommitted diff (Pint import-order fixes, RefundData::fromModel resolving order_id from the payment when the caller doesn't join it, the WebhookKind::RefundCompleted/RefundFailed match arms added to ReconcilePendingPayments and ProcessGatewayWebhook so refund webhooks routed to the sweeper or the reconciler don't attempt to re-apply the payment state machine, and ProblemRenderer detail strings for the six refund error codes).
+
+Evidence: RefundAndLedgerReadTest 12/12; DocumentedResponseCoverageTest 358/358; Isolation suite 256/256 (97/256 before the TenantFixture fix, confirmed pre-existing against the committed base); Payments filter 185/185; Orders filter 243/243; Outbox filter 141/141; `composer types:generate` produced no drift beyond the already-staged OpenAPI and generated-type changes; Pint clean on the dirty set; Larastan clean on the new/changed files. Commit 62819a6.
+
+Deviation: fixed TenantFixture::clean (test support code, not part of the plan's endpoint list) because it silently broke isolation-suite ordering for any test file after LedgerEntriesIsolationTest; the plan's exit criteria require the isolation suite green, and the root cause was in shared fixture code this task's endpoints depend on for their own isolation coverage.
 
 ### Review rounds
 
