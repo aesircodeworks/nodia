@@ -10,7 +10,7 @@
 
 - [x] T1 payments: extend GatewayAdapter with sub-merchant and payout operations, wire split-support flag, FakeGateway scenarios and webhook emitters (slice 1)
 - [x] T2 payments: submerchant_accounts migration with RLS, SubmerchantAccount model, SubmerchantStatus enum, factory, isolation tests (slice 2)
-- [ ] T3 identity: register payouts.manage capability, financially privileged, template role wiring
+- [x] T3 identity: register payouts.manage capability, financially privileged, template role wiring
 - [ ] T4 payments: StartSubmerchantOnboarding action, POST/list/detail endpoints, Data objects, OpenAPI, error codes, duplicate-start concurrency test (slice 2)
 - [ ] T5 payments: sub-merchant webhook normalization, transition Action, refresh endpoint, concurrency and duplicate-delivery tests (slice 3)
 - [ ] T6 payments: checkout offer and initiation gating on active sub-merchant, submerchant_not_active code (slice 4)
@@ -69,3 +69,23 @@ Test evidence (from `apps/api`):
 - `composer types:generate`: ran and committed regenerated output (SubmerchantStatus gained the `#[TypeScript]` attribute).
 
 No deviation from the plan's data model; the enum-creation timing deviation was already recorded under T1.
+
+#### T3: payouts.manage capability, financially privileged, template role wiring (2026-07-12)
+
+Landed:
+
+- `App\Identity\Capability::PayoutsManage = 'payouts.manage'`, added to the registry immediately after `PayoutsView`; `isFinanciallyPrivileged()` extended to mark it true, alongside `OrdersRefund`, `PayoutsView`, `LedgerView`.
+- `SeedTemplateRoles::templates()`: `payouts.manage` added to the `Owner` and `Finance` templates (the two roles already holding `payouts.view`), no other template touched.
+- Failing-first unit tests: `tests/Unit/Identity/CapabilityTest.php` (registry exact-membership test and the financially-privileged-set test both updated to include `payouts.manage`, verified failing against the pre-change enum before the enum edit landed), `tests/Unit/Identity/SeedTemplateRolesTest.php` (renamed the Finance assertion to `grants the Finance template every financially privileged capability` and added `PayoutsManage` to its expectation; `grants the Owner template every capability except tenants.manage` needed no edit since it already derives its expectation from `Capability::cases()` minus `TenantsManage`).
+
+Test evidence (from `apps/api`):
+
+- `php artisan test --filter=CapabilityTest`: confirmed failing (2 failures) against the test-first commit state, then passing after the implementation edit: 14 passed, 14 assertions.
+- `php artisan test --filter=SeedTemplateRolesTest`: 5 passed, 8 assertions.
+- `php artisan test --filter=AuthorizationMatrixTest`: 102 passed, 722 assertions.
+- `php artisan test --filter=MfaEnforcementPolicyTest`: 5 passed, 5 assertions.
+- `php artisan test --testsuite=Unit`: 845 passed, 2034 assertions (full unit regression).
+- `php artisan test --testsuite=Architecture`: 40 passed, 97 assertions.
+- `vendor/bin/pint --test` on all touched files: passed.
+
+No Data class changed, so `composer types:generate` was not run. No deviation from the plan: this is exactly the small, capability-registry-only task the plan describes, unblocking T4, T5, and T9.

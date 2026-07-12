@@ -10,7 +10,8 @@ use App\Identity\Capability;
  * events.manage_seating is stage-06's addition (Task breakdown item 10a).
  * orders.resend_tickets, promo_codes.manage, and customers.view are
  * stage-07's additions (Endpoints, "New capabilities registered in the
- * Stage 3 RBAC capability set").
+ * Stage 3 RBAC capability set"). payouts.manage is stage-08c's addition
+ * (Endpoints, capabilities paragraph).
  */
 
 it('carries the exact capability registry, no more and no less', function () {
@@ -26,6 +27,7 @@ it('carries the exact capability registry, no more and no less', function () {
         'orders.view',
         'orders.refund',
         'payouts.view',
+        'payouts.manage',
         'ledger.view',
         'checkin.scan',
         'seat_maps.manage',
@@ -36,13 +38,13 @@ it('carries the exact capability registry, no more and no less', function () {
     ]);
 });
 
-it('marks exactly orders.refund, payouts.view, and ledger.view as financially privileged', function () {
+it('marks exactly orders.refund, payouts.view, payouts.manage, and ledger.view as financially privileged', function () {
     $privileged = array_map(
         fn (Capability $capability): string => $capability->value,
         array_values(array_filter(Capability::cases(), fn (Capability $capability): bool => $capability->isFinanciallyPrivileged())),
     );
 
-    expect($privileged)->toBe(['orders.refund', 'payouts.view', 'ledger.view']);
+    expect($privileged)->toBe(['orders.refund', 'payouts.view', 'payouts.manage', 'ledger.view']);
 });
 
 it('marks every other capability as not financially privileged', function (Capability $capability) {

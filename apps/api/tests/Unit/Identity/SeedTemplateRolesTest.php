@@ -60,8 +60,12 @@ it('grants the Owner template every capability except tenants.manage', function 
     expect($owner->capabilities)->toEqualCanonicalizing($expected);
 });
 
-it('grants the Finance template both financially privileged capabilities', function () {
+it('grants the Finance template every financially privileged capability', function () {
     $finance = Role::query()->whereNull('tenant_id')->where('name', 'Finance')->firstOrFail();
 
-    expect($finance->capabilities)->toContain(Capability::OrdersRefund->value, Capability::PayoutsView->value);
+    expect($finance->capabilities)->toContain(
+        Capability::OrdersRefund->value,
+        Capability::PayoutsView->value,
+        Capability::PayoutsManage->value,
+    );
 });

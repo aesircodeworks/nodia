@@ -21,6 +21,7 @@ enum Capability: string
     case OrdersView = 'orders.view';
     case OrdersRefund = 'orders.refund';
     case PayoutsView = 'payouts.view';
+    case PayoutsManage = 'payouts.manage';
     case LedgerView = 'ledger.view';
     case CheckinScan = 'checkin.scan';
     case SeatMapsManage = 'seat_maps.manage';
@@ -38,7 +39,7 @@ enum Capability: string
     public function isFinanciallyPrivileged(): bool
     {
         return match ($this) {
-            self::OrdersRefund, self::PayoutsView, self::LedgerView => true,
+            self::OrdersRefund, self::PayoutsView, self::PayoutsManage, self::LedgerView => true,
             default => false,
         };
     }
