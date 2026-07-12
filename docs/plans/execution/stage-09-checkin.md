@@ -158,6 +158,6 @@ Two Architecture-suite additions were needed as the CheckIn context's first cont
 
 Test evidence: `php artisan test tests/Feature/CheckIn tests/Isolation/CheckInManifestEndpointIsolationTest.php tests/Unit/CheckIn` (31 passed, 67 assertions); `php artisan test --testsuite=Architecture` (40 passed, 97 assertions); `php artisan test --testsuite=Isolation` (296 passed, 584 assertions); `php artisan test --testsuite=Contract` (403 passed, 2585 assertions); `./vendor/bin/pint --dirty` clean (auto-fixed import ordering twice). One new Data class was added (`ManifestEntryData`), so `composer types:generate` was run and the regenerated `packages/api-client/src/generated/{index.ts,typescript-transformer-manifest.json}` are committed alongside.
 
-Commit: pending (this task's changes are committed together below).
+Commit: `7dc77d7` feat(checkin): add check-in manifest endpoint with cursor pagination.
 
 No deviations from the plan.
