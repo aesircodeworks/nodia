@@ -249,3 +249,23 @@ Codex review of Stage 9, round 1. Five findings; all four blocking/important add
 Test evidence: `php artisan test tests/Unit/CheckIn tests/Feature/CheckIn` (75 passed, 248 assertions); `php artisan test tests/Concurrency/CheckInScanContentionTest.php tests/Concurrency/CheckInBatchReconciliationContentionTest.php` (4 passed); `composer -d apps/api run lint` (Pint, passed); `composer -d apps/api run analyse` (Larastan, 0 errors). No Data class changed so no `types:generate` drift.
 
 Declined findings: none.
+
+## Review round 2 (2026-07-12 18:05:50 -03)
+
+Codex review of Stage 9, round 2. Six findings (one blocking, five important); all addressed in code, none declined.
+
+1. (Blocking) `App\CheckIn\Actions\ReconcileOfflineScans::attemptResolution` could exhaust all ten resolution attempts and throw (500) when the same `(device_id, client_scan_id)` was delivered concurrently: the loser's accepted insert tripped the unique index and fell through to the swap path, which locked the winner's row (same client_scan_id, so `beats()` is false), then re-inserted a duplicate carrying the same `(tenant_id, device_id, client_scan_id)` key, hitting that unique index on every retry. Fixed: after the accepted-insert catch, re-probe for the `(tenant_id, device_id, client_scan_id)` row and, when present, return it as the persisted replay outcome before entering the swap path; a genuine cross-device swap finds no such row and proceeds unchanged. Added a four-way parallel-delivery concurrency test asserting all-accepted outcomes, exactly one row, and one `TicketCheckedIn`.
+
+2. (Important) `App\Orders\Actions\VerifyCheckInQr::decode` checked only that `event_id`/`ticket_id` were strings; a non-UUID value reached the `event_signing_keys.event_id` (and `tickets.id`) uuid columns and raised a Postgres cast error (500) instead of the documented `qr_signature_invalid`. Fixed: `decode()` now rejects a payload whose `ticket_id` or `event_id` is not a UUID (`Str::isUuid`), yielding `SignatureInvalid`. Added two unit tests (non-UUID event_id, non-UUID ticket_id).
+
+3. (Important) `App\CheckIn\Http\Controllers\CheckInManifestController` passed `filter[updated_since]` straight into `CarbonImmutable::parse()`; an unparseable value threw and rendered a server error. Fixed: validate `updated_since` with the framework `date` rule before use, producing a 422 `request.validation_failed` problem document. Added an endpoint test for an invalid timestamp.
+
+4. (Important) OpenAPI `RecordScanRequest.client_scan_id` and `OfflineScan.client_scan_id` were unrestricted strings while the runtime rules require a UUID. Fixed: added `format: uuid` to both properties in `docs/openapi/openapi.yaml`.
+
+5. (Important) `check_ins.event_id` was a bare uuid column, not the FK to `events` the plan (Data model "check_ins") specifies. Fixed: changed to `foreignUuid('event_id')->constrained()`. Test teardowns already delete `check_ins` ahead of `events`.
+
+6. (Important) `event_signing_keys.event_id` was a bare uuid column, not the FK to `events` the plan (Data model "event_signing_keys") specifies. Fixed: changed to `foreignUuid('event_id')->constrained()`. Test teardowns already delete `event_signing_keys` ahead of `events`.
+
+Test evidence: `php artisan test --filter="Constraints|Reconcile|RecordScan"` (61 passed); `php artisan test --filter="VerifyCheckInQr|CheckInManifest"` (25 passed); `php artisan test --testsuite=Concurrency --filter=CheckInBatchReconciliation` (3 passed); `php artisan test --testsuite=Isolation --filter="CheckIn|EventSigningKey|RecordScan"` (27 passed); `php artisan test --testsuite=Feature --filter="CheckIn|Orders|Documented|ResponseSchema"` (178 passed); `composer -d apps/api run lint` (Pint, passed). No Data class changed, so no `types:generate` drift.
+
+Declined findings: none.
