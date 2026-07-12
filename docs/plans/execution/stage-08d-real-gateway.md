@@ -13,8 +13,8 @@ The launch gateway ADR does not exist yet (docs/decisions ends at 019), so only 
 - [x] 8d-1: Adapter conformance suite extracted from FakeGateway tests (slice 1)
 - [x] 8d-2: Recorded-fixture harness: loader, no-network guard, secret sanitizer guard, record command inert in CI (slice 2)
 - [x] 8d-3: PendingGatewayAdapter and skeleton verifier, offer exclusion, gateway_not_configured problem code (slice 3)
-- [ ] 8d-4: KYC abstraction hardening: data-driven status mapping, needs_review quarantine, conditional-UPDATE transitions (slice 4)
-- [ ] 8d-5: Sandbox drift detector and operational doc for recording fixtures and rotating webhook secrets (slice 8 detector, task 5)
+- [x] 8d-4: KYC abstraction hardening: data-driven status mapping, needs_review quarantine, conditional-UPDATE transitions (slice 4)
+- [x] 8d-5: Sandbox drift detector and operational doc for recording fixtures and rotating webhook secrets (slice 8 detector, task 5)
 
 ### Task 8d-1: adapter conformance suite (2026-07-12)
 
@@ -293,6 +293,80 @@ Test evidence (apps/api):
   0 errors.
 
 No deviation from the plan.
+
+### Task 8d-5: sandbox drift detector and operational doc (2026-07-12)
+
+Built the plan Slice 8 drift detector as the gateway-agnostic
+manually-triggered piece (task 5 does not include the ADR-pending real
+adapter/recorder implementation, only the detector skeleton and doc):
+
+- `app/Payments/Support/Fixtures/GatewayFixtureDriftDetector.php`:
+  `detect(gateway, scenario, GatewayFixtureRecorder $recorder)` replays
+  the scenario through the recorder's `record()` and diffs each returned
+  exchange, in order, against the committed fixture files matching
+  `{scenario}*.json` under `tests/Fixtures/gateways/{gateway}/`. Reports
+  a missing-fixture drift entry if no fixture exists yet for the
+  scenario, an exchange-count-mismatch entry if the live sandbox
+  returned a different number of exchanges, or a per-exchange diff entry
+  for any recorded/actual mismatch (compared via a recursive key-sorted
+  JSON normalization, matching `GatewayFixtureLoader`'s existing request
+  matcher convention).
+- `app/Console/Commands/CheckGatewayFixtureDriftCommand.php`:
+  `php artisan gateway:check-fixture-drift {slug} {scenario}`, the
+  manual trigger. Resolves the bound `GatewayFixtureRecorder` for the
+  slug from `config('payments.fixture_recorders')` (same lookup as the
+  record command), fails with a clear error if none is bound, otherwise
+  runs the detector and prints each drift entry's reason. This command
+  is inherently network-touching (it calls the recorder's live sandbox
+  request), so unlike the record command it carries no explicit
+  `payments.ci` guard of its own; it is never wired into the CI-per-PR
+  pipeline, matching the plan's "not CI-per-PR... manually triggered (and
+  optionally nightly)" instruction, and no recorder is bound in any
+  environment yet pending the ADR, so there is nothing for CI to
+  accidentally invoke.
+- `app/Payments/Support/Fixtures/README.md`: the operational doc living
+  beside the harness, covering obtaining sandbox credentials (secret
+  store, never committed, external KYC lead time called out), recording
+  fixtures with `gateway:record-fixtures` (export credentials, run the
+  command, diff and eyeball for secrets the sanitizer's known-format
+  patterns might miss, run the sanitizer guard test before committing),
+  checking for drift with the new `gateway:check-fixture-drift` command,
+  and rotating the webhook signing secret (add the new secret alongside
+  the old one so the verifier accepts both, confirm live deliveries
+  verify against the new one, then revoke the old one; documents the
+  brief 401 window if the chosen gateway cannot hold two secrets active
+  at once, per the plan's Risks section).
+
+Tests (failing first, per the double loop):
+- `tests/Unit/Payments/GatewayFixtureDriftDetectorTest.php`: no drift
+  when a fake recorder's returned exchange matches the committed
+  `examplegw/create-payment.json` fixture exactly; drift detected when
+  the recorder's exchange has a mutated response body field (the task's
+  required proof: mutate a fixture's counterpart and assert detection);
+  drift detected when the recorder returns a different number of
+  exchanges than were recorded; drift detected when no fixture exists
+  yet for the scenario being checked.
+- `tests/Feature/Payments/CheckGatewayFixtureDriftCommandTest.php`: the
+  command fails when no recorder is bound for the given slug (no real
+  recorder exists yet pending the ADR, so this is the only case
+  exercisable without live network access).
+
+No Data class changed; `composer types:generate` not run. No new
+tenant-scoped table; no isolation or concurrency test required (the
+detector and command touch no database state).
+
+Test evidence (apps/api):
+- `php artisan test --filter='GatewayFixtureDriftDetectorTest|CheckGatewayFixtureDriftCommandTest'`: 5 passed, 7 assertions.
+- `php artisan test tests/Unit/Payments tests/Feature/Payments`: 347 passed, 1362 assertions (no regression from the 342/1355 baseline recorded after task 8d-4).
+- `php artisan test --testsuite=Architecture`: 40 passed, 97 assertions.
+- `./vendor/bin/pint --test` (touched files): clean.
+- `./vendor/bin/phpstan analyse` (touched files, `--memory-limit=1G`): 0 errors.
+
+No deviation from the plan. This closes out plan tasks 1 through 5 (the
+gateway-agnostic slices); tasks 6 through 15 remain pending the launch
+gateway ADR.
+
+Commit: b5758ed
 
 ### Review rounds
 
