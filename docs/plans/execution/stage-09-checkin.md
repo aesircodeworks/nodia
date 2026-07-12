@@ -13,7 +13,7 @@ Nothing from this stage has landed: there is no `app/CheckIn` bounded context, n
 
 ### Task checklist
 
-- [ ] T1 `checkin.manage` capability and template-role wiring (identity)
+- [x] T1 `checkin.manage` capability and template-role wiring (identity)
 - [ ] T2 `check_ins` table with RLS, model, enum, factory, isolation tests (checkin)
 - [ ] T3 `check_in_assignments` table with RLS, model, factory, isolation tests (checkin)
 - [ ] T4 `event_signing_keys` table with RLS, model, enum, encrypted cast, factory, isolation tests (orders)
@@ -31,3 +31,15 @@ Nothing from this stage has landed: there is no `app/CheckIn` bounded context, n
 ### Review rounds
 
 ### Decisions and deviations
+
+#### T1: 2026-07-12
+
+Added `Capability::CheckinManage` (`checkin.manage`) to the registry and wired it into `SeedTemplateRoles`, granting it to the `Owner` and `Event Manager` global templates. `Owner` gains it automatically since `CapabilityTest::'grants the Owner template every capability except tenants.manage'` asserts the full registry minus `tenants.manage`; `Event Manager` was chosen deliberately as the second holder because the stage-09 authorization semantics describe `checkin.manage` as bypassing per-event assignment and managing assignments and signing keys, a natural extension of that role's existing event-management remit. `Check-in Agent` and `Box Office` keep only `checkin.scan`, unchanged from Stage 3.
+
+TDD: extended `CapabilityTest` (`carries the exact capability registry`, `marks every other capability as not financially privileged` dataset) and `SeedTemplateRolesTest` (`grants the Owner template every capability except tenants.manage`, new `grants the Event Manager template checkin.manage`) first; confirmed they failed against the unmodified enum (undefined `Capability::CheckinManage` case) before implementing.
+
+Test evidence: `php artisan test tests/Unit/Identity/CapabilityTest.php tests/Unit/Identity/SeedTemplateRolesTest.php tests/Unit/Identity/CapabilityGateTest.php tests/Isolation/RolesIsolationTest.php` (41 passed, 66 assertions); `php artisan test --testsuite=Feature --filter=Identity` (285 passed, 1553 assertions). No Data class changed, so `composer types:generate` was not run.
+
+Commit: `0c333ce` feat(identity): add checkin.manage capability and template wiring.
+
+No deviations from the plan.
