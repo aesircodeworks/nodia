@@ -448,4 +448,33 @@ Verification: `php artisan test --filter="GatewayFixtureLoader|GatewayFixtureDri
 (111 passed) and `--filter=PendingGatewayOfferAndInitiation` (3 passed);
 `composer -d apps/api run lint` passed.
 
+#### Review round 2 (2026-07-12 14:08 -03, Codex)
+
+Two important findings:
+
+1. (important) `app/Payments/Actions/StartSubmerchantOnboarding.php` -- onboarding
+   a registered-but-unconfigured skeleton gateway rethrows
+   `GatewayNotConfiguredException`, which the global map renders as a 409 with code
+   `gateway_not_configured`, but the `SubmerchantOnboardingConflictProblem` schema
+   only allowed `gateway_not_enabled` and `submerchant_already_onboarded`, so the
+   live response drifted from the contract. Fixed by aligning the contract with the
+   already-correct behavior (mirroring the payment-initiation 409, which documents
+   `gateway_not_configured`): added the code to the schema enum and both 409
+   descriptions in `docs/openapi/openapi.yaml`. Added a feature test onboarding a
+   `pending` gateway asserting 409 `gateway_not_configured`, `assertConformsToOpenApi`,
+   and that no stranded pending row survives the rolled-back gateway failure.
+2. (important) `app/Payments/Support/Fixtures/GatewayFixtureLoader.php` -- the fake
+   returned the first matching exchange for every request, so a fixture set recording
+   several exchanges for the same request signature (poll pending then active, retry
+   fail then succeed) replayed the first response forever and stranded async
+   scenarios. Fixed: per-signature replay cursors advance through matching exchanges
+   in recorded order and clamp to the last once exhausted; a single-exchange signature
+   still answers every call unchanged. Added a loader test recording two exchanges for
+   one GET and asserting `pending`, then `active`, then `active` (clamp).
+
+Verification: `php artisan test tests/Unit/Payments/GatewayFixtureLoaderTest.php
+tests/Feature/Payments/SubmerchantOnboardingTest.php` (24 passed) and
+`tests/Contract/DocumentedResponseCoverageTest.php` (385 passed);
+`composer -d apps/api run lint` passed.
+
 ### Decisions and deviations
