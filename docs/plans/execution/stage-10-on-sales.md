@@ -212,4 +212,4 @@ Test evidence (all run from `apps/api` against the real PostgreSQL test database
 
 Commits:
 
-- (pending, see final commit of this task)
+- `f12a6ba` feat(inventory): add queue join and position endpoints with the challenge hook
