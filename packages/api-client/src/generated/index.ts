@@ -500,6 +500,7 @@ export type PromoCodeDiscountType = 'percentage' | 'fixed_amount';
 export type RefreshTokenRequestData = {
   refresh_token: string;
 };
+export type RefundCommissionPolicy = 'returned' | 'retained';
 export type RegisterCustomerData = {
   email: string;
   name: string;
@@ -603,6 +604,8 @@ export type TenantData = {
   supported_locales: string[];
   enabled_gateways: string[];
   payout_schedule: Record<string, unknown> | null;
+  commission_bps: number;
+  refund_commission_policy: RefundCommissionPolicy;
   created_at: string;
   updated_at: string;
 };
@@ -687,6 +690,8 @@ export type UpdateTenantData = {
   supported_locales?: string[];
   enabled_gateways?: string[];
   payout_schedule?: Record<string, unknown> | null;
+  commission_bps?: number;
+  refund_commission_policy?: RefundCommissionPolicy;
 };
 export type UpdateTenantDomainData = {
   is_primary?: boolean;

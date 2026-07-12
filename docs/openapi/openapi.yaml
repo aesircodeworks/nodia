@@ -5157,6 +5157,8 @@ components:
         - supported_locales
         - enabled_gateways
         - payout_schedule
+        - commission_bps
+        - refund_commission_policy
         - created_at
         - updated_at
       properties:
@@ -5182,6 +5184,14 @@ components:
           description: >-
             Opaque configuration until the payouts stage defines and
             validates its schema.
+        commission_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+          description: Platform commission in basis points of gross.
+        refund_commission_policy:
+          type: string
+          enum: [returned, retained]
         created_at:
           type: string
           format: date-time
@@ -5232,6 +5242,13 @@ components:
             type: string
         payout_schedule:
           type: [object, 'null']
+        commission_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        refund_commission_policy:
+          type: string
+          enum: [returned, retained]
       additionalProperties: false
     TenantPage:
       type: object

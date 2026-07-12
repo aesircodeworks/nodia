@@ -36,6 +36,10 @@ Verified the Stage 8a coordination items landed as the 8b plan specifies, so not
 
 No code change required. T1 done.
 
+#### T2: tenant commission configuration (2026-07-11 22:50 -03)
+
+Slice 1 landed test-first: feature tests on PATCH /v1/tenants/{tenant} (update both fields, defaults on read, invalid policy and out-of-range bps rejected with request.validation_failed) and unit tests for the RefundCommissionPolicy enum and CommissionCalculator (bps of gross, round half up pinned at boundaries) were written and observed failing before any implementation. Additive tenants migration adds commission_bps (default 0) and refund_commission_policy (default retained), no format CHECK per the settlement_currency precedent. TenantData and UpdateTenantData extended, UpdateBranding applies the fields, OpenAPI Tenant and TenantUpdateRequest schemas updated, TypeScript regenerated. Tenant model carries attribute defaults so freshly created models serialize without a re-read (the two POST wire-shape tests caught this). Evidence: CommissionCalculatorTest 11/11, TenantEndpointsTest 28/28, Contract suite 340/340, Tenancy filter 260/260, api-client tsc clean.
+
 ### Review rounds
 
 ### Decisions and deviations

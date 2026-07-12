@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\Payments\Enums\RefundCommissionPolicy;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use Illuminate\Support\Facades\DB;
@@ -74,7 +75,8 @@ describe('POST /v1/tenants', function () {
             ->and($body['updated_at'])->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/')
             ->and(array_keys($body))->toBe([
                 'id', 'name', 'branding_settings', 'default_locale', 'supported_locales',
-                'enabled_gateways', 'payout_schedule', 'created_at', 'updated_at',
+                'enabled_gateways', 'payout_schedule', 'commission_bps',
+                'refund_commission_policy', 'created_at', 'updated_at',
             ]);
     });
 
@@ -280,6 +282,62 @@ describe('PATCH /v1/tenants/{tenant}', function () {
                 'enabled_gateways' => ['fake'],
             ]);
     });
+
+    it('updates the commission configuration', function () {
+        $tenant = createTenantRow();
+
+        $this->patchJson('/v1/tenants/'.$tenant->id, [
+            'commission_bps' => 250,
+            'refund_commission_policy' => 'returned',
+        ])
+            ->assertOk()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('commission_bps', 250)
+            ->assertJsonPath('refund_commission_policy', 'returned');
+
+        $fresh = app(TenantTransaction::class)->asPlatform(fn () => Tenant::query()->find($tenant->id));
+
+        expect($fresh->commission_bps)->toBe(250)
+            ->and($fresh->refund_commission_policy)->toBe(RefundCommissionPolicy::Returned);
+    });
+
+    it('defaults the commission configuration to zero bps with the retained policy', function () {
+        $tenant = createTenantRow();
+
+        $this->getJson('/v1/tenants/'.$tenant->id)
+            ->assertOk()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('commission_bps', 0)
+            ->assertJsonPath('refund_commission_policy', 'retained');
+    });
+
+    it('rejects an invalid refund commission policy with a request.validation_failed problem', function () {
+        $tenant = createTenantRow();
+
+        $response = $this->patchJson('/v1/tenants/'.$tenant->id, [
+            'refund_commission_policy' => 'sometimes',
+        ]);
+
+        $response->assertUnprocessable()
+            ->assertHeader('Content-Type', 'application/problem+json')
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.validation_failed');
+
+        expect($response->json('errors'))->toHaveKey('refund_commission_policy');
+    });
+
+    it('rejects an out-of-range commission_bps with a request.validation_failed problem', function (int|string $bps) {
+        $tenant = createTenantRow();
+
+        $response = $this->patchJson('/v1/tenants/'.$tenant->id, [
+            'commission_bps' => $bps,
+        ]);
+
+        $response->assertUnprocessable()
+            ->assertJsonPath('code', 'request.validation_failed');
+
+        expect($response->json('errors'))->toHaveKey('commission_bps');
+    })->with([-1, 10001, 'not-a-number']);
 
     it('returns a tenant_not_found problem for an unknown tenant id', function () {
         $this->patchJson('/v1/tenants/'.Str::uuid7(), ['name' => 'Ghost'])

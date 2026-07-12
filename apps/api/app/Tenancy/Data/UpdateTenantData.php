@@ -2,6 +2,8 @@
 
 namespace App\Tenancy\Data;
 
+use App\Payments\Enums\RefundCommissionPolicy;
+use Illuminate\Validation\Rule;
 use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Mappers\SnakeCaseMapper;
@@ -26,6 +28,10 @@ class UpdateTenantData extends Data
         #[TypeScriptOptional]
         #[LiteralTypeScriptType('Record<string, unknown> | null')]
         public array|Optional|null $payoutSchedule,
+        #[TypeScriptOptional]
+        public int|Optional $commissionBps,
+        #[TypeScriptOptional]
+        public RefundCommissionPolicy|Optional $refundCommissionPolicy,
     ) {}
 
     /**
@@ -41,6 +47,8 @@ class UpdateTenantData extends Data
             'enabled_gateways' => ['sometimes', 'array', 'list'],
             'enabled_gateways.*' => ['string', 'filled'],
             'payout_schedule' => ['sometimes', 'nullable', 'array'],
+            'commission_bps' => ['sometimes', 'integer', 'min:0', 'max:10000'],
+            'refund_commission_policy' => ['sometimes', Rule::enum(RefundCommissionPolicy::class)],
         ];
     }
 }

@@ -111,6 +111,8 @@ it('serializes TenantData with snake_case keys and ISO 8601 UTC timestamps', fun
         'supported_locales',
         'enabled_gateways',
         'payout_schedule',
+        'commission_bps',
+        'refund_commission_policy',
         'created_at',
         'updated_at',
     ])

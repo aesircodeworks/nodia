@@ -29,6 +29,14 @@ final class UpdateBranding
             $attributes['payout_schedule'] = $data->payoutSchedule;
         }
 
+        if (! $data->commissionBps instanceof Optional) {
+            $attributes['commission_bps'] = $data->commissionBps;
+        }
+
+        if (! $data->refundCommissionPolicy instanceof Optional) {
+            $attributes['refund_commission_policy'] = $data->refundCommissionPolicy;
+        }
+
         $defaultLocale = $data->defaultLocale;
 
         if ($defaultLocale instanceof Optional) {

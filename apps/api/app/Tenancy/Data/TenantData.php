@@ -2,6 +2,7 @@
 
 namespace App\Tenancy\Data;
 
+use App\Payments\Enums\RefundCommissionPolicy;
 use App\Tenancy\Models\Tenant;
 use Carbon\CarbonImmutable;
 use Spatie\LaravelData\Attributes\MapName;
@@ -26,6 +27,8 @@ class TenantData extends Data
         public array $enabledGateways,
         #[LiteralTypeScriptType('Record<string, unknown> | null')]
         public ?array $payoutSchedule,
+        public int $commissionBps,
+        public RefundCommissionPolicy $refundCommissionPolicy,
         public string $createdAt,
         public string $updatedAt,
     ) {}
@@ -54,6 +57,8 @@ class TenantData extends Data
             $tenant->supported_locales,
             $tenant->enabled_gateways,
             $tenant->payout_schedule,
+            $tenant->commission_bps,
+            $tenant->refund_commission_policy,
             CarbonImmutable::instance($tenant->created_at)->utc()->format('Y-m-d\TH:i:s\Z'),
             CarbonImmutable::instance($tenant->updated_at)->utc()->format('Y-m-d\TH:i:s\Z'),
         );
