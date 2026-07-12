@@ -24,7 +24,7 @@ Update this table when a stage starts and when it merges.
 | Stage 8a: Payments and Webhooks | Done |
 | Stage 8b: Ledger and Refunds | Done |
 | Stage 8c: Payouts and Sub-merchant Onboarding | Done |
-| Stage 8d: Real Gateway Adapter (gated on ADR) | Blocked on ADR |
+| Stage 8d: Real Gateway Adapter (gated on ADR) | In progress |
 | Stage 9: Check-in and Offline Reconciliation | Not started |
 | Stage 10: High-Demand On-Sales | Not started |
 | Stage 11: Reporting and Exports | Not started |
