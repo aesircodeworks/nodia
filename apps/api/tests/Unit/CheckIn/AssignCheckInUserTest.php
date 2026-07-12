@@ -9,7 +9,6 @@ use App\Identity\Enums\MembershipScope;
 use App\Identity\Models\Membership;
 use App\Identity\Models\Role;
 use App\Models\User;
-use App\Support\Tenancy\TenantContext;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use Illuminate\Support\Facades\DB;
@@ -66,7 +65,7 @@ afterEach(function (): void {
 it('creates an assignment for a member', function (): void {
     $data = app(TenantTransaction::class)->asTenant(
         $this->tenantId,
-        fn (): CheckInAssignmentData => (new AssignCheckInUser(app(TenantContext::class)))($this->eventId, $this->memberId),
+        fn (): CheckInAssignmentData => (app(AssignCheckInUser::class))($this->eventId, $this->memberId),
     );
 
     expect($data->eventId)->toBe($this->eventId)
@@ -77,7 +76,7 @@ it('rejects a user with no membership in the tenant', function (): void {
     $outsiderId = app(TenantTransaction::class)->asPlatform(fn () => User::factory()->create()->id);
 
     app(TenantTransaction::class)->asTenant($this->tenantId, function () use ($outsiderId): void {
-        expect(fn () => (new AssignCheckInUser(app(TenantContext::class)))($this->eventId, $outsiderId))
+        expect(fn () => (app(AssignCheckInUser::class))($this->eventId, $outsiderId))
             ->toThrow(UserNotMemberException::class);
     });
 
@@ -86,9 +85,9 @@ it('rejects a user with no membership in the tenant', function (): void {
 
 it('rejects a duplicate assignment for the same event and user', function (): void {
     app(TenantTransaction::class)->asTenant($this->tenantId, function (): void {
-        (new AssignCheckInUser(app(TenantContext::class)))($this->eventId, $this->memberId);
+        (app(AssignCheckInUser::class))($this->eventId, $this->memberId);
 
-        expect(fn () => (new AssignCheckInUser(app(TenantContext::class)))($this->eventId, $this->memberId))
+        expect(fn () => (app(AssignCheckInUser::class))($this->eventId, $this->memberId))
             ->toThrow(AlreadyAssignedException::class);
     });
 });

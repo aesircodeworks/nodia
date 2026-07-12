@@ -6,7 +6,7 @@ use App\CheckIn\Data\CheckInAssignmentData;
 use App\CheckIn\Exceptions\AlreadyAssignedException;
 use App\CheckIn\Exceptions\UserNotMemberException;
 use App\CheckIn\Models\CheckInAssignment;
-use App\Identity\Models\Membership;
+use App\Identity\Actions\CheckMembershipExists;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\UniqueConstraintViolationException;
 
@@ -20,18 +20,16 @@ use Illuminate\Database\UniqueConstraintViolationException;
  */
 final class AssignCheckInUser
 {
-    public function __construct(private readonly TenantContext $tenantContext) {}
+    public function __construct(
+        private readonly TenantContext $tenantContext,
+        private readonly CheckMembershipExists $checkMembershipExists,
+    ) {}
 
     public function __invoke(string $eventId, string $userId): CheckInAssignmentData
     {
         $tenantId = $this->tenantContext->tenantId();
 
-        $isMember = Membership::query()
-            ->where('tenant_id', $tenantId)
-            ->where('user_id', $userId)
-            ->exists();
-
-        if (! $isMember) {
+        if (! ($this->checkMembershipExists)($tenantId, $userId)) {
             throw UserNotMemberException::forUser($userId);
         }
 

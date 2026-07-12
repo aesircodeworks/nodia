@@ -3,7 +3,10 @@
 use App\CheckIn\CheckInServiceProvider;
 use App\CheckIn\Enums\CheckInResult;
 use App\CheckIn\Enums\ScanOutcome;
+use App\CheckIn\Exceptions\AlreadyAssignedException;
+use App\CheckIn\Exceptions\AssignmentNotFoundException;
 use App\CheckIn\Exceptions\BatchTooLargeException;
+use App\CheckIn\Exceptions\CheckInAssignmentEventNotFoundException;
 use App\CheckIn\Exceptions\CheckinNotAssignedException;
 use App\CheckIn\Exceptions\CheckInTicketCanceledException;
 use App\CheckIn\Exceptions\CheckInTicketNotFoundException;
@@ -13,6 +16,7 @@ use App\CheckIn\Exceptions\QrKeyRevokedException;
 use App\CheckIn\Exceptions\QrSignatureInvalidException;
 use App\CheckIn\Exceptions\ScannedAtInFutureException;
 use App\CheckIn\Exceptions\TicketRotationStaleException;
+use App\CheckIn\Exceptions\UserNotMemberException;
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\EventCatalogServiceProvider;
 use App\EventCatalog\Exceptions\CurrencyMismatchException as TicketTypeCurrencyMismatchException;
@@ -236,6 +240,11 @@ arch()->preset()->security();
 // QrVerificationOutcome (stage-09 task-08) is VerifyCheckInQr's typed
 // result registry and lives with Orders like SigningKeyStatus, not
 // App\Enums.
+// UserNotMemberException, AlreadyAssignedException,
+// AssignmentNotFoundException, and CheckInAssignmentEventNotFoundException
+// (stage-09 task-12) are the same story as the other CheckIn HasErrorCode
+// guard exceptions above: they live in App\CheckIn\Exceptions, not
+// App\Exceptions.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -411,5 +420,9 @@ arch()->preset()->laravel()->ignoring([
     CheckInTicketCanceledException::class,
     CheckInTicketRefundedException::class,
     BatchTooLargeException::class,
+    UserNotMemberException::class,
+    AlreadyAssignedException::class,
+    AssignmentNotFoundException::class,
+    CheckInAssignmentEventNotFoundException::class,
     'App\CheckIn\Models',
 ]);

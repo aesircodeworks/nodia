@@ -201,6 +201,19 @@ class ProblemRenderer
             ErrorCode::GatewayNotEnabled => "This gateway is not in the tenant's enabled_gateways.",
             ErrorCode::SubmerchantAlreadyOnboarded => 'A sub-merchant account for this tenant and gateway already exists.',
             ErrorCode::SubmerchantNotActive => 'This gateway has no active sub-merchant account for the resolved tenant.',
+            ErrorCode::CheckinNotAssigned => 'The acting user is not assigned to check in this event.',
+            ErrorCode::QrSignatureInvalid => 'The QR signature could not be verified against any of the event\'s signing keys.',
+            ErrorCode::QrKeyRevoked => 'The QR was signed with a key that has since been revoked.',
+            ErrorCode::TicketRotationStale => 'The QR carries a rotation counter older than the ticket\'s current one.',
+            ErrorCode::ScannedAtInFuture => 'The scanned_at timestamp is further in the future than this endpoint tolerates.',
+            ErrorCode::CheckInTicketNotFound => 'No ticket has this id for the resolved event.',
+            ErrorCode::CheckInTicketCanceled => 'This ticket belongs to a canceled order and cannot be checked in.',
+            ErrorCode::CheckInTicketRefunded => 'This ticket has been refunded and cannot be checked in.',
+            ErrorCode::TicketAlreadyCheckedIn => 'This ticket has already been checked in.',
+            ErrorCode::BatchTooLarge => 'The batch exceeds the maximum number of scans this endpoint accepts.',
+            ErrorCode::UserNotMember => 'The target user does not have a membership in this tenant.',
+            ErrorCode::AlreadyAssigned => 'This user is already assigned to check in this event.',
+            ErrorCode::AssignmentNotFound => 'No check-in assignment has this id for the resolved tenant.',
         };
     }
 }
