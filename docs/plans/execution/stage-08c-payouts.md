@@ -340,3 +340,20 @@ Codex code review of stage 8c produced two findings; both accepted and fixed.
 2. Important, `FakeGateway::normalizePayoutWebhook` (unvalidated `CarbonImmutable::parse` on untrusted payload). A malformed `executed_at` string on a webhook was parsed directly, throwing `InvalidFormatException` instead of normalizing the event as invalid, which left the persisted webhook unprocessed and subject to indefinite retries. Fixed by wrapping the parse in a try/catch that returns null (routing the event to the ignored path) on any parse failure. Test added to `FakeGatewayTest` (a `payout.status_changed` payload with a malformed `executed_at` normalizes to null).
 
 Verification: `php artisan test --filter="FakeGateway|SubmerchantOnboarding|PayoutWebhook"` (72 passed), and `composer -d apps/api run lint` (Pint passed). No Data class changed, so `types:generate` was not run.
+
+## Stage close-out (2026-07-12 07:04:06 -03)
+
+Final gate on HEAD 6f2836e (after all three review rounds):
+
+- `composer -d apps/api run lint`: passed (verified during the gate phase on this HEAD).
+- `composer -d apps/api run analyse`: passed, 0 errors (verified during the gate phase on this HEAD).
+- Full Pest suite: 2686 passed, 10860 assertions, all suites (Feature, Unit, Architecture, Isolation, Concurrency, Contract), run serially.
+
+Two environmental issues surfaced while running the final gate, neither a code defect:
+
+1. `composer run test` was killed by Composer's default 300-second process timeout; the suite now takes longer than that when run serially. The final gate ran Pest directly. The aborted run also left the `nodia_test` database with stale rows, which produced widespread foreign-key teardown failures on the next run until `migrate:fresh` rebuilt it.
+2. The suite exceeded the 512M `memory_limit` pinned in `apps/api/phpunit.xml`, fatal-erroring near the end of the run. Raised to 1024M in this close-out commit so local runs and CI have headroom.
+
+Review loop ended at the 3-round cap with each round's findings fully applied; round 3's fixes (6f2836e) were re-verified by lint, Larastan, and the full suite above rather than a fourth review round.
+
+Stage 8c is complete: all 12 tasks landed, the master plan status table row reads Done, and the capstone loop holds balanced books across the purchase, refund, and payout paths.
