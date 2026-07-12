@@ -5,7 +5,9 @@ namespace App\Payments;
 use App\Payments\Gateways\FakeGateway;
 use App\Payments\Gateways\FakeGatewayScenarios;
 use App\Payments\Gateways\GatewayRegistry;
+use App\Payments\Consumers\ProjectLedgerEntries;
 use App\Support\Outbox\EventTypeRegistry;
+use App\Support\Outbox\SubscriberRegistry;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -29,12 +31,18 @@ class PaymentsServiceProvider extends ServiceProvider
         ]));
     }
 
-    public function boot(EventTypeRegistry $registry): void
+    public function boot(EventTypeRegistry $registry, SubscriberRegistry $subscribers): void
     {
         $registry->register('PaymentInitiated');
         $registry->register('PaymentConfirmed');
         $registry->register('PaymentFailed');
         $registry->register('PaymentExpired');
+
+        $subscribers->register(
+            ProjectLedgerEntries::NAME,
+            ['PaymentConfirmed'],
+            $this->app->make(ProjectLedgerEntries::class),
+        );
 
         Route::middleware('tenancy.storefront')
             ->prefix('v1')

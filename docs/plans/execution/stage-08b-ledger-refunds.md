@@ -54,6 +54,10 @@ Deviation: the isolation fixture uses two dedicated persistent tenants and per-t
 
 Test-first: three failing tests appended to OrderedConsumptionTest through a new KeyedOrderedTestSubscriber fixture (cross-aggregate deferral on a shared payload key, no blocking across different keys, envelope-aggregate fallback when the payload lacks the field). New KeyedOrderedOutboxSubscriber interface with orderingKeyPayloadPath(); OrderedConsumption::isReady and hasUnprocessedPredecessor accept the optional key path and compare the jsonb payload field with bound parameters; ProcessOutboxDelivery derives the path from the handler. Evidence: OrderedConsumptionTest plus delivery dispatch and redis tests 15/15, OrderedOutboxConsumptionContentionTest 1/1.
 
+#### T6: ledger projection for PaymentConfirmed (2026-07-12 00:05 -03)
+
+Slice 4 test-first: LedgerProjectionTest written and observed failing before the consumer existed. Covers the payment_id ordering key, duplicate delivery producing exactly one four-leg set from row facts (10000/300/250/9450), deferral inside the stability window, the HTTP purchase through FakeGateway ending with four balanced entries after the sweeper re-enqueues the deferred sync delivery (the projection is the first ordered production consumer, so the sync-queue test path exercises defer plus sweep exactly as production would), and a replay rebuild equal row for row on the natural key after truncating the incremental ledger. ProjectLedgerEntries registered in PaymentsServiceProvider for PaymentConfirmed; RefundCompleted joins in T12. Evidence: LedgerProjectionTest 5/5; Payments, Outbox, and Orders filters 467/467.
+
 ### Review rounds
 
 ### Decisions and deviations
