@@ -24,5 +24,6 @@ class TicketRefundedPayload extends Data
         public string $eventId,
         public ?string $eventSeatId,
         public string $refundedAt,
+        public ?string $refundId = null,
     ) {}
 }

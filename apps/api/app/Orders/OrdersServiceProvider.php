@@ -36,6 +36,7 @@ class OrdersServiceProvider extends ServiceProvider
     {
         $registry->register('OrderCreated');
         $registry->register('TicketIssued');
+        $registry->register('TicketRefunded');
 
         $subscribers->register(
             CancelOrderOnHoldExpired::NAME,
