@@ -6,6 +6,8 @@ use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Mappers\SnakeCaseMapper;
 use Spatie\LaravelData\Optional;
+use Spatie\TypeScriptTransformer\Attributes\LiteralTypeScriptType;
+use Spatie\TypeScriptTransformer\Attributes\Optional as TypeScriptOptional;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
@@ -23,6 +25,8 @@ class InitiatePaymentData extends Data
      */
     public function __construct(
         public string $method,
+        #[TypeScriptOptional]
+        #[LiteralTypeScriptType('Record<string, unknown>')]
         public array|Optional $details,
     ) {}
 
