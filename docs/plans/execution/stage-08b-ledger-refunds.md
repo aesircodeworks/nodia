@@ -97,3 +97,23 @@ One test-only fix: the reservation contention fixture's payment lacked a gateway
 ### Review rounds
 
 ### Decisions and deviations
+
+## Run 2
+
+- Stage: 8b (docs/plans/stage-08b-ledger-refunds.md)
+- Date: 2026-07-11 23:48 -03
+- Branch: feat/api-implementation
+- Base commit: d38cc5564197ac51703d451f75738e4954d40518
+
+Run 1 landed T1 through T12 (commits 5a38340 through d38cc55). T13's implementation sits uncommitted in the working tree with RefundAndLedgerReadTest passing 10/10; it still needs full-gate verification and its commit. T14 has not started.
+
+### Task checklist
+
+- [ ] T13: finish and land the read endpoints: refund show and list, ledger entries with cursor pagination, ledger balances; contract, isolation, and drift gates green (slice 8)
+- [ ] T14: balance invariant scenario harness; roadmap and master-plan status table updates (slice 9)
+
+### Task entries
+
+### Review rounds
+
+### Decisions and deviations
