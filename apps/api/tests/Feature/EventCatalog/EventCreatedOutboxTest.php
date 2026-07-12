@@ -145,6 +145,7 @@ it('leaves no outbox row when the producing transaction rolls back after recordi
         '2026-08-01T21:00:00Z',
         'UTC',
         new Optional,
+        new Optional,
     );
 
     try {

@@ -166,11 +166,51 @@ describe('POST /v1/events', function () {
             ->and($body['start_at'])->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/')
             ->and($body['end_at'])->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/')
             ->and($body['async_payment_policy'])->toBe(['slow_methods_enabled' => true, 'low_inventory_cutoff' => null])
+            ->and($body['on_sale_policy'])->toBe(['high_demand' => false, 'admission_rate_per_minute' => null, 'challenge_required' => false])
             ->and(array_keys($body))->toBe([
                 'id', 'tenant_id', 'venue_id', 'seat_map_id', 'status', 'name', 'description', 'start_at', 'end_at',
-                'timezone', 'is_virtual', 'virtual_event_url', 'async_payment_policy', 'created_at', 'updated_at',
+                'timezone', 'is_virtual', 'virtual_event_url', 'async_payment_policy', 'on_sale_policy', 'created_at', 'updated_at',
             ]);
     });
+
+    it('accepts and returns on_sale_policy', function () {
+        $venue = makeEventVenue($this->tenantId);
+
+        $response = $this->postJson('/v1/events', gaEventPayload($venue->id, [
+            'on_sale_policy' => [
+                'high_demand' => true,
+                'admission_rate_per_minute' => 120,
+                'challenge_required' => true,
+            ],
+        ]));
+
+        $response->assertCreated()
+            ->assertConformsToOpenApi()
+            ->assertJson([
+                'on_sale_policy' => [
+                    'high_demand' => true,
+                    'admission_rate_per_minute' => 120,
+                    'challenge_required' => true,
+                ],
+            ]);
+    });
+
+    it('rejects an admission_rate_per_minute of zero or negative', function (int $rate) {
+        $venue = makeEventVenue($this->tenantId);
+
+        $response = $this->postJson('/v1/events', gaEventPayload($venue->id, [
+            'on_sale_policy' => ['high_demand' => true, 'admission_rate_per_minute' => $rate, 'challenge_required' => false],
+        ]));
+
+        $response->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.validation_failed');
+
+        expect($response->json('errors'))->toHaveKey('on_sale_policy.admission_rate_per_minute');
+    })->with([
+        'zero' => [0],
+        'negative' => [-1],
+    ]);
 
     it('creates a virtual event with a url and no venue', function () {
         $response = $this->postJson('/v1/events', virtualEventPayload());
@@ -479,6 +519,21 @@ describe('GET /v1/events/{event}', function () {
         expect($response->json('venue.id'))->toBe($venue->id);
     });
 
+    it('reads back the inactive default on_sale_policy for an event the factory created without one', function () {
+        $event = makeEventRow($this->tenantId);
+
+        $this->getJson('/v1/events/'.$event->id)
+            ->assertOk()
+            ->assertConformsToOpenApi()
+            ->assertJson([
+                'on_sale_policy' => [
+                    'high_demand' => false,
+                    'admission_rate_per_minute' => null,
+                    'challenge_required' => false,
+                ],
+            ]);
+    });
+
     it('embeds ticket_types when include=ticket_types is requested', function () {
         $event = makeEventRow($this->tenantId);
         makeEventTicketType($this->tenantId, $event->id, ['name' => 'VIP']);
@@ -532,6 +587,44 @@ describe('PATCH /v1/events/{event}', function () {
             ->assertConformsToOpenApi()
             ->assertJson(['name' => ['en' => 'Untouched'], 'timezone' => 'America/Chicago']);
     });
+
+    it('accepts and returns on_sale_policy', function () {
+        $event = makeEventRow($this->tenantId);
+
+        $this->patchJson('/v1/events/'.$event->id, [
+            'on_sale_policy' => [
+                'high_demand' => true,
+                'admission_rate_per_minute' => 30,
+                'challenge_required' => false,
+            ],
+        ])
+            ->assertOk()
+            ->assertConformsToOpenApi()
+            ->assertJson([
+                'on_sale_policy' => [
+                    'high_demand' => true,
+                    'admission_rate_per_minute' => 30,
+                    'challenge_required' => false,
+                ],
+            ]);
+    });
+
+    it('rejects an admission_rate_per_minute of zero or negative', function (int $rate) {
+        $event = makeEventRow($this->tenantId);
+
+        $response = $this->patchJson('/v1/events/'.$event->id, [
+            'on_sale_policy' => ['high_demand' => true, 'admission_rate_per_minute' => $rate, 'challenge_required' => false],
+        ]);
+
+        $response->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.validation_failed');
+
+        expect($response->json('errors'))->toHaveKey('on_sale_policy.admission_rate_per_minute');
+    })->with([
+        'zero' => [0],
+        'negative' => [-1],
+    ]);
 
     it('updates the venue/virtual trio together', function () {
         $event = makeEventRow($this->tenantId);

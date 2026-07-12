@@ -7000,6 +7000,24 @@ components:
           type: [integer, 'null']
           minimum: 0
       additionalProperties: false
+    OnSalePolicy:
+      type: object
+      description: >-
+        Per-event high-demand configuration (stage-10 plan, Data model
+        "events.on_sale_policy"): whether the event enforces the waiting
+        room, at what admission rate, and whether queue entry requires a
+        challenge response. Evolution is additive only.
+      properties:
+        high_demand:
+          type: boolean
+          default: false
+        admission_rate_per_minute:
+          type: [integer, 'null']
+          minimum: 1
+        challenge_required:
+          type: boolean
+          default: false
+      additionalProperties: false
     Event:
       type: object
       description: >-
@@ -7025,6 +7043,7 @@ components:
         - is_virtual
         - virtual_event_url
         - async_payment_policy
+        - on_sale_policy
         - created_at
         - updated_at
       properties:
@@ -7079,6 +7098,8 @@ components:
           format: uri
         async_payment_policy:
           $ref: '#/components/schemas/AsyncPaymentPolicy'
+        on_sale_policy:
+          $ref: '#/components/schemas/OnSalePolicy'
         created_at:
           type: string
           format: date-time
@@ -7131,6 +7152,8 @@ components:
           type: string
         async_payment_policy:
           $ref: '#/components/schemas/AsyncPaymentPolicy'
+        on_sale_policy:
+          $ref: '#/components/schemas/OnSalePolicy'
       additionalProperties: false
     EventUpdateRequest:
       type: object
@@ -7163,6 +7186,8 @@ components:
           type: string
         async_payment_policy:
           $ref: '#/components/schemas/AsyncPaymentPolicy'
+        on_sale_policy:
+          $ref: '#/components/schemas/OnSalePolicy'
         seat_map_id:
           type: [string, 'null']
           format: uuid

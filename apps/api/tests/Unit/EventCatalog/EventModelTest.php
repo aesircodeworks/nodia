@@ -1,6 +1,7 @@
 <?php
 
 use App\EventCatalog\Data\AsyncPaymentPolicyData;
+use App\EventCatalog\Data\OnSalePolicyData;
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Models\Event;
 use App\EventCatalog\Models\Venue;
@@ -74,6 +75,36 @@ it('preserves a non-default async_payment_policy through the cast', function () 
 
     expect($fresh->async_payment_policy->slowMethodsEnabled)->toBeFalse()
         ->and($fresh->async_payment_policy->lowInventoryCutoff)->toBe(10);
+});
+
+it('round-trips on_sale_policy through the OnSalePolicyData cast, reading back the inactive default for a row the factory never set it on', function () {
+    $event = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => Event::factory()->create(['tenant_id' => $this->tenantId]),
+    );
+
+    $fresh = $event->fresh();
+
+    expect($fresh->on_sale_policy)->toBeInstanceOf(OnSalePolicyData::class)
+        ->and($fresh->on_sale_policy->highDemand)->toBeFalse()
+        ->and($fresh->on_sale_policy->admissionRatePerMinute)->toBeNull()
+        ->and($fresh->on_sale_policy->challengeRequired)->toBeFalse();
+});
+
+it('preserves a non-default on_sale_policy through the cast', function () {
+    $event = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => Event::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'on_sale_policy' => new OnSalePolicyData(highDemand: true, admissionRatePerMinute: 50, challengeRequired: true),
+        ]),
+    );
+
+    $fresh = $event->fresh();
+
+    expect($fresh->on_sale_policy->highDemand)->toBeTrue()
+        ->and($fresh->on_sale_policy->admissionRatePerMinute)->toBe(50)
+        ->and($fresh->on_sale_policy->challengeRequired)->toBeTrue();
 });
 
 it('stores and retrieves locale-keyed name and description via HasTranslations', function () {

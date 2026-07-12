@@ -5,6 +5,7 @@ namespace App\EventCatalog\Actions;
 use App\EventCatalog\Data\AsyncPaymentPolicyData;
 use App\EventCatalog\Data\CreateEventData;
 use App\EventCatalog\Data\EventData;
+use App\EventCatalog\Data\OnSalePolicyData;
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Events\EventCreated;
 use App\EventCatalog\Models\Event;
@@ -50,6 +51,9 @@ final class CreateEvent
             'async_payment_policy' => $data->asyncPaymentPolicy instanceof Optional
                 ? new AsyncPaymentPolicyData
                 : $data->asyncPaymentPolicy,
+            'on_sale_policy' => $data->onSalePolicy instanceof Optional
+                ? new OnSalePolicyData
+                : $data->onSalePolicy,
         ]);
 
         $this->outbox->record(EventCreated::fromEvent($event));

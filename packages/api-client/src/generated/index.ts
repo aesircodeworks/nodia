@@ -97,6 +97,7 @@ export type CreateEventData = {
   end_at: string;
   timezone: string;
   async_payment_policy?: AsyncPaymentPolicyData;
+  on_sale_policy?: OnSalePolicyData;
 };
 export type CreateHoldData = {
   event_id: string;
@@ -322,6 +323,7 @@ export type EventData = {
   is_virtual: boolean;
   virtual_event_url: string | null;
   async_payment_policy: AsyncPaymentPolicyData;
+  on_sale_policy: OnSalePolicyData;
   created_at: string;
   updated_at: string;
   ticket_types?: TicketTypeData[];
@@ -498,6 +500,11 @@ export type OfflineScanData = {
   client_scan_id: string;
   qr_payload: string;
   scanned_at: string;
+};
+export type OnSalePolicyData = {
+  high_demand: boolean;
+  admission_rate_per_minute: number | null;
+  challenge_required: boolean;
 };
 export type OrderData = {
   id: string;
@@ -860,6 +867,7 @@ export type UpdateEventData = {
   end_at?: string;
   timezone?: string;
   async_payment_policy?: AsyncPaymentPolicyData;
+  on_sale_policy?: OnSalePolicyData;
   seat_map_id?: string | null;
 };
 export type UpdateEventSeatOperationData = {

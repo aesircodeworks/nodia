@@ -103,6 +103,10 @@ final class UpdateEvent
             $attributes['async_payment_policy'] = $data->asyncPaymentPolicy;
         }
 
+        if (! $data->onSalePolicy instanceof Optional) {
+            $attributes['on_sale_policy'] = $data->onSalePolicy;
+        }
+
         if (! $data->seatMapId instanceof Optional) {
             $attributes['seat_map_id'] = $data->seatMapId;
         }

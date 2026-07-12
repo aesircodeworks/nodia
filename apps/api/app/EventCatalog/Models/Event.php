@@ -3,6 +3,7 @@
 namespace App\EventCatalog\Models;
 
 use App\EventCatalog\Data\AsyncPaymentPolicyData;
+use App\EventCatalog\Data\OnSalePolicyData;
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Exceptions\InvalidEventVenueConfigurationException;
 use App\Identity\Capability;
@@ -47,6 +48,7 @@ use Spatie\Translatable\HasTranslations;
  * @property bool $is_virtual
  * @property string|null $virtual_event_url
  * @property AsyncPaymentPolicyData $async_payment_policy
+ * @property OnSalePolicyData $on_sale_policy
  * @property Carbon $created_at
  * @property Carbon $updated_at
  */
@@ -63,6 +65,7 @@ use Spatie\Translatable\HasTranslations;
     'is_virtual',
     'virtual_event_url',
     'async_payment_policy',
+    'on_sale_policy',
 ])]
 class Event extends Model implements HasMedia, HasMediaCapability
 {
@@ -165,6 +168,7 @@ class Event extends Model implements HasMedia, HasMediaCapability
             'end_at' => 'datetime',
             'is_virtual' => 'boolean',
             'async_payment_policy' => AsyncPaymentPolicyData::class,
+            'on_sale_policy' => OnSalePolicyData::class,
         ];
     }
 }

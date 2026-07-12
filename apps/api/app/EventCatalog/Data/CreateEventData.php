@@ -38,6 +38,7 @@ class CreateEventData extends Data
         public string $endAt,
         public string $timezone,
         public AsyncPaymentPolicyData|Optional $asyncPaymentPolicy,
+        public OnSalePolicyData|Optional $onSalePolicy,
     ) {}
 
     /**

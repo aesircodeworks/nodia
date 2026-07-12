@@ -44,6 +44,7 @@ class EventData extends Data
         public bool $isVirtual,
         public ?string $virtualEventUrl,
         public AsyncPaymentPolicyData $asyncPaymentPolicy,
+        public OnSalePolicyData $onSalePolicy,
         public string $createdAt,
         public string $updatedAt,
         #[DataCollectionOf(TicketTypeData::class)]
@@ -67,6 +68,7 @@ class EventData extends Data
             $event->is_virtual,
             $event->virtual_event_url,
             $event->async_payment_policy,
+            $event->on_sale_policy,
             CarbonImmutable::instance($event->created_at)->utc()->format('Y-m-d\TH:i:s\Z'),
             CarbonImmutable::instance($event->updated_at)->utc()->format('Y-m-d\TH:i:s\Z'),
             self::ticketTypesFromModel($event),

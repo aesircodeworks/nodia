@@ -44,6 +44,7 @@ class UpdateEventData extends Data
         public string|Optional $endAt,
         public string|Optional $timezone,
         public AsyncPaymentPolicyData|Optional $asyncPaymentPolicy,
+        public OnSalePolicyData|Optional $onSalePolicy,
         public string|Optional|null $seatMapId,
     ) {}
 
