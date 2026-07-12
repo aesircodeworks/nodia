@@ -177,7 +177,20 @@ final class FakeGateway implements GatewayAdapter
             return null;
         }
 
-        $executedAt = is_string($payload['executed_at'] ?? null) ? CarbonImmutable::parse($payload['executed_at']) : null;
+        $rawExecutedAt = $payload['executed_at'] ?? null;
+
+        if (is_string($rawExecutedAt)) {
+            // A malformed timestamp on an untrusted webhook is treated as an
+            // invalid payload (ignored), never allowed to throw and stall the
+            // webhook job into indefinite retries.
+            try {
+                $executedAt = CarbonImmutable::parse($rawExecutedAt);
+            } catch (\Throwable) {
+                return null;
+            }
+        } else {
+            $executedAt = null;
+        }
 
         return match ($payload['type'] ?? null) {
             'payout.created' => $this->normalizedPayoutCreated($accountReference, $reference, $status, $payload),

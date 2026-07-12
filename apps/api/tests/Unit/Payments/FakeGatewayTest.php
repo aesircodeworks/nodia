@@ -344,6 +344,18 @@ it('normalizes a payout status changed webhook payload with no amount', function
         ->and($normalized->executedAt)->toEqual($executedAt);
 });
 
+it('returns null normalizing a payout status webhook with a malformed executed_at', function (): void {
+    $normalized = $this->gateway->normalizePayoutWebhook([
+        'type' => 'payout.status_changed',
+        'account_reference' => 'fakesm_tenant-1',
+        'reference' => 'fake_po_1',
+        'status' => PayoutStatus::Paid->value,
+        'executed_at' => 'not-a-timestamp',
+    ]);
+
+    expect($normalized)->toBeNull();
+});
+
 it('returns null normalizing an unrelated webhook payload as a payout event', function (): void {
     $delivery = $this->gateway->confirmationWebhook('fake_pay_1', Money::of(100, 'BRL'));
     $parsed = $this->gateway->parseWebhook($delivery->body, $delivery->headers);

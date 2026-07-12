@@ -256,6 +256,18 @@ describe('GET /v1/submerchant-accounts', function (): void {
             ->assertJsonPath('code', 'invalid_query_parameter');
     });
 
+    it('rejects a caller-supplied sort with invalid_query_parameter', function (): void {
+        $headers = submerchantHeaders($this->tenantId, Capability::PayoutsView);
+
+        $this->getJson('/v1/submerchant-accounts?sort=created_at', $headers)
+            ->assertStatus(400)
+            ->assertJsonPath('code', 'invalid_query_parameter');
+
+        $this->getJson('/v1/submerchant-accounts?sort=-created_at', $headers)
+            ->assertStatus(400)
+            ->assertJsonPath('code', 'invalid_query_parameter');
+    });
+
     it('denies a bearer without payouts.view', function (): void {
         $this->getJson('/v1/submerchant-accounts', submerchantHeaders($this->tenantId, Capability::OrdersView))
             ->assertStatus(403)

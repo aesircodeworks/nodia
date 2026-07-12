@@ -30,9 +30,11 @@ class SubmerchantAccountController
     /**
      * Bounded per-tenant collection (at most one row per gateway), so
      * page pagination is acceptable per api-conventions. Allowed
-     * query-builder parameters are filter[gateway], filter[status]
-     * (exact) and sort=-created_at; unknown ones are rejected with 400
-     * invalid_query_parameter, never ignored.
+     * query-builder parameters are filter[gateway] and filter[status]
+     * (exact); unknown ones are rejected with 400 invalid_query_parameter,
+     * never ignored. Order is a fixed newest-first (-created_at), not a
+     * caller-adjustable sort, matching the PayoutController precedent, so
+     * no sorts are allowed.
      *
      * @return PaginatedDataCollection<int, SubmerchantAccountData>
      */
@@ -40,8 +42,8 @@ class SubmerchantAccountController
     {
         $accounts = QueryBuilder::for(SubmerchantAccount::class)
             ->allowedFilters(AllowedFilter::exact('gateway'), AllowedFilter::exact('status'))
-            ->allowedSorts('created_at')
-            ->defaultSort('-created_at')
+            ->allowedSorts()
+            ->orderByDesc('created_at')
             ->paginate()
             ->appends($request->query());
 
