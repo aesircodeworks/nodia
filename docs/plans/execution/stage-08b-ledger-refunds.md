@@ -148,6 +148,18 @@ Deviation: fixed TenantFixture::clean (test support code, not part of the plan's
 
 ### Review rounds
 
+#### Review round 1 (Sun Jul 12 01:53:51 -03 2026)
+
+Codex review of stage 8b, round 1. Three important findings, all fixed test-first where behavioral:
+
+1. Ledger pagination ordered only by `id`, not `(created_at, id)` (LedgerController.php). UUIDv7 id ordering is not equivalent to the plan's required chronology when timestamps are supplied independently or shared. Fixed: added `->orderBy('created_at')->orderBy('id')`. The transformed cursor paginator reads the ordering column off `LedgerEntryData`, whose property was `createdAt`, so I snake-cased it to `created_at` to match the cursor column (wire shape and generated types unchanged, since the SnakeCaseMapper already emitted `created_at`). Strengthened the RefundAndLedgerReadTest ordering case so the id order and created_at order disagree (a last-seeded, largest-id entry carrying the earliest timestamp must sort first).
+
+2. Partial refund with null `ticket_ids` voided every issued ticket (CreateRefund.php). Per the plan, an explicit selection voids those tickets; automatic void-all applies only to full refunds. Fixed: `resolveTicketSelection` now takes `$isFullRefund` (computed as `refunded_amount + amount === payment amount`, mirroring the completion path's exhausted check) and returns null (void all) only for full refunds, an empty list (void none) for a partial refund without a selection, and the validated selection otherwise. Foreign-ticket validation still runs regardless. Added two CreateRefundActionTest cases pinning the empty-selection and null-selection outcomes.
+
+3. `commission_policy` on RefundCompleted inferred from `commission_amount > 0` (RefundCompletedPayload.php and, identically, ProjectLedgerEntries.php). A `returned` policy with zero commission (e.g. `commission_bps = 0`) was wrongly reported as `retained`. Fixed by persisting the resolved policy as a refund row fact: additive migration adding `refunds.commission_policy` (default `retained`), model fillable/cast, factory default, set in CreateRefund from the resolved config; both the payload and the ledger projection now read `$refund->commission_policy`. Added a CreateRefundActionTest case: a returned-policy tenant whose refund rounds commission to zero records `Returned`.
+
+Evidence: RefundAndLedgerReadTest 12/12; CreateRefundActionTest, CreateRefundTest, RefundCompletionTest, LedgerProjectionTest, RefundExecutionTest, LedgerEntriesTest, LedgerInvariantHarnessTest, MarkTicketsRefundedTest 60/60; PresetTest 3/3; Pint clean; Larastan 0 errors; `composer types:generate` no drift. No findings declined.
+
 ### Decisions and deviations
 
 ### Gate
