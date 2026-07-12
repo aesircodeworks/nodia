@@ -69,7 +69,7 @@ Test evidence (apps/api):
 
 No Data class changed; `composer types:generate` not run.
 
-Commit: (recorded after commit below)
+Commit: a05dae2
 
 ### Review rounds
 
