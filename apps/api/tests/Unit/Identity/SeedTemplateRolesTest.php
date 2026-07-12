@@ -60,6 +60,12 @@ it('grants the Owner template every capability except tenants.manage', function 
     expect($owner->capabilities)->toEqualCanonicalizing($expected);
 });
 
+it('grants the Event Manager template checkin.manage', function () {
+    $eventManager = Role::query()->whereNull('tenant_id')->where('name', 'Event Manager')->firstOrFail();
+
+    expect($eventManager->capabilities)->toContain(Capability::CheckinManage->value);
+});
+
 it('grants the Finance template every financially privileged capability', function () {
     $finance = Role::query()->whereNull('tenant_id')->where('name', 'Finance')->firstOrFail();
 

@@ -11,7 +11,10 @@ use App\Identity\Capability;
  * orders.resend_tickets, promo_codes.manage, and customers.view are
  * stage-07's additions (Endpoints, "New capabilities registered in the
  * Stage 3 RBAC capability set"). payouts.manage is stage-08c's addition
- * (Endpoints, capabilities paragraph).
+ * (Endpoints, capabilities paragraph). checkin.manage is stage-09's
+ * addition (Task breakdown item 1): bypasses the per-event
+ * check_in_assignments requirement and manages assignments and signing
+ * keys.
  */
 
 it('carries the exact capability registry, no more and no less', function () {
@@ -35,6 +38,7 @@ it('carries the exact capability registry, no more and no less', function () {
         'orders.resend_tickets',
         'promo_codes.manage',
         'customers.view',
+        'checkin.manage',
     ]);
 });
 
@@ -60,4 +64,5 @@ it('marks every other capability as not financially privileged', function (Capab
     Capability::CheckinScan,
     Capability::SeatMapsManage,
     Capability::EventsManageSeating,
+    Capability::CheckinManage,
 ]);
