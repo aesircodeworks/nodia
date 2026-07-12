@@ -218,3 +218,33 @@ CI on branch feat/api-implementation, all green:
 - Packages run 29180975521: success
 - Storefront run 29180975528: success
 - Checkin run 29180975527: success
+
+### Close-out
+
+Sat Jul 12 02:31:00 -03 2026 (America/Sao_Paulo)
+
+Final summary of the stage 8b run.
+
+- Tasks: 14 of 14 plan tasks complete. The orchestrated run planned 2 remaining tasks (T13, T14); T13 landed in-run (commit 62819a6 plus fixes) and T14 (the invariant harness and status close-out) was briefly flagged blocked pending the full-suite confirmation, then completed and committed as c60acb5 with the status flip in 7855b41. Nothing remains blocked.
+- Local gate: green. Pint passed, Larastan 0 errors, all Pest suites 2500/2500 (final re-run after review fixes), types:generate produced no contract drift, pnpm typecheck green across all five TS workspaces.
+- Ship: pushed to origin/feat/api-implementation. CI all green on commit 7855b41 (API 29180975506, Admin 29180975503, Packages 29180975521, Storefront 29180975528, Checkin 29180975527) and again on the docs commit 612ccd8 (API 29181115508, Admin 29181115507, Packages 29181115529, Storefront 29181115510, Checkin 29181115548).
+- Review: three Codex rounds, five actionable findings total (3, 1, 1), all fixed test-first (commits 12ff909, 5273630, 12e8829). No findings declined or left unresolved; the loop ended because each round's findings were fixed and verified, not because a round came back clean.
+- Deviations already journaled: TenantFixture::clean exclusion for the append-only ledger fixture tenants, and dropping the ledger_entries tenant foreign key (activity_log precedent). The roadmap's Implementation Status table tracks roadmap phases, not API-plan stages (phases 1 through 7 still read Not started from earlier stages), so the stage-level flip lives in the api-implementation-plan status table per established practice.
+
+Exit criteria walk (docs/plans/stage-08b-ledger-refunds.md):
+
+1. Full refund over HTTP completes async, order refunded, tickets voided, ledger balanced: met. RefundExecutionTest and RefundCompletionTest (Feature/Payments) cover the HTTP-to-FakeGateway path end to end; LedgerProjectionTest asserts the balanced legs.
+2. Partial refunds accumulate, final partial exhausts to refunded, no overshoot under concurrency: met. CreateRefundActionTest and RefundCompletionTest cover accumulation and exhaustion; Concurrency/RefundReservationContentionTest and RefundCompletionContentionTest prove the parallel guarantees (including the round-3 fix in 12e8829).
+3. Both commission policies produce the specified legs, per-currency debits equal credits per reference: met. LedgerProjectionTest and Unit/Payments/LedgerEntriesTest pin the leg sets; LedgerInvariantHarnessTest asserts the balance invariant after every step of randomized scripted scenarios.
+4. Duplicate event deliveries and duplicate webhooks are idempotent: met. RefundCompletionTest and LedgerProjectionTest duplicate-delivery cases; ProcessGatewayWebhook duplicate-webhook coverage in RefundExecutionTest.
+5. Idempotency-Key replay and reuse-mismatch on refund creation: met. CreateRefundTest covers replay returning the original result and idempotency_key_reuse_mismatch on a different body.
+6. Replay-rebuilt ledger matches the incremental one row for row on the natural key: met. LedgerInvariantHarnessTest performs the full outbox replay rebuild and compares on (source_event_id, account, direction, amount, currency, reference_type, reference_id, tenant_id).
+7. UPDATE and DELETE on ledger_entries fail at the database level: met. Trigger-based denial asserted in LedgerEntriesIsolationTest (and it is what forced the tenant-FK fix in 50d5f2c).
+8. Isolation suite covers refunds, ledger_entries, and every new endpoint: met. RefundsIsolationTest, LedgerEntriesIsolationTest, RefundReadEndpointsIsolationTest, LedgerReadEndpointsIsolationTest (the last two added in review round 2, commit 5273630); isolation suite 260/260.
+9. Refund creation denied without capability or MFA, mutations in the activity log: met. CreateRefundTest covers capability and MFA denial and activity-log entries; ledger.view seeded to Owner and Finance in 13a42fc.
+10. Declined or errored refund leaves order paid, releases reservations exactly once, dead-letters after 3 attempts: met. RefundExecutionTest decline, error, and dead-letter cases.
+11. Stuck processing refund resolved by the sweeper, late webhook a no-op: met. RefundExecutionTest and RefundCompletionTest sweeper and late-webhook cases through ReconcilePendingPayments.
+12. Endpoints in openapi.yaml, conformance and drift gates green, Larastan and Pint clean, all suites green in composer test and CI: met. /v1/payments/{payment}/refunds, /v1/refunds, /v1/refunds/{refund}, /v1/ledger-entries, /v1/ledger-balances documented; DocumentedResponseCoverageTest 358/358; drift, Pint, Larastan, and all six suites green locally and on the CI runs above.
+13. Master plan status table marks Stage 8b: met. docs/api-implementation-plan.md line 25 reads Done (commit 7855b41).
+
+All 13 exit criteria are met; the status table entry Done stands.
