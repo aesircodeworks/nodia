@@ -78,7 +78,8 @@ it('creates a ticket type scoped to the parent event and tenant, returning its T
         ->and($result->name)->toBe('General Admission')
         ->and($result->price->amount)->toBe(5000)
         ->and($result->price->currency)->toBe('USD')
-        ->and($result->requiresSeat)->toBeFalse();
+        ->and($result->requiresSeat)->toBeFalse()
+        ->and($result->maxPerCustomer)->toBeNull();
 
     $ticketType = app(TenantTransaction::class)->asTenant(
         $this->tenantId,
@@ -87,6 +88,30 @@ it('creates a ticket type scoped to the parent event and tenant, returning its T
 
     expect($ticketType)->not->toBeNull()
         ->and($ticketType->tenant_id)->toBe($this->tenantId);
+});
+
+it('persists an explicit max_per_customer', function () {
+    $data = CreateTicketTypeData::from([
+        'name' => 'General Admission',
+        'price' => ['amount' => 5000, 'currency' => 'USD'],
+        'sales_start' => null,
+        'sales_end' => null,
+        'max_per_customer' => 4,
+    ]);
+
+    $result = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(CreateTicketType::class)($this->event, $data),
+    );
+
+    expect($result->maxPerCustomer)->toBe(4);
+
+    $ticketType = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => TicketType::query()->find($result->id),
+    );
+
+    expect($ticketType->max_per_customer)->toBe(4);
 });
 
 it('defaults requires_seat to false when absent from the payload', function () {

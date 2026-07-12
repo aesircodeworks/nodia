@@ -68,6 +68,10 @@ final class UpdateTicketType
             $attributes['requires_seat'] = $data->requiresSeat;
         }
 
+        if (! $data->maxPerCustomer instanceof Optional) {
+            $attributes['max_per_customer'] = $data->maxPerCustomer;
+        }
+
         // The effective requires_seat value after this PATCH: the given
         // value, or the persisted one when the payload leaves it untouched
         // (UpdateTicketTypeData docblock: a Data class cannot read the

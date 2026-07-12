@@ -19,7 +19,10 @@ use Illuminate\Support\Carbon;
  * posture. price is a virtual attribute App\Support\Money\MoneyCast casts
  * onto price_amount/currency (never bare on the wire, ADR 018);
  * requires_seat ships now as a stable column Stage 6 will read (nothing
- * here references seats).
+ * here references seats). max_per_customer is stage-10's per-ticket-type
+ * purchase limit (null means unlimited); Inventory reads it only through
+ * App\EventCatalog\Data\HoldableTicketTypeData, never this model directly
+ * (system-design 3.1, tests/Architecture/ContextBoundariesTest.php).
  *
  * @property string $id
  * @property string $tenant_id
@@ -29,6 +32,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $sales_start
  * @property Carbon|null $sales_end
  * @property bool $requires_seat
+ * @property int|null $max_per_customer
  * @property Carbon $created_at
  * @property Carbon $updated_at
  */
@@ -40,6 +44,7 @@ use Illuminate\Support\Carbon;
     'sales_start',
     'sales_end',
     'requires_seat',
+    'max_per_customer',
 ])]
 class TicketType extends Model
 {
@@ -64,6 +69,7 @@ class TicketType extends Model
             'sales_start' => 'datetime',
             'sales_end' => 'datetime',
             'requires_seat' => 'boolean',
+            'max_per_customer' => 'integer',
         ];
     }
 }

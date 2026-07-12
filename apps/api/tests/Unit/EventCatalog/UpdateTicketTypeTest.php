@@ -262,3 +262,62 @@ it('throws a validation exception for a quantity given alongside requires_seat t
 
     expect($inventory)->toBeNull();
 });
+
+it('updates max_per_customer when given', function () {
+    $data = UpdateTicketTypeData::from(['max_per_customer' => 4]);
+
+    $result = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(UpdateTicketType::class)($this->ticketType, $data),
+    );
+
+    expect($result->maxPerCustomer)->toBe(4);
+});
+
+it('allows lowering max_per_customer below an existing value', function () {
+    app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => $this->ticketType->update(['max_per_customer' => 100]),
+    );
+
+    $data = UpdateTicketTypeData::from(['max_per_customer' => 1]);
+
+    $result = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(UpdateTicketType::class)($this->ticketType->fresh(), $data),
+    );
+
+    expect($result->maxPerCustomer)->toBe(1);
+});
+
+it('leaves max_per_customer untouched when absent from the payload', function () {
+    app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => $this->ticketType->update(['max_per_customer' => 5]),
+    );
+
+    $data = UpdateTicketTypeData::from(['name' => 'Renamed']);
+
+    $result = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(UpdateTicketType::class)($this->ticketType->fresh(), $data),
+    );
+
+    expect($result->maxPerCustomer)->toBe(5);
+});
+
+it('clears max_per_customer when explicitly set to null', function () {
+    app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => $this->ticketType->update(['max_per_customer' => 5]),
+    );
+
+    $data = UpdateTicketTypeData::from(['max_per_customer' => null]);
+
+    $result = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(UpdateTicketType::class)($this->ticketType->fresh(), $data),
+    );
+
+    expect($result->maxPerCustomer)->toBeNull();
+});

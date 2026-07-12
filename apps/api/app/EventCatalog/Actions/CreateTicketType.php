@@ -67,6 +67,7 @@ final class CreateTicketType
             'sales_start' => $data->salesStart,
             'sales_end' => $data->salesEnd,
             'requires_seat' => $requiresSeat,
+            'max_per_customer' => $data->maxPerCustomer instanceof Optional ? null : $data->maxPerCustomer,
         ]);
 
         if (! $requiresSeat) {

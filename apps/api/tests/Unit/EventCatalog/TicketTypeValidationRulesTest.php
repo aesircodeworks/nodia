@@ -139,3 +139,78 @@ it('requires price.amount and price.currency together when price is given on upd
     expect($validator->fails())->toBeTrue()
         ->and($validator->errors()->has('price.currency'))->toBeTrue();
 });
+
+/*
+ * Stage-10 plan, Data model "ticket_types.max_per_customer" and TDD
+ * Slice 1 (Unit, first): CreateTicketTypeData/UpdateTicketTypeData's
+ * `> 0` request validation, mirroring quantity's own `min:0` coverage
+ * above (max_per_customer is stricter: null is the "unlimited" sentinel,
+ * so zero itself is rejected rather than accepted like quantity's zero).
+ */
+it('accepts a create payload omitting max_per_customer', function () {
+    $validator = Validator::make(validCreateTicketTypePayload(), CreateTicketTypeData::rules(), [], []);
+    CreateTicketTypeData::withValidator($validator);
+
+    expect($validator->fails())->toBeFalse();
+});
+
+it('accepts a null max_per_customer on create', function () {
+    $validator = Validator::make(
+        validCreateTicketTypePayload(['max_per_customer' => null]),
+        CreateTicketTypeData::rules(),
+        [],
+        [],
+    );
+    CreateTicketTypeData::withValidator($validator);
+
+    expect($validator->fails())->toBeFalse();
+});
+
+it('accepts a positive max_per_customer on create', function () {
+    $validator = Validator::make(
+        validCreateTicketTypePayload(['max_per_customer' => 4]),
+        CreateTicketTypeData::rules(),
+        [],
+        [],
+    );
+    CreateTicketTypeData::withValidator($validator);
+
+    expect($validator->fails())->toBeFalse();
+});
+
+it('rejects a zero or negative max_per_customer on create', function (int $value) {
+    $validator = Validator::make(
+        validCreateTicketTypePayload(['max_per_customer' => $value]),
+        CreateTicketTypeData::rules(),
+    );
+
+    expect($validator->fails())->toBeTrue()
+        ->and($validator->errors()->has('max_per_customer'))->toBeTrue();
+})->with([
+    'zero' => [0],
+    'negative' => [-1],
+]);
+
+it('rejects a zero or negative max_per_customer on update', function (int $value) {
+    $validator = Validator::make(['max_per_customer' => $value], UpdateTicketTypeData::rules());
+
+    expect($validator->fails())->toBeTrue()
+        ->and($validator->errors()->has('max_per_customer'))->toBeTrue();
+})->with([
+    'zero' => [0],
+    'negative' => [-1],
+]);
+
+it('accepts an update payload leaving max_per_customer untouched', function () {
+    $validator = Validator::make(['name' => 'Renamed'], UpdateTicketTypeData::rules(), [], []);
+    UpdateTicketTypeData::withValidator($validator);
+
+    expect($validator->fails())->toBeFalse();
+});
+
+it('accepts an update payload explicitly clearing max_per_customer to null', function () {
+    $validator = Validator::make(['max_per_customer' => null], UpdateTicketTypeData::rules(), [], []);
+    UpdateTicketTypeData::withValidator($validator);
+
+    expect($validator->fails())->toBeFalse();
+});

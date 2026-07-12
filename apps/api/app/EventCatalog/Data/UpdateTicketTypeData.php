@@ -24,7 +24,13 @@ use Spatie\LaravelData\Optional;
  * expressed here for the same reason: a PATCH omitting requires_seat
  * gives no signal about the ticket type's persisted value, so
  * App\EventCatalog\Actions\UpdateTicketType re-checks against the loaded
- * model before delegating to Inventory.
+ * model before delegating to Inventory. max_per_customer is stage-10's
+ * additive per-ticket-type purchase limit (Data model
+ * "ticket_types.max_per_customer"), Optional|null like salesStart/
+ * salesEnd: absent leaves the stored value untouched, an explicit null
+ * clears it to unlimited, and lowering it below a customer's existing
+ * purchase counter is explicitly allowed (stage-10 plan, Admin) since
+ * enforcement only blocks holds going forward.
  */
 #[MapName(SnakeCaseMapper::class)]
 class UpdateTicketTypeData extends Data
@@ -38,6 +44,7 @@ class UpdateTicketTypeData extends Data
         public string|Optional|null $salesEnd,
         public bool|Optional $requiresSeat,
         public int|Optional $quantity,
+        public int|Optional|null $maxPerCustomer,
     ) {}
 
     /**
@@ -54,6 +61,7 @@ class UpdateTicketTypeData extends Data
             'sales_end' => ['sometimes', 'nullable', 'date'],
             'requires_seat' => ['sometimes', 'boolean'],
             'quantity' => ['sometimes', 'integer', 'min:0'],
+            'max_per_customer' => ['sometimes', 'nullable', 'integer', 'min:1'],
         ];
     }
 

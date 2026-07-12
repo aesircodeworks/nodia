@@ -13,7 +13,10 @@ use Spatie\LaravelData\Mappers\SnakeCaseMapper;
 /**
  * Admin surface response shape (stage-05a plan, Endpoints: "TicketTypeData
  * carries price as the {amount, currency} object via the Stage 1 Money
- * transformer; price_amount never appears bare on the wire").
+ * transformer; price_amount never appears bare on the wire"). max_per_customer
+ * is stage-10's additive per-ticket-type purchase limit (Data model
+ * "ticket_types.max_per_customer"); null means unlimited, including for
+ * every ticket type that existed before this column landed.
  */
 #[MapName(SnakeCaseMapper::class)]
 class TicketTypeData extends Data
@@ -27,6 +30,7 @@ class TicketTypeData extends Data
         public ?string $salesStart,
         public ?string $salesEnd,
         public bool $requiresSeat,
+        public ?int $maxPerCustomer,
         public string $createdAt,
         public string $updatedAt,
     ) {}
@@ -42,6 +46,7 @@ class TicketTypeData extends Data
             self::formatNullableTimestamp($ticketType->sales_start),
             self::formatNullableTimestamp($ticketType->sales_end),
             $ticketType->requires_seat,
+            $ticketType->max_per_customer,
             CarbonImmutable::instance($ticketType->created_at)->utc()->format('Y-m-d\TH:i:s\Z'),
             CarbonImmutable::instance($ticketType->updated_at)->utc()->format('Y-m-d\TH:i:s\Z'),
         );

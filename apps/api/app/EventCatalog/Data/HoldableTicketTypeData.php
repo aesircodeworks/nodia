@@ -14,7 +14,10 @@ use Spatie\TypeScriptTransformer\Attributes\Hidden;
  * App\EventCatalog\Models\TicketType directly (system-design 3.1
  * boundary rule, tests/Architecture/ContextBoundariesTest.php). Hidden
  * from TypeScript generation: this is an internal cross-context read
- * model, not a wire contract.
+ * model, not a wire contract. maxPerCustomer is stage-10's additive
+ * per-ticket-type purchase limit (Data model
+ * "ticket_types.max_per_customer"): this is the only path Inventory may
+ * read it through; null means unlimited.
  */
 #[Hidden]
 class HoldableTicketTypeData extends Data
@@ -24,6 +27,7 @@ class HoldableTicketTypeData extends Data
         public bool $requiresSeat,
         public ?CarbonInterface $salesStart,
         public ?CarbonInterface $salesEnd,
+        public ?int $maxPerCustomer,
     ) {}
 
     public static function fromModel(TicketType $ticketType): self
@@ -33,6 +37,7 @@ class HoldableTicketTypeData extends Data
             $ticketType->requires_seat,
             $ticketType->sales_start,
             $ticketType->sales_end,
+            $ticketType->max_per_customer,
         );
     }
 }

@@ -22,7 +22,7 @@ Dependencies are in place: Stage 6 (`CreateHold`, `ReleaseHold`, `CommitHold`, `
 ### Task checklist
 
 - [x] T1 `on_sale_policy` column, `OnSalePolicyData`, event create/update/read contracts, OpenAPI, TypeScript (catalog)
-- [ ] T2 `max_per_customer` column, ticket type contracts, and the Catalog Action read surface exposing it to Inventory (catalog)
+- [x] T2 `max_per_customer` column, ticket type contracts, and the Catalog Action read surface exposing it to Inventory (catalog)
 - [ ] T3 `config/onsale.php` and the named rate limiter tiers with 429 problem-document coverage (inventory)
 - [ ] T4 `purchase_counters` table with RLS and CHECK, model, guarded upsert and decrement operations (inventory)
 - [ ] T5 Purchase-limit enforcement in the hold lifecycle, `counted_quantity` on hold items, `customer_required`, concurrency simulation (inventory)
@@ -64,3 +64,29 @@ Test evidence (all run from `apps/api` against the real PostgreSQL test database
 Commits:
 
 - `12df8c3` feat(catalog): add events.on_sale_policy and thread it through event contracts
+
+### T2: `max_per_customer` column, ticket type contracts, and the Catalog Action read surface (2026-07-12)
+
+Landed the ticket type half of TDD Slice 1 (stage-10 plan, task breakdown item 3), independent of T1:
+
+- Additive migration `2026_07_12_000053_add_max_per_customer_to_ticket_types_table.php` adds `ticket_types.max_per_customer` integer, nullable, with a CHECK `max_per_customer is null or max_per_customer > 0` (defense in depth behind the request-layer `min:1` validation, mirroring `ticket_types_price_amount_non_negative`'s own precedent from the creating migration). No column `DEFAULT` was needed unlike `events.on_sale_policy`: the column is nullable, so every pre-existing row already reads back null (unlimited) on a plain `ADD COLUMN` with no backfill required. No RLS policy change needed; `ticket_types` already carries its Stage 5a policy.
+- `CreateTicketTypeData`/`UpdateTicketTypeData` gained `maxPerCustomer` (`int|Optional|null`, rule `sometimes|nullable|integer|min:1`): omitted or explicit null means unlimited on create; on update, omitted leaves the stored value untouched and explicit null clears it, mirroring `salesStart`/`salesEnd`'s own Optional-or-null precedent rather than `quantity`'s Optional-only one, since `max_per_customer` (unlike `quantity`) persists directly on `ticket_types` and needs an explicit-clear path. `CreateTicketType`/`UpdateTicketType` thread the field onto the model exactly like `requires_seat`. `TicketTypeData` and its OpenAPI `TicketType` schema carry `max_per_customer` as a required-but-nullable response field (existing ticket types read back null). Both admin routes stay gated by the existing `events.manage` capability with no separate check needed, and audited via the same `EventUpdated` outbox row every ticket type mutation already records (event-conventions).
+- `App\EventCatalog\Data\HoldableTicketTypeData` (the read model `ResolveEventForHold` hands to Inventory's `CreateHold`, stage-06 precedent) gained `maxPerCustomer`, populated in `fromModel`. This is additive plumbing only: `CreateHold` does not read or enforce the field yet (that lands in stage-10 task 6, depends on task 5's `purchase_counters` table), so the existing Architecture suite's "only EventCatalog uses its own Models" assertion (`tests/Architecture/ContextBoundariesTest.php`) already proves Inventory cannot reach `max_per_customer` any other way; no new architecture test was needed for this slice specifically because that boundary rule is generic to every field on the model, not `max_per_customer`-specific.
+- OpenAPI: `max_per_customer` added to `TicketType` (required, nullable), `TicketTypeCreateRequest`, and `TicketTypeUpdateRequest` (both optional, nullable, `minimum: 1`). `composer types:generate` run; `packages/api-client/src/generated/index.ts` and the manifest committed with `max_per_customer` on `CreateTicketTypeData`, `TicketTypeData`, and `UpdateTicketTypeData`.
+- Observed but not acted on: `assertConformsToOpenApi()` (the Spectator-backed macro) did not fail against the pre-update spec even though `TicketType`'s `additionalProperties: false` should have rejected the extra `max_per_customer` key in the response body before the OpenAPI schema was updated; the Contract suite (427 tests) passed both before and after the schema update. This looks like a latent looseness in the test harness's response-validation wiring rather than anything this task introduced or should paper over; the OpenAPI schemas were still updated in full per the contract-first discipline this plan and api-conventions mandate, and flagged here rather than quietly relied upon. Worth a separate look, not scoped to this task.
+
+Test evidence (all run from `apps/api` against the real PostgreSQL test database):
+
+- `php artisan test --filter=TicketType`: 138 passed, 388 assertions (covers `TicketTypeEndpointsTest`, `TicketTypeValidationRulesTest`, `CreateTicketTypeTest`, `UpdateTicketTypeTest`, `TicketTypeModelTest`, `TicketTypeInventoryIsolationTest`, `TicketTypesIsolationTest`, `TicketTypeEventUpdatedOutboxTest`).
+- `php artisan test --filter=HoldableTicketTypeDataTest`: 2 passed, 3 assertions.
+- `php artisan test --testsuite=Architecture`: 40 passed, 97 assertions.
+- `php artisan test --testsuite=Contract`: 427 passed, 2739 assertions.
+- `php artisan test --testsuite=Feature --filter=EventCatalog`: 299 passed, 1406 assertions.
+- `php artisan test --testsuite=Unit --filter=EventCatalog`: 174 passed, 365 assertions.
+- `php artisan test --testsuite=Isolation --filter=Ticket`: 30 passed, 50 assertions.
+- `./vendor/bin/pint --test` on every changed file: passed.
+- `./vendor/bin/phpstan analyse` on every changed non-test file (`--memory-limit=1G`, scoped paths): 0 errors.
+
+Commits:
+
+- (pending) feat(catalog): add ticket_types.max_per_customer and thread it through ticket type contracts

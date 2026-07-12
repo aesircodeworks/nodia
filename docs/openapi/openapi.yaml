@@ -7225,6 +7225,10 @@ components:
         price is Money on the wire; price_amount never appears bare
         (ADR 018). requires_seat ships now as a stable column Stage 6
         reads; nothing here references seats or availability yet.
+        max_per_customer is stage-10's additive per-ticket-type purchase
+        limit (Data model "ticket_types.max_per_customer"); null means
+        unlimited, including for every ticket type that existed before
+        this field.
       required:
         - id
         - tenant_id
@@ -7234,6 +7238,7 @@ components:
         - sales_start
         - sales_end
         - requires_seat
+        - max_per_customer
         - created_at
         - updated_at
       properties:
@@ -7258,6 +7263,9 @@ components:
           format: date-time
         requires_seat:
           type: boolean
+        max_per_customer:
+          type: [integer, 'null']
+          minimum: 1
         created_at:
           type: string
           format: date-time
@@ -9407,7 +9415,11 @@ components:
         seeds the `ticket_type_inventory` counter row (0 when omitted for
         a GA type) and is rejected with `request.validation_failed` when
         `requires_seat` is true, since seated counters are seeded by
-        publish-time seat materialization instead.
+        publish-time seat materialization instead. `max_per_customer` is
+        stage-10's additive per-ticket-type purchase limit (Data model
+        "ticket_types.max_per_customer"); omitted or explicit null means
+        unlimited, and a value of zero or less is rejected with
+        `request.validation_failed`.
       required:
         - name
         - price
@@ -9430,6 +9442,9 @@ components:
         quantity:
           type: integer
           minimum: 0
+        max_per_customer:
+          type: [integer, 'null']
+          minimum: 1
       additionalProperties: false
     TicketTypeUpdateRequest:
       type: object
@@ -9438,7 +9453,10 @@ components:
         `ticket_type_inventory.quantity` (stage-06 plan, task 3); rejected
         with `request.validation_failed` when the ticket type is (or is
         being changed to) `requires_seat`, and with `insufficient_inventory`
-        when it would undercut `sold + held`.
+        when it would undercut `sold + held`. `max_per_customer`, given,
+        replaces the stored limit; explicit null clears it to unlimited;
+        lowering it below a customer's existing purchase counter is
+        allowed and simply blocks further holds (stage-10 plan, Admin).
       properties:
         name:
           type: string
@@ -9455,6 +9473,9 @@ components:
         quantity:
           type: integer
           minimum: 0
+        max_per_customer:
+          type: [integer, 'null']
+          minimum: 1
       additionalProperties: false
     TicketTypePage:
       type: object

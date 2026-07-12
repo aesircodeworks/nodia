@@ -133,6 +133,7 @@ export type CreateTicketTypeData = {
   sales_end: string | null;
   requires_seat?: boolean;
   quantity?: number;
+  max_per_customer?: number | null;
 };
 export type CreateVenueData = {
   name: string;
@@ -843,6 +844,7 @@ export type TicketTypeData = {
   sales_start: string | null;
   sales_end: string | null;
   requires_seat: boolean;
+  max_per_customer: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -902,6 +904,7 @@ export type UpdateTicketTypeData = {
   sales_end?: string | null;
   requires_seat?: boolean;
   quantity?: number;
+  max_per_customer?: number | null;
 };
 export type UpdateVenueData = {
   name?: string;

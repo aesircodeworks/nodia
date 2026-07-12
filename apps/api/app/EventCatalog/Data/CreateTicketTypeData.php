@@ -30,7 +30,14 @@ use Spatie\LaravelData\Optional;
  * additive field (Risks: "Quantity input ownership"): it does not
  * persist on TicketType at all, App\EventCatalog\Actions\CreateTicketType
  * passes it to the Inventory context's counter Actions instead, so it is
- * never read back through TicketTypeData::fromModel.
+ * never read back through TicketTypeData::fromModel. max_per_customer is
+ * stage-10's additive per-ticket-type purchase limit (Data model
+ * "ticket_types.max_per_customer"): unlike quantity it persists directly
+ * on ticket_types, is Optional|null so an omitted key stores null
+ * (unlimited) same as an explicit null, and is validated `> 0` when given
+ * (zero and negative values are rejected, unlike quantity's `min:0`,
+ * since zero would mean "nobody may ever buy this type" rather than
+ * "unlimited").
  */
 #[MapName(SnakeCaseMapper::class)]
 class CreateTicketTypeData extends Data
@@ -44,6 +51,7 @@ class CreateTicketTypeData extends Data
         public ?string $salesEnd,
         public bool|Optional $requiresSeat,
         public int|Optional $quantity,
+        public int|Optional|null $maxPerCustomer,
     ) {}
 
     /**
@@ -60,6 +68,7 @@ class CreateTicketTypeData extends Data
             'sales_end' => ['present', 'nullable', 'date'],
             'requires_seat' => ['sometimes', 'boolean'],
             'quantity' => ['sometimes', 'integer', 'min:0'],
+            'max_per_customer' => ['sometimes', 'nullable', 'integer', 'min:1'],
         ];
     }
 

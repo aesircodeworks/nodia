@@ -121,7 +121,7 @@ describe('POST /v1/events/{event}/ticket-types', function () {
         expect(Str::isUuid($body['id']))->toBeTrue()
             ->and(array_keys($body))->toBe([
                 'id', 'tenant_id', 'event_id', 'name', 'price', 'sales_start',
-                'sales_end', 'requires_seat', 'created_at', 'updated_at',
+                'sales_end', 'requires_seat', 'max_per_customer', 'created_at', 'updated_at',
             ]);
     });
 
@@ -580,5 +580,109 @@ describe('ticket type quantity (stage-06 task 3)', function () {
             ->assertJsonPath('code', 'request.validation_failed');
 
         expect($response->json('errors'))->toHaveKey('quantity');
+    });
+});
+
+/*
+ * Stage-10 plan, Data model "ticket_types.max_per_customer" and TDD Slice 1
+ * (the ticket type half): the per-ticket-type purchase limit thread through
+ * the Stage 5a admin contracts, gated by the same events.manage capability
+ * as every other field on this endpoint (no separate capability check
+ * needed). Enforcement of the limit itself is a later stage-10 task; this
+ * slice only proves the value round-trips and validates.
+ */
+describe('ticket type max_per_customer (stage-10 task 2)', function () {
+    it('creates a ticket type with an explicit max_per_customer', function () {
+        $event = makeTicketTypeEvent($this->tenantId);
+
+        $this->postJson(
+            "/v1/events/{$event->id}/ticket-types",
+            ticketTypePayload(['max_per_customer' => 4]),
+        )
+            ->assertCreated()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('max_per_customer', 4);
+    });
+
+    it('reads back null for a ticket type created without max_per_customer', function () {
+        $event = makeTicketTypeEvent($this->tenantId);
+
+        $this->postJson("/v1/events/{$event->id}/ticket-types", ticketTypePayload())
+            ->assertCreated()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('max_per_customer', null);
+    });
+
+    it('rejects a zero max_per_customer with request.validation_failed', function () {
+        $event = makeTicketTypeEvent($this->tenantId);
+
+        $response = $this->postJson(
+            "/v1/events/{$event->id}/ticket-types",
+            ticketTypePayload(['max_per_customer' => 0]),
+        );
+
+        $response->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.validation_failed');
+
+        expect($response->json('errors'))->toHaveKey('max_per_customer');
+    });
+
+    it('rejects a negative max_per_customer with request.validation_failed', function () {
+        $event = makeTicketTypeEvent($this->tenantId);
+
+        $response = $this->postJson(
+            "/v1/events/{$event->id}/ticket-types",
+            ticketTypePayload(['max_per_customer' => -1]),
+        );
+
+        $response->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.validation_failed');
+
+        expect($response->json('errors'))->toHaveKey('max_per_customer');
+    });
+
+    it('updates max_per_customer', function () {
+        $event = makeTicketTypeEvent($this->tenantId);
+        $ticketType = makeTicketTypeRow($this->tenantId, $event->id, ['max_per_customer' => 10]);
+
+        $this->patchJson("/v1/ticket-types/{$ticketType->id}", ['max_per_customer' => 2])
+            ->assertOk()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('max_per_customer', 2);
+    });
+
+    it('allows lowering max_per_customer below an existing value', function () {
+        $event = makeTicketTypeEvent($this->tenantId);
+        $ticketType = makeTicketTypeRow($this->tenantId, $event->id, ['max_per_customer' => 100]);
+
+        $this->patchJson("/v1/ticket-types/{$ticketType->id}", ['max_per_customer' => 1])
+            ->assertOk()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('max_per_customer', 1);
+    });
+
+    it('leaves max_per_customer untouched when absent from the update payload', function () {
+        $event = makeTicketTypeEvent($this->tenantId);
+        $ticketType = makeTicketTypeRow($this->tenantId, $event->id, ['max_per_customer' => 5]);
+
+        $this->patchJson("/v1/ticket-types/{$ticketType->id}", ['name' => 'Renamed'])
+            ->assertOk()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('max_per_customer', 5);
+    });
+
+    it('rejects a zero max_per_customer on update with request.validation_failed', function () {
+        $event = makeTicketTypeEvent($this->tenantId);
+        $ticketType = makeTicketTypeRow($this->tenantId, $event->id);
+
+        $response = $this->patchJson("/v1/ticket-types/{$ticketType->id}", ['max_per_customer' => 0]);
+
+        $response->assertUnprocessable()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.validation_failed');
+
+        expect($response->json('errors'))->toHaveKey('max_per_customer');
     });
 });
