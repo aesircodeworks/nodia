@@ -268,8 +268,8 @@ it('emits duplicate sub-merchant webhooks sharing one gateway event id when scri
 it('lists payouts only from the scripted scenario store, optionally filtered since an instant', function (): void {
     expect($this->gateway->listPayouts())->toBe([]);
 
-    $old = new GatewayPayoutRecord('fake_po_1', Money::of(1000, 'BRL'), PayoutStatus::Paid, CarbonImmutable::parse('2026-01-01T00:00:00Z'));
-    $recent = new GatewayPayoutRecord('fake_po_2', Money::of(2000, 'BRL'), PayoutStatus::Paid, CarbonImmutable::parse('2026-07-01T00:00:00Z'));
+    $old = new GatewayPayoutRecord('fakesm_tenant-1', 'fake_po_1', Money::of(1000, 'BRL'), PayoutStatus::Paid, CarbonImmutable::parse('2026-01-01T00:00:00Z'));
+    $recent = new GatewayPayoutRecord('fakesm_tenant-1', 'fake_po_2', Money::of(2000, 'BRL'), PayoutStatus::Paid, CarbonImmutable::parse('2026-07-01T00:00:00Z'));
     $this->scenarios->scriptPayouts([$old, $recent]);
 
     expect($this->gateway->listPayouts())->toBe([$old, $recent])

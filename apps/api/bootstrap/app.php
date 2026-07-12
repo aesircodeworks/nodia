@@ -33,6 +33,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('payments:expire')->everyMinute();
         $schedule->command('payments:reconcile')->everyFiveMinutes();
         $schedule->command('payments:reconcile-refunds')->everyFiveMinutes();
+
+        // Stage-08c plan, Slice 6: poll the gateway for payouts missed
+        // by webhooks and reconcile mirrored payouts against it
+        // (system-design 13).
+        $schedule->command('payments:reconcile-payouts')->everyFiveMinutes();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
