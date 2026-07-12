@@ -62,6 +62,16 @@ Slice 4 test-first: LedgerProjectionTest written and observed failing before the
 
 Test-first: RefundsIsolationTest with RefundFixture written and observed failing before the migration existed (standard two-tenant probes plus platform read). New refunds migration with the (tenant_id, idempotency_key) replay anchor, amount > 0 and commission >= 0 checks, and RLS in the same migration; additive payments migration adds refunded_amount and refunded_commission_amount with bounds CHECKs as defense behind the conditional-UPDATE reservation guard arriving in T8. RefundStatus enum, Refund model, RefundFactory. Evidence: RefundsIsolationTest 5/5, PaymentStateMachineTest and LedgerProjectionTest 14/14.
 
+#### T8: CreateRefund Action and POST /v1/payments/{payment}/refunds (2026-07-12 01:10 -03)
+
+Slice 5, all tests written and observed failing first. Feature (CreateRefundTest, 16 tests): full-refund default with reservation and RefundInitiated, proportional and retained-policy commission, missing key 400, replay 200 with the identical body, body and cross-payment key-reuse mismatches, unknown and cross-tenant payment 404, unconfirmed payment and non-refundable order 409, exceeds-refundable and currency-mismatch and foreign-tickets 422, validation 422, capability denial, MFA denial. Unit (CreateRefundActionTest, 5 tests): RefundInitiated rides the creating transaction and rolls back with it; round-half-up proportional commission at the 33.5 boundary; cap by the un-returned remainder; conditional-UPDATE reservation; full-remaining default. Concurrency: 6 parallel 2000-unit refunds against a 5000 payment admit exactly 2, reservation and refund-row sum both 4000 (assertion made order-independent after a flaky array_count_values key-order comparison, the only flake in three reruns).
+
+Landed: CreateRefund with the savepoint-isolated insert falling back to replay (mirroring InitiatePayment, including its round-3 cross-scope key-reuse rule), six new error codes registered in ErrorCode and its registry test, RefundInitiated event and payload, Payments admin route group (first use of tenancy.admin in this context) with orders.refund capability, MFA enforcement, and RecordActivityAudit; Orders ResolveOrderRefundContext cross-context read; OpenAPI path plus Refund, RefundCreateRequest, and three problem schemas; contract exercisers for all eight documented responses with the refunds cleanup slotted before payments in the contract teardown; TypeScript regenerated.
+
+Deviations: the MFA denial code is the existing mfa_enforcement_required from EnforceMfaCompliance rather than the plan's mfa_required wording (the stage-03 mechanism the plan says to reuse); replays return 200 with the original body per the InitiatePayment precedent rather than the plan's literal "original 201".
+
+Evidence: CreateRefundTest and CreateRefundActionTest 21/21, RefundReservationContentionTest 3 consecutive passes, Contract suite 348/348, ErrorCodeTest 89/89, Pint clean, api-client tsc clean.
+
 ### Review rounds
 
 ### Decisions and deviations

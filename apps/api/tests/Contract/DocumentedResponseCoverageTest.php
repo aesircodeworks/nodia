@@ -89,6 +89,13 @@ afterEach(function (): void {
             DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
             DB::table('memberships')->where('tenant_id', $tenantId)->delete();
 
+            // The refund exercisers (stage-08b plan, task breakdown item 8)
+            // write refunds referencing payments with no cascade, so they go
+            // ahead of payments; the ledger projection rides the sync queue
+            // only after the stability window, so ledger_entries stays empty
+            // here.
+            DB::table('refunds')->where('tenant_id', $tenantId)->delete();
+
             // The payment exercisers (stage-08a plan, task breakdown items
             // 3 to 6) write payments referencing orders with no cascade, so
             // they go ahead of orders.
@@ -3375,6 +3382,61 @@ function documentedResponseExercisers(): array
                 'Authorization' => 'Bearer '.$token,
             ]);
         },
+        'post /v1/payments/{payment}/refunds 201' => function (): TestResponse {
+            $fixture = contractConfirmedPayment();
+
+            return contractCreateRefund($fixture, [], (string) Str::uuid7());
+        },
+        'post /v1/payments/{payment}/refunds 200' => function (): TestResponse {
+            $fixture = contractConfirmedPayment();
+            $key = (string) Str::uuid7();
+
+            contractCreateRefund($fixture, ['amount' => ['amount' => 100, 'currency' => 'USD']], $key);
+
+            return contractCreateRefund($fixture, ['amount' => ['amount' => 100, 'currency' => 'USD']], $key);
+        },
+        'post /v1/payments/{payment}/refunds 400' => function (): TestResponse {
+            $fixture = contractConfirmedPayment();
+
+            return contractCreateRefund($fixture, [], null);
+        },
+        'post /v1/payments/{payment}/refunds 401' => function (): TestResponse {
+            return test()->postJson('/v1/payments/'.Str::uuid7().'/refunds', []);
+        },
+        'post /v1/payments/{payment}/refunds 403' => function (): TestResponse {
+            $fixture = contractConfirmedPayment();
+
+            return test()->postJson('/v1/payments/'.$fixture['paymentId'].'/refunds', [], [
+                'Authorization' => 'Bearer '.contractVenueBearer($fixture['tenant'], ['orders.view']),
+                'X-Tenant-Id' => $fixture['tenant']->id,
+                'Idempotency-Key' => (string) Str::uuid7(),
+            ]);
+        },
+        'post /v1/payments/{payment}/refunds 404' => function (): TestResponse {
+            $fixture = contractConfirmedPayment();
+
+            return test()->postJson('/v1/payments/'.Str::uuid7().'/refunds', [], [
+                'Authorization' => 'Bearer '.$fixture['bearer'],
+                'X-Tenant-Id' => $fixture['tenant']->id,
+                'Idempotency-Key' => (string) Str::uuid7(),
+            ]);
+        },
+        'post /v1/payments/{payment}/refunds 409' => function (): TestResponse {
+            $order = contractPaymentOrder();
+
+            $pendingPaymentId = contractInitiatePayment($order, ['method' => 'pix'], (string) Str::uuid7())->json('id');
+
+            return test()->postJson('/v1/payments/'.$pendingPaymentId.'/refunds', [], [
+                'Authorization' => 'Bearer '.contractRefundBearer($order['tenant']),
+                'X-Tenant-Id' => $order['tenant']->id,
+                'Idempotency-Key' => (string) Str::uuid7(),
+            ]);
+        },
+        'post /v1/payments/{payment}/refunds 422' => function (): TestResponse {
+            $fixture = contractConfirmedPayment();
+
+            return contractCreateRefund($fixture, ['amount' => ['amount' => 100, 'currency' => 'BRL']], (string) Str::uuid7());
+        },
         'post /v1/webhooks/{gateway} 401' => function (): TestResponse {
             $delivery = app(FakeGateway::class)->confirmationWebhook('fake_contract_ref', Money::of(125, 'USD'));
 
@@ -3452,6 +3514,76 @@ function contractPostWebhook(string $gateway, string $body, string $signature): 
         'HTTP_ACCEPT' => 'application/json',
         'HTTP_X_FAKE_SIGNATURE' => $signature,
     ], $body);
+}
+
+/**
+ * A staff bearer holding orders.refund with confirmed MFA, since the
+ * capability is financially privileged (stage-08b plan, Endpoints).
+ */
+function contractRefundBearer(Tenant $tenant): string
+{
+    $user = User::factory()->create();
+
+    $response = test()->postJson('/v1/auth/staff/token', [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    $user->forceFill(['mfa_enabled' => true, 'mfa_confirmed_at' => now()])->save();
+
+    app(TenantTransaction::class)->asTenant($tenant->id, function () use ($user, $tenant): void {
+        Membership::factory()->create([
+            'user_id' => $user->id,
+            'tenant_id' => $tenant->id,
+            'role_id' => Role::factory()->create(['tenant_id' => $tenant->id, 'capabilities' => ['orders.refund']])->id,
+            'scope' => MembershipScope::Tenant,
+        ]);
+    });
+
+    /** @var string $token */
+    return $response->json('access_token');
+}
+
+/**
+ * A confirmed card payment over the real purchase flow plus a
+ * refund-capable staff bearer (stage-08b plan, task breakdown item 8).
+ *
+ * @return array{tenant: Tenant, host: string, paymentId: string, bearer: string}
+ */
+function contractConfirmedPayment(): array
+{
+    $order = contractPaymentOrder();
+
+    $paymentId = contractInitiatePayment(
+        $order,
+        ['method' => 'card', 'details' => ['token' => 'tok_approve']],
+        (string) Str::uuid7(),
+    )->json('id');
+
+    return [
+        'tenant' => $order['tenant'],
+        'host' => $order['host'],
+        'paymentId' => $paymentId,
+        'bearer' => contractRefundBearer($order['tenant']),
+    ];
+}
+
+/**
+ * @param  array<string, mixed>  $body
+ * @return TestResponse<JsonResponse>
+ */
+function contractCreateRefund(array $fixture, array $body, ?string $key): TestResponse
+{
+    $headers = [
+        'Authorization' => 'Bearer '.$fixture['bearer'],
+        'X-Tenant-Id' => $fixture['tenant']->id,
+    ];
+
+    if ($key !== null) {
+        $headers['Idempotency-Key'] = $key;
+    }
+
+    return test()->postJson('/v1/payments/'.$fixture['paymentId'].'/refunds', $body, $headers);
 }
 
 /**

@@ -94,6 +94,12 @@ enum ErrorCode: string
     case GatewayUnavailable = 'gateway_unavailable';
     case WebhookSignatureInvalid = 'webhook_signature_invalid';
     case WebhookUnparseable = 'webhook_unparseable';
+    case RefundPaymentNotFound = 'refund_payment_not_found';
+    case RefundNotFound = 'refund_not_found';
+    case PaymentNotRefundable = 'payment_not_refundable';
+    case RefundAmountExceedsRefundable = 'refund_amount_exceeds_refundable';
+    case RefundCurrencyMismatch = 'refund_currency_mismatch';
+    case RefundTicketsNotInOrder = 'refund_tickets_not_in_order';
 
     public function status(): int
     {
@@ -185,6 +191,12 @@ enum ErrorCode: string
             self::GatewayUnavailable => 503,
             self::WebhookSignatureInvalid => 401,
             self::WebhookUnparseable => 422,
+            self::RefundPaymentNotFound => 404,
+            self::RefundNotFound => 404,
+            self::PaymentNotRefundable => 409,
+            self::RefundAmountExceedsRefundable => 422,
+            self::RefundCurrencyMismatch => 422,
+            self::RefundTicketsNotInOrder => 422,
         };
     }
 
@@ -278,6 +290,12 @@ enum ErrorCode: string
             self::GatewayUnavailable => 'Gateway unavailable',
             self::WebhookSignatureInvalid => 'Webhook signature invalid',
             self::WebhookUnparseable => 'Webhook unparseable',
+            self::RefundPaymentNotFound => 'Payment not found',
+            self::RefundNotFound => 'Refund not found',
+            self::PaymentNotRefundable => 'Payment not refundable',
+            self::RefundAmountExceedsRefundable => 'Refund amount exceeds refundable',
+            self::RefundCurrencyMismatch => 'Refund currency mismatch',
+            self::RefundTicketsNotInOrder => 'Refund tickets not in order',
         };
     }
 

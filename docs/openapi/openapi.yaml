@@ -4597,6 +4597,116 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/OrderNotPayableProblem'
+  /v1/payments/{payment}/refunds:
+    parameters:
+      - name: payment
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: createRefund
+      summary: Create a refund for a confirmed payment
+      description: >-
+        Staff surface under the tenancy.admin group (stage-08b plan,
+        Endpoints; system-design 7.5, 14.2): requires the orders.refund
+        capability, a confirmed-MFA session, and the Idempotency-Key
+        header; the mutation is activity-logged. A null or absent amount
+        refunds the full remaining refundable amount. Execution is
+        asynchronous: the 201 carries a pending refund and completion is
+        driven by the gateway webhook with a reconciliation sweeper
+        backstop. Replays with the same key return the original body
+        with 200.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: X-Tenant-Id
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundCreateRequest'
+      responses:
+        '201':
+          description: The pending refund.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Refund'
+        '200':
+          description: Replay of a previous creation with the same key.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Refund'
+        '400':
+          description: Missing Idempotency-Key header.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/IdempotencyKeyMissingProblem'
+        '401':
+          description: Missing or invalid staff bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            Missing orders.refund capability, or the acting membership
+            mandates confirmed MFA (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
+        '404':
+          description: >-
+            Unknown or cross-tenant payment id (code
+            refund_payment_not_found); RLS makes foreign payments
+            unfindable.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/RefundPaymentNotFoundProblem'
+        '409':
+          description: >-
+            The payment is not confirmed or its order is not in a
+            refundable status (code payment_not_refundable), or the key
+            was reused with a different payload or payment (code
+            idempotency_key_reuse_mismatch).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/RefundCreateConflictProblem'
+        '422':
+          description: >-
+            Validation failure, an amount past the remaining refundable
+            (code refund_amount_exceeds_refundable), a currency
+            differing from the payment (code refund_currency_mismatch),
+            or tickets outside the order (code
+            refund_tickets_not_in_order).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/RefundUnprocessableProblem'
   /v1/storefront/orders/{order}/payments:
     parameters:
       - name: order
@@ -6890,6 +7000,124 @@ components:
             code:
               type: string
               enum: [gateway_unavailable]
+      unevaluatedProperties: false
+    Refund:
+      type: object
+      description: >-
+        One refund against a confirmed payment (stage-08b plan,
+        Endpoints). Execution is asynchronous; status walks pending,
+        processing, then completed or failed through conditional
+        transitions.
+      required:
+        - id
+        - payment_id
+        - order_id
+        - status
+        - amount
+        - commission_amount
+        - reason
+        - gateway_reference
+        - failure_code
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        payment_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        amount:
+          $ref: '#/components/schemas/Money'
+        commission_amount:
+          $ref: '#/components/schemas/Money'
+        reason:
+          type: ['string', 'null']
+        gateway_reference:
+          type: ['string', 'null']
+        failure_code:
+          type: ['string', 'null']
+        created_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    RefundCreateRequest:
+      type: object
+      description: >-
+        A null or absent amount refunds the full remaining refundable
+        amount; ticket_ids selects the tickets voided on completion (on
+        a full refund all order tickets are voided regardless).
+      properties:
+        amount:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        reason:
+          type: ['string', 'null']
+          maxLength: 500
+        ticket_ids:
+          type: ['array', 'null']
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+      additionalProperties: false
+    RefundPaymentNotFoundProblem:
+      description: >-
+        Problem document for a refund creation naming an unknown or
+        cross-tenant payment (stage-08b plan, Endpoints).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [404]
+            code:
+              type: string
+              enum: [refund_payment_not_found]
+      unevaluatedProperties: false
+    RefundCreateConflictProblem:
+      description: >-
+        Problem document for refund creation conflicts (stage-08b plan,
+        Endpoints): the payment is not refundable, or the
+        Idempotency-Key was reused with a different payload or payment.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [payment_not_refundable, idempotency_key_reuse_mismatch]
+      unevaluatedProperties: false
+    RefundUnprocessableProblem:
+      description: >-
+        Problem document for refund creation semantic failures
+        (stage-08b plan, Endpoints).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [422]
+            code:
+              type: string
+              enum:
+                - request.validation_failed
+                - refund_amount_exceeds_refundable
+                - refund_currency_mismatch
+                - refund_tickets_not_in_order
+            errors:
+              type: object
       unevaluatedProperties: false
     WebhookSignatureInvalidProblem:
       description: >-

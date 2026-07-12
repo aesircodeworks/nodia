@@ -91,6 +91,12 @@ test('the registry holds exactly the known codes', function () {
         'gateway_unavailable',
         'webhook_signature_invalid',
         'webhook_unparseable',
+        'refund_payment_not_found',
+        'refund_not_found',
+        'payment_not_refundable',
+        'refund_amount_exceeds_refundable',
+        'refund_currency_mismatch',
+        'refund_tickets_not_in_order',
     ]);
 });
 

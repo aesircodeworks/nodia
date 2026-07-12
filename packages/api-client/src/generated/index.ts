@@ -79,6 +79,11 @@ export type CreateOrderData = {
   attendee_names?: Record<string, string[]>;
   promo_code?: string;
 };
+export type CreateRefundData = {
+  amount?: Money | null;
+  reason?: string | null;
+  ticket_ids?: string[] | null;
+};
 export type CreateRoleData = {
   name: string;
   capabilities: string[];
@@ -241,7 +246,13 @@ export type ErrorCode =
   | 'payment_declined'
   | 'gateway_unavailable'
   | 'webhook_signature_invalid'
-  | 'webhook_unparseable';
+  | 'webhook_unparseable'
+  | 'refund_payment_not_found'
+  | 'refund_not_found'
+  | 'payment_not_refundable'
+  | 'refund_amount_exceeds_refundable'
+  | 'refund_currency_mismatch'
+  | 'refund_tickets_not_in_order';
 export type EventAvailabilityData = {
   event_id: string;
   ticket_types: TicketTypeAvailabilityData[];
@@ -338,6 +349,9 @@ export type InviteUserData = {
   name: string;
   role_id: string;
 };
+export type LedgerAccount =
+  'gateway_receivable' | 'gateway_fees' | 'platform_commission' | 'tenant_net';
+export type LedgerDirection = 'debit' | 'credit';
 export type LengthAwarePaginator<TKey, TValue> = {
   data: TKey extends string ? Record<TKey, TValue> : TValue[];
   links: {
@@ -501,6 +515,19 @@ export type RefreshTokenRequestData = {
   refresh_token: string;
 };
 export type RefundCommissionPolicy = 'returned' | 'retained';
+export type RefundData = {
+  id: string;
+  payment_id: string;
+  order_id: string;
+  status: RefundStatus;
+  amount: Money;
+  commission_amount: Money;
+  reason: string | null;
+  gateway_reference: string | null;
+  failure_code: string | null;
+  created_at: string;
+};
+export type RefundStatus = 'pending' | 'processing' | 'completed' | 'failed';
 export type RegisterCustomerData = {
   email: string;
   name: string;

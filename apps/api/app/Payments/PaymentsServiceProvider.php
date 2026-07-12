@@ -2,10 +2,10 @@
 
 namespace App\Payments;
 
+use App\Payments\Consumers\ProjectLedgerEntries;
 use App\Payments\Gateways\FakeGateway;
 use App\Payments\Gateways\FakeGatewayScenarios;
 use App\Payments\Gateways\GatewayRegistry;
-use App\Payments\Consumers\ProjectLedgerEntries;
 use App\Support\Outbox\EventTypeRegistry;
 use App\Support\Outbox\SubscriberRegistry;
 use Illuminate\Contracts\Foundation\Application;
@@ -37,6 +37,7 @@ class PaymentsServiceProvider extends ServiceProvider
         $registry->register('PaymentConfirmed');
         $registry->register('PaymentFailed');
         $registry->register('PaymentExpired');
+        $registry->register('RefundInitiated');
 
         $subscribers->register(
             ProjectLedgerEntries::NAME,
@@ -47,6 +48,10 @@ class PaymentsServiceProvider extends ServiceProvider
         Route::middleware('tenancy.storefront')
             ->prefix('v1')
             ->group(__DIR__.'/Http/routes/storefront.php');
+
+        Route::middleware('tenancy.admin')
+            ->prefix('v1')
+            ->group(__DIR__.'/Http/routes/admin.php');
 
         Route::prefix('v1')->group(__DIR__.'/Http/routes/webhooks.php');
     }
