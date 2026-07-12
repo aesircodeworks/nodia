@@ -48,4 +48,21 @@ interface GatewayAdapter
      * gateway-side outcome for a reference, or null while still pending.
      */
     public function queryPayment(string $gatewayReference): ?NormalizedPaymentEvent;
+
+    /**
+     * Submits a refund for asynchronous processing (system-design 7.2;
+     * stage-08b plan). The request carries the refund's idempotency key
+     * on every attempt.
+     *
+     * @throws GatewayUnavailableException on transport failure; a decline
+     *                                     is a Declined result, never an exception
+     */
+    public function refund(GatewayRefundRequest $request): GatewayRefundResult;
+
+    /**
+     * Sweeper backstop for missed refund webhooks: the current
+     * gateway-side outcome for a refund reference, or null while still
+     * processing.
+     */
+    public function queryRefund(string $gatewayReference): ?NormalizedPaymentEvent;
 }

@@ -16,6 +16,14 @@ final class FakeGatewayScenarios
     /** @var array<string, NormalizedPaymentEvent> */
     private array $queryResults = [];
 
+    private int $failRefunds = 0;
+
+    /** @var list<string> */
+    private array $refundDeclines = [];
+
+    /** @var array<string, int> */
+    private array $refundCalls = [];
+
     public function failNextCreate(int $times = 1): void
     {
         $this->failCreates = $times;
@@ -40,5 +48,41 @@ final class FakeGatewayScenarios
     public function queryResultFor(string $gatewayReference): ?NormalizedPaymentEvent
     {
         return $this->queryResults[$gatewayReference] ?? null;
+    }
+
+    public function failNextRefund(int $times = 1): void
+    {
+        $this->failRefunds = $times;
+    }
+
+    public function consumeRefundFailure(): bool
+    {
+        if ($this->failRefunds === 0) {
+            return false;
+        }
+
+        $this->failRefunds--;
+
+        return true;
+    }
+
+    public function declineNextRefund(string $failureCode): void
+    {
+        $this->refundDeclines[] = $failureCode;
+    }
+
+    public function consumeRefundDecline(): ?string
+    {
+        return array_shift($this->refundDeclines);
+    }
+
+    public function recordRefundCall(string $refundId): void
+    {
+        $this->refundCalls[$refundId] = ($this->refundCalls[$refundId] ?? 0) + 1;
+    }
+
+    public function refundCallsFor(string $refundId): int
+    {
+        return $this->refundCalls[$refundId] ?? 0;
     }
 }

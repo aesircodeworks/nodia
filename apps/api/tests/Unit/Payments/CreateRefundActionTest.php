@@ -49,6 +49,7 @@ beforeEach(function (): void {
             'order_id' => $order->id,
             'status' => PaymentStatus::Confirmed,
             'money' => Money::of(1_000, 'USD'),
+            'gateway_reference' => 'fake_'.Str::uuid7(),
         ]);
 
         DB::table('payments')->where('id', $payment->id)->update(['commission_amount' => 100]);

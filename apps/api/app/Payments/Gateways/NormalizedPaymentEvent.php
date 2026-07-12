@@ -22,4 +22,14 @@ final class NormalizedPaymentEvent
     {
         return new self(WebhookKind::Failed, $gatewayReference, null, $failureCode);
     }
+
+    public static function refundCompleted(string $gatewayReference): self
+    {
+        return new self(WebhookKind::RefundCompleted, $gatewayReference, null, null);
+    }
+
+    public static function refundFailed(string $gatewayReference, string $failureCode): self
+    {
+        return new self(WebhookKind::RefundFailed, $gatewayReference, null, $failureCode);
+    }
 }

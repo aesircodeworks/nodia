@@ -80,6 +80,12 @@ Test-first (MarkTicketsRefundedTest, observed failing before the Action existed)
 
 The Stage 7 state-machine table test was extended first and observed failing: four new valid arcs (paid to partially_refunded, paid to refunded, partially_refunded to partially_refunded, partially_refunded to refunded) with the invalid-pair generator re-deriving every other ordered pair. MarkOrderPartiallyRefunded and MarkOrderRefunded are single conditional UPDATEs guarded on the multi-from set, checked by affected-row count. The system-design 7.1 diagram gained the two partially_refunded edges in the same change, and Stage 7's "no transition action targets a refund state" pin was updated to assert the amended set (the pin existed precisely to be consciously flipped here). Evidence: OrderStateMachineTest and MarkTicketsRefundedTest 62/62.
 
+#### T9 part 1: refund executor (2026-07-12 02:05 -03)
+
+Test-first (RefundExecutionTest, observed failing before the seam existed): accepted execution to processing with the gateway reference persisted and exactly one gateway call; duplicate RefundInitiated delivery still one call (the pending-to-processing conditional UPDATE); declined refund landing failed with the reservation released and the order untouched; the 3-attempt 1s/5s/15s budget on the executor job; transport failure rolling the claim back so a retry re-executes with the same key. Landed: GatewayAdapter::refund and queryRefund with GatewayRefundRequest/Result, FakeGateway refund behavior with scenario controls (declineNextRefund, failNextRefund, per-refund call counts) and refund webhook emitters plus normalization kinds, ExecuteRefund consumer registered for RefundInitiated, FailRefund with the release-exactly-once guarded decrement, per-subscriber array backoff support in ProcessOutboxDelivery, and the execute_refund retry policy in config/outbox.php.
+
+Note: with the executor registered, the sync test queue advances a refund immediately after creation, so CreateRefundTest's replay assertion now compares the stable resource fields rather than the byte-identical body, and CreateRefundActionTest's fixture payment gained a gateway_reference. Evidence: CreateRefundTest, CreateRefundActionTest, RefundExecutionTest 26/26.
+
 ### Review rounds
 
 ### Decisions and deviations

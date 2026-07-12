@@ -2,6 +2,7 @@
 
 namespace App\Payments;
 
+use App\Payments\Consumers\ExecuteRefund;
 use App\Payments\Consumers\ProjectLedgerEntries;
 use App\Payments\Gateways\FakeGateway;
 use App\Payments\Gateways\FakeGatewayScenarios;
@@ -43,6 +44,12 @@ class PaymentsServiceProvider extends ServiceProvider
             ProjectLedgerEntries::NAME,
             ['PaymentConfirmed'],
             $this->app->make(ProjectLedgerEntries::class),
+        );
+
+        $subscribers->register(
+            ExecuteRefund::NAME,
+            ['RefundInitiated'],
+            $this->app->make(ExecuteRefund::class),
         );
 
         Route::middleware('tenancy.storefront')

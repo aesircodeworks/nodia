@@ -62,6 +62,11 @@ return [
 
     'subscriber_retries' => [
         'send_order_confirmation' => ['tries' => 5, 'backoff_seconds' => 60],
+
+        // The refund executor's externally mandated budget: 3 attempts at
+        // 1s, 5s, 15s, then the failed-jobs dead letter (system-design 13;
+        // stage-08b plan, Domain events "Consumed").
+        'execute_refund' => ['tries' => 3, 'backoff_seconds' => [1, 5, 15]],
     ],
 
 ];

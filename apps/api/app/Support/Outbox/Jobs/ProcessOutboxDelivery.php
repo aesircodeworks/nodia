@@ -50,9 +50,12 @@ class ProcessOutboxDelivery implements ShouldQueue
 
     /**
      * Seconds between attempts; null keeps the queue default. Set from a
-     * per-subscriber policy below.
+     * per-subscriber policy below; a list applies per-attempt backoff
+     * (the refund executor's 1s, 5s, 15s budget).
+     *
+     * @var int|list<int>|null
      */
-    public ?int $backoff = null;
+    public int|array|null $backoff = null;
 
     public function __construct(
         public readonly string $eventId,
@@ -67,7 +70,11 @@ class ProcessOutboxDelivery implements ShouldQueue
 
         if (is_array($policy)) {
             $this->tries = (int) ($policy['tries'] ?? $this->tries);
-            $this->backoff = isset($policy['backoff_seconds']) ? (int) $policy['backoff_seconds'] : $this->backoff;
+            if (isset($policy['backoff_seconds'])) {
+                $this->backoff = is_array($policy['backoff_seconds'])
+                    ? array_map(intval(...), $policy['backoff_seconds'])
+                    : (int) $policy['backoff_seconds'];
+            }
         }
     }
 

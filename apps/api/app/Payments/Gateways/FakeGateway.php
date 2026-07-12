@@ -124,6 +124,8 @@ final class FakeGateway implements GatewayAdapter
         return match ($payload['type'] ?? null) {
             'payment.confirmed' => $this->normalizedConfirmation($reference, $payload),
             'payment.failed' => NormalizedPaymentEvent::failed($reference, (string) ($payload['failure_code'] ?? 'unknown')),
+            'refund.completed' => NormalizedPaymentEvent::refundCompleted($reference),
+            'refund.failed' => NormalizedPaymentEvent::refundFailed($reference, (string) ($payload['failure_code'] ?? 'unknown')),
             default => null,
         };
     }
@@ -148,6 +150,47 @@ final class FakeGateway implements GatewayAdapter
     public function queryPayment(string $gatewayReference): ?NormalizedPaymentEvent
     {
         return $this->scenarios->queryResultFor($gatewayReference);
+    }
+
+    public function refund(GatewayRefundRequest $request): GatewayRefundResult
+    {
+        $this->scenarios->recordRefundCall($request->refundId);
+
+        if ($this->scenarios->consumeRefundFailure()) {
+            throw GatewayUnavailableException::forGateway($this->identifier);
+        }
+
+        $decline = $this->scenarios->consumeRefundDecline();
+
+        if ($decline !== null) {
+            return GatewayRefundResult::declined($decline);
+        }
+
+        return GatewayRefundResult::accepted('fake_rf_'.$request->refundId);
+    }
+
+    public function queryRefund(string $gatewayReference): ?NormalizedPaymentEvent
+    {
+        return $this->scenarios->queryResultFor($gatewayReference);
+    }
+
+    public function refundCompletionWebhook(string $refundReference, ?string $eventId = null): FakeWebhookDelivery
+    {
+        return $this->sign([
+            'id' => $eventId ?? 'evt_'.Str::uuid7(),
+            'type' => 'refund.completed',
+            'reference' => $refundReference,
+        ]);
+    }
+
+    public function refundFailureWebhook(string $refundReference, string $failureCode, ?string $eventId = null): FakeWebhookDelivery
+    {
+        return $this->sign([
+            'id' => $eventId ?? 'evt_'.Str::uuid7(),
+            'type' => 'refund.failed',
+            'reference' => $refundReference,
+            'failure_code' => $failureCode,
+        ]);
     }
 
     /**

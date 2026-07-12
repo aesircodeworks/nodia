@@ -247,8 +247,15 @@ describe('POST /v1/payments/{payment}/refunds', function (): void {
 
         $replay = $this->postJson('/v1/payments/'.$fixture['paymentId'].'/refunds', $body, refundHeaders($this->tenantId, $key));
 
-        $replay->assertStatus(200);
-        expect($replay->json())->toBe($first->json());
+        // The replay returns the same refund resource; its status may
+        // have advanced since the sync-queue executor ran on commit of
+        // the original request.
+        $replay->assertStatus(200)
+            ->assertJsonPath('id', $first->json('id'))
+            ->assertJsonPath('payment_id', $first->json('payment_id'))
+            ->assertJsonPath('order_id', $first->json('order_id'))
+            ->assertJsonPath('amount', $first->json('amount'))
+            ->assertJsonPath('commission_amount', $first->json('commission_amount'));
 
         $reserved = app(TenantTransaction::class)->asTenant(
             $this->tenantId,
