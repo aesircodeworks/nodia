@@ -176,4 +176,4 @@ Deviation from a literal reading of the task instructions: none beyond the inser
 
 Commits:
 
-- (pending, see final commit of this task)
+- `fc07f49` feat(inventory): enforce purchase limits across the hold lifecycle
