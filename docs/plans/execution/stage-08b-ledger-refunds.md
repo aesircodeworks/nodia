@@ -50,6 +50,10 @@ Slice 3 test-first: LedgerEntriesIsolationTest and LedgerEntriesTest (append-onl
 
 Deviation: the isolation fixture uses two dedicated persistent tenants and per-test row ids instead of the standard TenantFixture seed/clean cycle, because the append-only trigger blocks DELETE for every role and the suite's honest downgraded connection has no TRUNCATE privilege; rows accumulate for the process exactly like activity_log's, and TenantFixture::clean would otherwise fail on the tenants FK. Evidence: LedgerEntriesIsolationTest 6/6, UnscopedTablesSweepTest 2/2, LedgerEntriesTest and CommissionCalculatorTest 26/26.
 
+#### T5: ordered-consumption ordering-key extension (2026-07-11 23:45 -03)
+
+Test-first: three failing tests appended to OrderedConsumptionTest through a new KeyedOrderedTestSubscriber fixture (cross-aggregate deferral on a shared payload key, no blocking across different keys, envelope-aggregate fallback when the payload lacks the field). New KeyedOrderedOutboxSubscriber interface with orderingKeyPayloadPath(); OrderedConsumption::isReady and hasUnprocessedPredecessor accept the optional key path and compare the jsonb payload field with bound parameters; ProcessOutboxDelivery derives the path from the handler. Evidence: OrderedConsumptionTest plus delivery dispatch and redis tests 15/15, OrderedOutboxConsumptionContentionTest 1/1.
+
 ### Review rounds
 
 ### Decisions and deviations

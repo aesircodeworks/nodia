@@ -48,6 +48,16 @@ function registerOrderedOutboxSubscriber(?array $eventTypes = null): OrderedTest
     return $subscriber;
 }
 
+function registerKeyedOrderedOutboxSubscriber(string $keyPath = 'aggregate_id'): Tests\Support\Outbox\KeyedOrderedTestSubscriber
+{
+    $subscriber = new Tests\Support\Outbox\KeyedOrderedTestSubscriber($keyPath);
+
+    app(EventTypeRegistry::class)->register(FixtureDomainEvent::TYPE);
+    app(SubscriberRegistry::class)->register(Tests\Support\Outbox\KeyedOrderedTestSubscriber::NAME, [FixtureDomainEvent::TYPE], $subscriber);
+
+    return $subscriber;
+}
+
 function ensureOutboxTestEffectsTable(): void
 {
     if (Schema::hasTable(IdempotentTestSubscriber::EFFECTS_TABLE)) {

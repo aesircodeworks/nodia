@@ -247,3 +247,107 @@ it('completes without releasing on the final attempt so the sweeper can re-enque
     expect($subscriber->effectCount())->toBe(0)
         ->and(deliveryStatus($this->tenantId, $recorded->id))->toBe(OutboxDeliveryStatus::Pending);
 });
+
+function runKeyedOrderedJob(string $eventId): ProcessOutboxDelivery
+{
+    $job = new ProcessOutboxDelivery($eventId, Tests\Support\Outbox\KeyedOrderedTestSubscriber::NAME);
+    $job->withFakeQueueInteractions();
+
+    $job->handle(
+        app(TenantTransaction::class),
+        app(SubscriberRegistry::class),
+        app(OrderedConsumption::class),
+    );
+
+    return $job;
+}
+
+describe('payload-derived ordering key (stage 8b extension)', function (): void {
+    it('defers a successor sharing the payload key across different envelope aggregates', function () {
+        $subscriber = registerKeyedOrderedOutboxSubscriber('aggregate_id');
+        Queue::fake();
+        $this->freezeTime();
+
+        $sharedKey = Str::uuid7()->toString();
+
+        $first = app(TenantTransaction::class)->asTenant(
+            $this->tenantId,
+            fn () => app(OutboxRecorder::class)->record(new FixtureDomainEvent(
+                tenantId: $this->tenantId,
+                aggregateId: Str::uuid7()->toString(),
+                payload: new FixtureDomainEventPayload($sharedKey, 'Payment confirmed'),
+                aggregateType: 'payment',
+            )),
+        );
+
+        $second = app(TenantTransaction::class)->asTenant(
+            $this->tenantId,
+            fn () => app(OutboxRecorder::class)->record(new FixtureDomainEvent(
+                tenantId: $this->tenantId,
+                aggregateId: Str::uuid7()->toString(),
+                payload: new FixtureDomainEventPayload($sharedKey, 'Refund completed'),
+                aggregateType: 'refund',
+            )),
+        );
+
+        $this->travel(config()->integer('outbox.stability_window_seconds') + 1)->seconds();
+
+        $deferred = runKeyedOrderedJob($second->id);
+        $deferred->assertReleased(config()->integer('outbox.ordered_defer_seconds'));
+        expect($subscriber->processedEventIds())->toBe([]);
+
+        runKeyedOrderedJob($first->id)->assertNotReleased();
+        runKeyedOrderedJob($second->id)->assertNotReleased();
+
+        expect($subscriber->processedEventIds())->toBe([$first->id, $second->id]);
+    });
+
+    it('does not block on an unprocessed event with a different payload key', function () {
+        $subscriber = registerKeyedOrderedOutboxSubscriber('aggregate_id');
+        Queue::fake();
+        $this->freezeTime();
+
+        app(TenantTransaction::class)->asTenant(
+            $this->tenantId,
+            fn () => app(OutboxRecorder::class)->record(new FixtureDomainEvent(
+                tenantId: $this->tenantId,
+                aggregateId: Str::uuid7()->toString(),
+                payload: new FixtureDomainEventPayload(Str::uuid7()->toString(), 'Other payment'),
+                aggregateType: 'payment',
+            )),
+        );
+
+        $second = app(TenantTransaction::class)->asTenant(
+            $this->tenantId,
+            fn () => app(OutboxRecorder::class)->record(new FixtureDomainEvent(
+                tenantId: $this->tenantId,
+                aggregateId: Str::uuid7()->toString(),
+                payload: new FixtureDomainEventPayload(Str::uuid7()->toString(), 'This payment'),
+                aggregateType: 'refund',
+            )),
+        );
+
+        $this->travel(config()->integer('outbox.stability_window_seconds') + 1)->seconds();
+
+        runKeyedOrderedJob($second->id)->assertNotReleased();
+
+        expect($subscriber->processedEventIds())->toBe([$second->id]);
+    });
+
+    it('falls back to the envelope aggregate when the payload lacks the key field', function () {
+        registerKeyedOrderedOutboxSubscriber('missing_field');
+        Queue::fake();
+        $this->freezeTime();
+
+        $aggregateId = Str::uuid7()->toString();
+        $pair = recordOrderedPair($this->tenantId, $aggregateId);
+
+        $this->travel(config()->integer('outbox.stability_window_seconds') + 1)->seconds();
+
+        $deferred = runKeyedOrderedJob($pair['second']->id);
+        $deferred->assertReleased(config()->integer('outbox.ordered_defer_seconds'));
+
+        runKeyedOrderedJob($pair['first']->id)->assertNotReleased();
+        runKeyedOrderedJob($pair['second']->id)->assertNotReleased();
+    });
+});

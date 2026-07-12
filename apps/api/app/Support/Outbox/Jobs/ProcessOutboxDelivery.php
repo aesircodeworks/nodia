@@ -2,6 +2,7 @@
 
 namespace App\Support\Outbox\Jobs;
 
+use App\Support\Outbox\KeyedOrderedOutboxSubscriber;
 use App\Support\Outbox\Models\OutboxDelivery;
 use App\Support\Outbox\Models\OutboxEvent;
 use App\Support\Outbox\OrderedConsumption;
@@ -89,7 +90,9 @@ class ProcessOutboxDelivery implements ShouldQueue
         $deferred = false;
 
         $transactions->asTenant($event->tenant_id, function () use ($event, $handler, $subscriber, $ordered, &$deferred): void {
-            if ($handler instanceof OrderedOutboxSubscriber && ! $ordered->isReady($event, $subscriber)) {
+            $keyPath = $handler instanceof KeyedOrderedOutboxSubscriber ? $handler->orderingKeyPayloadPath() : null;
+
+            if ($handler instanceof OrderedOutboxSubscriber && ! $ordered->isReady($event, $subscriber, $keyPath)) {
                 $deferred = true;
 
                 return;
