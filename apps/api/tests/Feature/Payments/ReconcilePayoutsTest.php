@@ -111,6 +111,41 @@ it('stamps reconciled_at on a payout already mirrored by a webhook with no discr
         ->and($fresh->discrepancy_amount)->toBeNull();
 });
 
+it('applies a missed paid status to a pending mirror and emits PayoutExecuted', function (): void {
+    $mirrored = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => Payout::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'gateway_reference' => 'fake_po_missed_status',
+            'money' => Money::of(4200, 'USD'),
+            'status' => PayoutStatus::Pending,
+            'executed_at' => null,
+        ]),
+    );
+
+    app(FakeGatewayScenarios::class)->scriptPayouts([
+        new GatewayPayoutRecord($this->accountReference, 'fake_po_missed_status', Money::of(4200, 'USD'), PayoutStatus::Paid, CarbonImmutable::parse('2026-07-10T00:00:00Z')),
+    ]);
+
+    app(ReconcilePayouts::class)();
+
+    $fresh = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => Payout::query()->whereKey($mirrored->id)->firstOrFail(),
+    );
+
+    expect($fresh->status)->toBe(PayoutStatus::Paid)
+        ->and($fresh->executed_at)->not->toBeNull()
+        ->and($fresh->reconciled_at)->not->toBeNull()
+        ->and($fresh->discrepancy_amount)->toBeNull();
+
+    $eventCount = app(TenantTransaction::class)->asPlatform(
+        fn () => OutboxEvent::query()->where('type', 'PayoutExecuted')->where('aggregate_id', $mirrored->id)->count(),
+    );
+
+    expect($eventCount)->toBe(1);
+});
+
 it('flags a discrepancy and writes an activity log entry when the gateway amount diverges from the mirror', function (): void {
     $mirrored = app(TenantTransaction::class)->asTenant(
         $this->tenantId,
@@ -170,17 +205,23 @@ it('flags a discrepancy when the gateway amount matches in minor units but diffe
         fn () => Payout::query()->whereKey($mirrored->id)->firstOrFail(),
     );
 
-    expect($fresh->discrepancy_amount)->not->toBeNull();
+    // A currency mismatch is not a subtractable divergence: equal minor
+    // units in different currencies must not collapse to a zero (phantom
+    // "matched") discrepancy, and the gateway currency must be preserved.
+    expect($fresh->discrepancy_amount)->toBe(5000);
 
-    $count = app(TenantTransaction::class)->asTenant(
+    $entry = app(TenantTransaction::class)->asTenant(
         $this->tenantId,
         fn () => ActivityLogEntry::query()
             ->where('event', 'payout_discrepancy')
             ->where('properties->payout_id', $mirrored->id)
-            ->count(),
+            ->first(),
     );
 
-    expect($count)->toBe(1);
+    expect($entry)->not->toBeNull()
+        ->and($entry->properties['currency_mismatch'])->toBeTrue()
+        ->and($entry->properties['gateway_currency'])->toBe('EUR')
+        ->and($entry->properties['mirrored_currency'])->toBe('USD');
 });
 
 it('does not flag a discrepancy or log an entry when the gateway record matches the mirror exactly', function (): void {

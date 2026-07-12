@@ -79,8 +79,17 @@ final class StartSubmerchantOnboarding
 
         try {
             $result = $adapter->createSubmerchant($registration);
-        } catch (GatewayUnavailableException $e) {
-            $this->breaker->recordFailure($data->gateway);
+        } catch (\Throwable $e) {
+            // The pending row was committed before the gateway call to hold
+            // the (tenant_id, gateway) concurrency slot, so a gateway
+            // failure here must roll it back; otherwise the row strands
+            // onboarding forever (a retry hits submerchant_already_onboarded
+            // and refresh no-ops on a null gateway_account_reference).
+            $account->delete();
+
+            if ($e instanceof GatewayUnavailableException) {
+                $this->breaker->recordFailure($data->gateway);
+            }
 
             throw $e;
         }

@@ -251,6 +251,10 @@ final class FakeGateway implements GatewayAdapter
     {
         $this->scenarios->recordSubmerchantCreationCall($request->tenantId, $this->identifier);
 
+        if ($this->scenarios->consumeSubmerchantCreationFailure()) {
+            throw GatewayUnavailableException::forGateway($this->identifier);
+        }
+
         $scripted = $this->scenarios->consumeSubmerchantCreation();
 
         if ($scripted !== null) {

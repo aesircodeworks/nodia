@@ -199,6 +199,7 @@ class ProblemRenderer
             ErrorCode::GatewayUnknown => 'No adapter is registered for this gateway.',
             ErrorCode::GatewayNotEnabled => "This gateway is not in the tenant's enabled_gateways.",
             ErrorCode::SubmerchantAlreadyOnboarded => 'A sub-merchant account for this tenant and gateway already exists.',
+            ErrorCode::SubmerchantNotActive => 'This gateway has no active sub-merchant account for the resolved tenant.',
         };
     }
 }

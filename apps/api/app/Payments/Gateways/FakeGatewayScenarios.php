@@ -27,6 +27,8 @@ final class FakeGatewayScenarios
     /** @var list<GatewaySubmerchantResult> */
     private array $submerchantCreations = [];
 
+    private int $failSubmerchantCreations = 0;
+
     /** @var array<string, GatewaySubmerchantResult> */
     private array $submerchantStatuses = [];
 
@@ -110,6 +112,22 @@ final class FakeGatewayScenarios
     public function consumeSubmerchantCreation(): ?GatewaySubmerchantResult
     {
         return array_shift($this->submerchantCreations);
+    }
+
+    public function failNextSubmerchantCreation(int $times = 1): void
+    {
+        $this->failSubmerchantCreations = $times;
+    }
+
+    public function consumeSubmerchantCreationFailure(): bool
+    {
+        if ($this->failSubmerchantCreations === 0) {
+            return false;
+        }
+
+        $this->failSubmerchantCreations--;
+
+        return true;
     }
 
     /**

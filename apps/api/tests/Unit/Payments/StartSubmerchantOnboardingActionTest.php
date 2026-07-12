@@ -4,6 +4,7 @@ use App\Payments\Actions\StartSubmerchantOnboarding;
 use App\Payments\Data\StartSubmerchantOnboardingData;
 use App\Payments\Enums\SubmerchantStatus;
 use App\Payments\Exceptions\GatewayNotEnabledException;
+use App\Payments\Exceptions\GatewayUnavailableException;
 use App\Payments\Exceptions\GatewayUnknownException;
 use App\Payments\Exceptions\SubmerchantAlreadyOnboardedException;
 use App\Payments\Gateways\FakeGatewayScenarios;
@@ -77,6 +78,27 @@ it('applies a synchronous approval through the guarded transition, landing activ
     );
 
     expect($count)->toBe(1);
+});
+
+it('rolls back the pending row when the gateway call fails so onboarding can be retried', function (): void {
+    app(FakeGatewayScenarios::class)->failNextSubmerchantCreation();
+
+    app(TenantTransaction::class)->asTenant($this->tenantId, function (): void {
+        expect(fn () => app(StartSubmerchantOnboarding::class)(StartSubmerchantOnboardingData::from(['gateway' => 'fake'])))
+            ->toThrow(GatewayUnavailableException::class);
+    });
+
+    $count = app(TenantTransaction::class)->asTenant($this->tenantId, fn () => SubmerchantAccount::query()->count());
+
+    expect($count)->toBe(0);
+
+    $retried = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(StartSubmerchantOnboarding::class)(StartSubmerchantOnboardingData::from(['gateway' => 'fake'])),
+    );
+
+    expect($retried->status)->toBe(SubmerchantStatus::Pending)
+        ->and($retried->gateway_account_reference)->not->toBeNull();
 });
 
 it('throws gateway_unknown for an unregistered adapter without inserting a row', function (): void {
