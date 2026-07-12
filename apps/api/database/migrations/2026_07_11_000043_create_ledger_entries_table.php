@@ -18,6 +18,15 @@ use Illuminate\Support\Facades\Schema;
  * anchor for the projection; (tenant_id, currency, account) backs the
  * balance sums; created_at with id backs the deterministic cursor
  * order of the read endpoint.
+ *
+ * tenant_id is a plain uuid column, deliberately without a foreign key
+ * constraint to tenants, for the reason the activity_log migration
+ * spells out: the append-only trigger denies DELETE to every role, so
+ * a real foreign key would make any tenant a ledger row references
+ * permanently undeletable, defeating the isolation suite's shared
+ * TenantFixture teardown. A financial ledger is meant to outlive the
+ * records it describes, so the missing edge is the correct posture,
+ * not merely a test accommodation.
  */
 return new class extends Migration
 {
@@ -25,7 +34,7 @@ return new class extends Migration
     {
         Schema::create('ledger_entries', function (Blueprint $table): void {
             $table->uuid('id')->primary();
-            $table->foreignUuid('tenant_id')->constrained();
+            $table->uuid('tenant_id');
             $table->string('account');
             $table->string('direction');
             $table->bigInteger('amount');
