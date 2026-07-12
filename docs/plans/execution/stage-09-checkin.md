@@ -23,10 +23,10 @@ Nothing from this stage has landed: there is no `app/CheckIn` bounded context, n
 - [x] T8 Orders read Actions for CheckIn: per-event ticket listing and QR verification with typed failures (orders)
 - [x] T9 Manifest endpoint: `BuildManifest`, cursor pagination, overlay, `filter[updated_since]`, scoping matrix, isolation (checkin)
 - [x] T10 `RecordScan` and `POST /v1/check-ins`: first-scan-wins, outbox in-transaction, replay short-circuit, rejection and rotated-keys matrices, concurrency test (checkin)
-- [ ] T11 `ReconcileOfflineScans` and `POST /v1/check-in-batches`: swap resolution, tie-break, batch idempotence, concurrency tests (checkin)
+- [x] T11 `ReconcileOfflineScans` and `POST /v1/check-in-batches`: swap resolution, tie-break, batch idempotence, concurrency tests (checkin)
 - [x] T12 Assignment endpoints with contract fragments and activity logging (checkin)
-- [ ] T13 TypeScript regeneration, drift gate, full-surface contract pass (checkin)
-- [ ] T14 Status table and roadmap updates (docs)
+- [x] T13 TypeScript regeneration, drift gate, full-surface contract pass (checkin)
+- [x] T14 Status table and roadmap updates (docs)
 
 ### Review rounds
 
@@ -295,3 +295,39 @@ Pushed `feat/api-implementation` (commit `f29e97a`) to origin and watched every 
 - Packages run `29209312956`: success.
 
 Pre-push local scoped verification (commits after the gate entry, review rounds 1 through 3): `composer -d apps/api run lint` (Pint, passed); `php artisan test tests/Unit/CheckIn tests/Feature/CheckIn tests/Unit/Orders/VerifyCheckInQrTest.php` (91 passed, 274 assertions); `php artisan test --testsuite=Concurrency --filter=CheckIn` (5 passed, 24 assertions); `composer -d apps/api run types:generate` then `git status --short packages/api-client/src/generated` (no drift). No CI failures, so no additional fixes were required.
+
+## Closeout (2026-07-12 18:32:45 -03)
+
+**Tasks completed:** all 14 plan tasks (T1 through T14), including T13's slice 6/exit-criterion-10 wrap-up and T14's status-table update, both landed in commit `2bdd595`. The task checklist above had stale unchecked boxes for T11/T13/T14 from mid-run bookkeeping even though the corresponding decisions-and-deviations entries, commits, and test evidence were already recorded; corrected here to `[x]` to match the actual state.
+
+**Local gate:** green. Full six-suite `php artisan test` run (2944 tests, 2943 passed, 1 pre-existing unrelated flake reconfirmed green in isolation), `composer analyse` (Larastan, 0 errors), `composer lint` (Pint, clean), `composer types:generate` with no drift against committed `packages/api-client/src/generated`. The machine summary's `gate.summary` field ("placeholder - will not submit yet") does not describe a real gate result; the actual gate evidence is the T13 entry above plus this section.
+
+**Review rounds:** three rounds, all `needs-fixes` verdicts, all findings addressed in code, zero declined.
+- Round 1 (17:56:31 -03): 5 findings (2 blocking, 3 important) — concurrent-replay 500 in `RecordScan`, non-atomic swap in `ReconcileOfflineScans`, missing envelope-level authorization on the batch endpoint, `client_scan_id` validated as a bounded string instead of a UUID, OpenAPI `ScanOutcome` required-field drift.
+- Round 2 (18:05:50 -03): 6 findings (1 blocking, 5 important) — batch endpoint could exhaust retries and 500 on concurrent same-key delivery, `VerifyCheckInQr::decode` 500'd on non-UUID payload fields instead of `qr_signature_invalid`, manifest `updated_since` filter 500'd on unparseable input, OpenAPI missing `format: uuid` on two `client_scan_id` properties, `check_ins.event_id` and `event_signing_keys.event_id` were bare uuid columns instead of FKs to `events`.
+- Round 3 (18:11:41 -03): 3 important findings — `RecordScan` replay short-circuit ran before verification/authorization (info leak to an unauthorized replayer), `ReconcileOfflineScans` had the same replay-before-authorization ordering bug per-scan, `{event}` routes lacked `whereUuid` constraints and could 500 on a malformed id instead of 404.
+
+No unresolved or declined findings remain across all three rounds.
+
+**Ship result:** shipped, green locally and on CI. Post-gate commits (the three review-fix commits `43692aa`, `dc169c9`, `2f08bd3`) were re-verified with scoped test runs before push; no further fixes were needed. Pushed to `feat/api-implementation` over HTTPS (SSH agent had no identities) as commit `f29e97a`, then a docs commit `9b75719` recording CI verification. Every triggered workflow on both pushes went green:
+- Code push (`f29e97a`): API run `29209312947` (includes the API Contract Drift check, confirmed no drift), Checkin `29209312941`, Storefront `29209312943`, Admin `29209312946`, Packages `29209312956` — all success.
+- Docs push (`9b75719`): API `29209557459`, Checkin `29209557465`, Storefront `29209557466`, Admin `29209557461`, Packages `29209557477` — all success.
+
+Current branch HEAD (`9b75719`) matches the last commit whose CI runs were watched green; no code has landed since, so no further CI wait is needed for this closeout.
+
+**Blockers:** none.
+
+### Exit criteria walk (docs/plans/stage-09-checkin.md)
+
+1. Manifest sync for an assigned staff user with status/rotation counter/check-in state, PII-free, cursor-paginated; 403 unassigned/no-capability; 404 cross-tenant. **Met.** `App\CheckIn\Actions\BuildManifest` plus `GET /v1/events/{event}/check-in-manifest` (T9, commit `7dc77d7`); `tests/Feature/CheckIn/CheckInManifestEndpointTest.php` (content/overlay/PII-free/pagination/delta-filter/scoping matrix), `tests/Isolation/CheckInManifestEndpointIsolationTest.php` (cross-tenant 404).
+2. Manifest key surface exposes exactly the keys needed to verify legitimate QRs (retired verify, revoked do not). **Met.** `GET /v1/events/{event}/signing-keys` (T7, commit `ea9e5b6`) returns active and retired keys, excludes revoked; `VerifyCheckInQr` (T8, commit `d711198`) trials active/retired then revoked-for-classification-only; `tests/Feature/Orders/SigningKeyEndpointsTest.php`, `tests/Unit/Orders/VerifyCheckInQrTest.php`.
+3. Exactly one active key per event under parallel rotation; `revoke_previous: true` breaks previously rendered QRs with `qr_key_revoked`. **Met.** `RotateSigningKey` (T5, commit `9d24ce3`) via conditional UPDATE plus retry-on-conflict; `tests/Concurrency/SigningKeyRotationContentionTest.php` (six parallel rotations, one active key, monotonic versions); round-1/round-2-hardened rotated-keys matrix in `tests/Feature/CheckIn/RecordScanEndpointTest.php`.
+4. N parallel online scans of one ticket: exactly one accepted, one `TicketCheckedIn`, every loser a `duplicate` with its own `DuplicateScanDetected`. **Met.** `RecordScan` (T10, commit `5706aad`, hardened by review rounds 1 and 3 in `2f08bd3`/`dc169c9`); `tests/Concurrency/CheckInScanContentionTest.php` and the round-1 parallel-replay concurrency test.
+5. Cross-device offline reconciliation is first-scan-wins by timestamp regardless of submission order, deterministic tie-break; resubmission returns recorded outcomes without new writes for accepted/duplicate scans, rejected scans re-verify. **Met.** `ReconcileOfflineScans` (T11, commit `6ea3259`, hardened by review rounds 1 and 2 in `43692aa`/`dc169c9`); `tests/Feature/CheckIn/ReconcileOfflineScansEndpointTest.php`, `tests/Unit/CheckIn/ReconcileOfflineScansTest.php`, `tests/Concurrency/CheckInBatchReconciliationContentionTest.php` (including the batch-vs-online-scan cross-race case).
+6. Every check-in record carries device identity, scanning user, client `scanned_at`, server `synced_at`. **Met.** `check_ins` migration (T2, commit `da94284`) columns `device_id`, `user_id`, `scanned_at`, `synced_at`; asserted by `tests/Unit/CheckIn/CheckInConstraintsTest.php` and the endpoint tests' response-shape assertions.
+7. Both check-in events recorded in the same transaction as their state change (rollback-tested), payloads match the registered shapes. **Met.** `tests/Unit/CheckIn/RecordScanTest.php`'s rollback unit test (forced rollback leaves neither the accepted row nor `TicketCheckedIn`); `TicketCheckedIn`/`DuplicateScanDetected` and their `*Payload` Data classes (T10, commit `5706aad`), reused by `ReconcileOfflineScans`.
+8. Every failure mode on every Stage 9 endpoint returns an RFC 9457 problem document with a stable `code`, asserted by feature tests. **Met.** `tests/Unit/Problems/ErrorCodeTest.php` covers all 13 Stage 9 codes (including the `batch_too_large` gap found and fixed in T12); `ProblemRenderer::detailFor` made exhaustive over them in T13 (commit `2bdd595`); `tests/Contract/DocumentedResponseCoverageTest.php` exercises every documented response code for every Stage 9 operation (427 passed at T13, unchanged since).
+9. All three new tables have isolation coverage; Architecture suite shows no cross-context model imports. **Met.** `tests/Isolation/CheckInsIsolationTest.php`, `CheckInAssignmentsIsolationTest.php`, `EventSigningKeysIsolationTest.php` (T2/T3/T4); `tests/Architecture/ContextBoundariesTest` and `PresetTest` green throughout, including the T13 fix for `AssignCheckInUser`'s cross-context `Membership` import (replaced with the `CheckMembershipExists` Action).
+10. Every endpoint's OpenAPI fragment merged and conformance-checked; generated TypeScript committed without drift; Larastan and Pint clean; all six suites green in `composer test` and CI. **Met.** T13 (commit `2bdd595`) is the full-surface pass: `composer analyse` 0 errors, `composer lint` clean, `composer types:generate` no drift, `php artisan test` full run 2943/2944 (1 pre-existing unrelated flake reconfirmed green in isolation); CI runs `29209312947` (API, including API Contract Drift) and `29209557459` both success on the pushed HEAD `9b75719`.
+
+All ten exit criteria are met with concrete evidence. Combined with a green local gate, green CI on the current HEAD, and three review rounds that ended with every finding addressed and none declined, Stage 9 qualifies for a "Done" status. The status table in `docs/api-implementation-plan.md` already reads "Done" for Stage 9 (set during T13); no change needed here.
