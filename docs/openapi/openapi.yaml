@@ -4399,6 +4399,113 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/HoldNotReleasableProblem'
+  /v1/storefront/events/{event}/queue-entries:
+    parameters:
+      - name: event
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: joinQueue
+      summary: Join the waiting room for a flagged event
+      description: >-
+        Storefront surface: unauthenticated, tenant resolved from the
+        Host header (stage-10 plan, Endpoints "POST
+        /v1/storefront/events/{event}/queue-entries"). The returned
+        entrant id is the capability GET
+        /v1/storefront/queue-entries/{entry} accepts as proof of
+        ownership; nothing else is checked (section 14.4). Only an
+        event flagged on_sale_policy.high_demand accepts joins.
+        challenge_response is required, and verified through the
+        ChallengeVerifier hook, only when the resolved event's
+        on_sale_policy.challenge_required is set.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JoinQueueRequest'
+      responses:
+        '201':
+          description: The entrant, waiting at its arrival-ordered position.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueEntry'
+        '404':
+          description: >-
+            No published event has this id for the resolved tenant
+            (code event_not_found).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/HoldEventNotFoundProblem'
+        '409':
+          description: The event is not flagged high_demand (code queue_not_active).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/QueueNotActiveProblem'
+        '422':
+          description: >-
+            Request validation failed (code request.validation_failed,
+            with the errors map).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+        '403':
+          description: >-
+            The event's policy requires a challenge and none was
+            supplied (code challenge_required), or the supplied
+            challenge_response was rejected by the ChallengeVerifier
+            (code challenge_failed).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/QueueChallengeProblem'
+  /v1/storefront/queue-entries/{entry}:
+    parameters:
+      - name: entry
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getQueueEntry
+      summary: Poll a queue entrant's position or admission state
+      description: >-
+        Storefront surface: unauthenticated, tenant resolved from the
+        Host header (stage-10 plan, Endpoints "GET /v1/storefront/
+        queue-entries/{entry}"), the endpoint the storefront polls.
+        Unknown, expired, or cross-tenant entrant ids all render the
+        same queue_entry_not_found problem, so entrant existence never
+        leaks across tenants (cross-tenant resolves to not-found by
+        Redis key namespacing, mirroring the RLS-driven 404 pattern).
+      responses:
+        '200':
+          description: The entrant's current queue position or admission state.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueEntry'
+        '404':
+          description: >-
+            No queue entry has this id for the resolved tenant (unknown,
+            expired, or cross-tenant).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/QueueEntryNotFoundProblem'
   /v1/storefront/orders:
     post:
       operationId: createOrder
@@ -7365,6 +7472,40 @@ components:
             type: string
             format: uuid
       additionalProperties: false
+    QueueEntry:
+      type: object
+      description: >-
+        POST /v1/storefront/events/{event}/queue-entries and GET
+        /v1/storefront/queue-entries/{entry} response shape (stage-10
+        plan, Endpoints). id is the entrant's own capability (section
+        14.4). position is null once admitted; admission_token and
+        admission_expires_at stay null until the gatekeeper admits the
+        entrant (stage-10 plan task breakdown item 8, not yet built).
+      required:
+        - id
+        - event_id
+        - status
+        - position
+        - admission_token
+        - admission_expires_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [waiting, admitted]
+        position:
+          type: [integer, 'null']
+        admission_token:
+          type: [string, 'null']
+        admission_expires_at:
+          type: [string, 'null']
+          format: date-time
+      additionalProperties: false
     CreateOrderRequest:
       type: object
       description: >-
@@ -9385,6 +9526,19 @@ components:
           items:
             $ref: '#/components/schemas/UpdateEventSeatOperation'
       additionalProperties: false
+    JoinQueueRequest:
+      type: object
+      description: >-
+        POST /v1/storefront/events/{event}/queue-entries request body
+        (stage-10 plan, Endpoints). challenge_response is required only
+        when the resolved event's on_sale_policy.challenge_required is
+        set (code challenge_required otherwise); this schema itself
+        leaves it optional since that check depends on server-side
+        policy the request cannot see ahead of time.
+      properties:
+        challenge_response:
+          type: string
+      additionalProperties: false
     CreateHoldRequest:
       type: object
       description: >-
@@ -10164,6 +10318,59 @@ components:
                 limit:
                   type: integer
                   minimum: 1
+      unevaluatedProperties: false
+    QueueNotActiveProblem:
+      description: >-
+        Problem document for POST /v1/storefront/events/{event}/
+        queue-entries when the resolved event is published but not
+        flagged on_sale_policy.high_demand (stage-10 plan, Endpoints).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [queue_not_active]
+      unevaluatedProperties: false
+    QueueChallengeProblem:
+      description: >-
+        Problem document for POST /v1/storefront/events/{event}/
+        queue-entries when the event's policy requires a challenge and
+        none was supplied (code challenge_required), or the supplied
+        challenge_response was rejected by the ChallengeVerifier (code
+        challenge_failed), stage-10 plan Endpoints.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - oneOf:
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum: [challenge_required]
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum: [challenge_failed]
+      unevaluatedProperties: false
+    QueueEntryNotFoundProblem:
+      description: >-
+        Problem document for GET /v1/storefront/queue-entries/{entry}
+        when the entrant id is unknown, expired, or belongs to a
+        different tenant (stage-10 plan, Endpoints).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [404]
+            code:
+              type: string
+              enum: [queue_entry_not_found]
       unevaluatedProperties: false
     RoleNameTakenProblem:
       description: >-

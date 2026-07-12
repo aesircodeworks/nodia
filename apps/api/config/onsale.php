@@ -63,6 +63,26 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Waiting Room
+    |--------------------------------------------------------------------------
+    |
+    | App\Inventory\Support\OnSaleQueue's entrant reverse-lookup key TTL
+    | (stage-10 plan, task breakdown item 7): garbage collection only,
+    | mirroring the same "Redis TTL is never semantic" posture the plan's
+    | own Risks section states for the admitted set ("Fake clock versus
+    | Redis TTL"). Set generously relative to a realistic queue wait: if
+    | it elapses before the gatekeeper admits the entrant, the buyer
+    | simply rejoins (stage-10 plan, Risks "Redis loss and fairness"),
+    | the same recovery path a full Redis failover already requires.
+    |
+    */
+
+    'queue' => [
+        'entrant_ttl_seconds' => (int) env('ONSALE_QUEUE_ENTRANT_TTL_SECONDS', 86400),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Admission Rate Default
     |--------------------------------------------------------------------------
     |

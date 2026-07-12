@@ -303,7 +303,11 @@ export type ErrorCode =
   | 'already_assigned'
   | 'assignment_not_found'
   | 'customer_required'
-  | 'purchase_limit_exceeded';
+  | 'purchase_limit_exceeded'
+  | 'queue_not_active'
+  | 'challenge_required'
+  | 'challenge_failed'
+  | 'queue_entry_not_found';
 export type EventAssignmentData = {
   authorized: boolean;
 };
@@ -403,6 +407,9 @@ export type InviteUserData = {
   email: string;
   name: string;
   role_id: string;
+};
+export type JoinQueueData = {
+  challenge_response?: string;
 };
 export type LedgerAccount =
   'gateway_receivable' | 'gateway_fees' | 'platform_commission' | 'tenant_net';
@@ -623,6 +630,15 @@ export type QrVerificationResultData = {
   event_id: string | null;
   rotation_counter: number | null;
 };
+export type QueueEntryData = {
+  id: string;
+  event_id: string;
+  status: string;
+  position: number | null;
+  admission_token: string | null;
+  admission_expires_at: string | null;
+};
+export type QueueEntryStatus = 'waiting' | 'admitted';
 export type ReconcileBatchData = {
   device_id: string;
   scans: OfflineScanData[];

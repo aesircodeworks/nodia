@@ -120,6 +120,10 @@ enum ErrorCode: string
     case AssignmentNotFound = 'assignment_not_found';
     case CustomerRequired = 'customer_required';
     case PurchaseLimitExceeded = 'purchase_limit_exceeded';
+    case QueueNotActive = 'queue_not_active';
+    case ChallengeRequired = 'challenge_required';
+    case ChallengeFailed = 'challenge_failed';
+    case QueueEntryNotFound = 'queue_entry_not_found';
 
     public function status(): int
     {
@@ -237,6 +241,10 @@ enum ErrorCode: string
             self::AssignmentNotFound => 404,
             self::CustomerRequired => 422,
             self::PurchaseLimitExceeded => 409,
+            self::QueueNotActive => 409,
+            self::ChallengeRequired => 403,
+            self::ChallengeFailed => 403,
+            self::QueueEntryNotFound => 404,
         };
     }
 
@@ -356,6 +364,10 @@ enum ErrorCode: string
             self::AssignmentNotFound => 'Assignment not found',
             self::CustomerRequired => 'Customer required',
             self::PurchaseLimitExceeded => 'Purchase limit exceeded',
+            self::QueueNotActive => 'Queue not active',
+            self::ChallengeRequired => 'Challenge required',
+            self::ChallengeFailed => 'Challenge failed',
+            self::QueueEntryNotFound => 'Queue entry not found',
         };
     }
 

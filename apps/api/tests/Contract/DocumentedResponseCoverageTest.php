@@ -1,5 +1,6 @@
 <?php
 
+use App\EventCatalog\Data\OnSalePolicyData;
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Models\Event;
 use App\EventCatalog\Models\Seat;
@@ -15,6 +16,7 @@ use App\Identity\Support\ClaimToken;
 use App\Inventory\Enums\EventSeatStatus;
 use App\Inventory\Models\EventSeat;
 use App\Inventory\Models\TicketTypeInventory;
+use App\Inventory\Support\OnSaleQueue;
 use App\Models\User;
 use App\Orders\Actions\MarkOrderAwaitingPayment;
 use App\Orders\Actions\MarkOrderPaid;
@@ -37,6 +39,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -181,6 +184,23 @@ afterEach(function (): void {
             // ahead of events below since ticket_types.event_id references
             // events.
             DB::table('ticket_types')->where('tenant_id', $tenantId)->delete();
+
+            // contractQueueEvent()'s exercisers (stage-10 plan, TDD
+            // sequencing Slice 4, task breakdown item 7) write Redis queue
+            // state keyed by tenant_id and event_id
+            // (App\Inventory\Support\OnSaleQueue), never Postgres; purged
+            // here ahead of the events delete below since the waiting-set
+            // and active-set keys are derived from each event's own id.
+            $queueEventIds = DB::table('events')->where('tenant_id', $tenantId)->pluck('id')->all();
+
+            foreach ($queueEventIds as $queueEventId) {
+                Redis::connection()->del(OnSaleQueue::waitingKey($tenantId, $queueEventId));
+                Redis::connection()->srem('onsale:active', OnSaleQueue::activeMember($tenantId, $queueEventId));
+            }
+
+            foreach (Redis::connection()->keys('onsale:'.$tenantId.':entrant:*') as $queueEntrantKey) {
+                Redis::connection()->del($queueEntrantKey);
+            }
 
             // contractEventBearer()'s exercisers (stage-05a plan, task
             // breakdown item 5) write events scoped to a fresh
@@ -611,6 +631,23 @@ function contractHoldFixture(Tenant $tenant, int $quantity = 10): array
 
         return ['event' => $event, 'ticketType' => $ticketType];
     });
+}
+
+/**
+ * A published, high-demand-flagged event scoped to the given
+ * contractHoldTenant() (stage-10 plan, TDD sequencing Slice 4, task
+ * breakdown item 7).
+ */
+function contractQueueEvent(Tenant $tenant, bool $challengeRequired = false): Event
+{
+    return app(TenantTransaction::class)->asTenant(
+        $tenant->id,
+        fn () => Event::factory()->create([
+            'tenant_id' => $tenant->id,
+            'status' => EventStatus::Published,
+            'on_sale_policy' => new OnSalePolicyData(highDemand: true, admissionRatePerMinute: null, challengeRequired: $challengeRequired),
+        ]),
+    );
 }
 
 /**
@@ -2912,6 +2949,52 @@ function documentedResponseExercisers(): array
             });
 
             return test()->deleteJson('http://'.$host.'/v1/storefront/holds/'.$created['id']);
+        },
+        // Stage-10 plan, TDD sequencing Slice 4, task breakdown item 7:
+        // the waiting-room join and poll surface.
+        'post /v1/storefront/events/{event}/queue-entries 201' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            $event = contractQueueEvent($tenant);
+
+            return test()->postJson('http://'.$host.'/v1/storefront/events/'.$event->id.'/queue-entries', []);
+        },
+        'post /v1/storefront/events/{event}/queue-entries 404' => function (): TestResponse {
+            ['host' => $host] = contractHoldTenant();
+
+            return test()->postJson('http://'.$host.'/v1/storefront/events/'.Str::uuid7().'/queue-entries', []);
+        },
+        'post /v1/storefront/events/{event}/queue-entries 409' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            ['event' => $event] = contractHoldFixture($tenant);
+
+            return test()->postJson('http://'.$host.'/v1/storefront/events/'.$event->id.'/queue-entries', []);
+        },
+        'post /v1/storefront/events/{event}/queue-entries 422' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            $event = contractQueueEvent($tenant);
+
+            return test()->postJson('http://'.$host.'/v1/storefront/events/'.$event->id.'/queue-entries', [
+                'challenge_response' => 42,
+            ]);
+        },
+        'post /v1/storefront/events/{event}/queue-entries 403' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            $event = contractQueueEvent($tenant, challengeRequired: true);
+
+            return test()->postJson('http://'.$host.'/v1/storefront/events/'.$event->id.'/queue-entries', []);
+        },
+        'get /v1/storefront/queue-entries/{entry} 200' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            $event = contractQueueEvent($tenant);
+
+            $created = test()->postJson('http://'.$host.'/v1/storefront/events/'.$event->id.'/queue-entries', [])->json();
+
+            return test()->getJson('http://'.$host.'/v1/storefront/queue-entries/'.$created['id']);
+        },
+        'get /v1/storefront/queue-entries/{entry} 404' => function (): TestResponse {
+            ['host' => $host] = contractHoldTenant();
+
+            return test()->getJson('http://'.$host.'/v1/storefront/queue-entries/'.Str::uuid7());
         },
         // Stage-07 plan, task breakdown item 3: the storefront order
         // conversion surface. Every case authenticates as a customer over

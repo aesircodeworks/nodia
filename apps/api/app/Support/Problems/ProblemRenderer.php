@@ -216,6 +216,10 @@ class ProblemRenderer
             ErrorCode::AssignmentNotFound => 'No check-in assignment has this id for the resolved tenant.',
             ErrorCode::CustomerRequired => 'This hold includes a ticket type with a per-customer purchase limit, which requires an authenticated customer.',
             ErrorCode::PurchaseLimitExceeded => 'This customer has reached the per-customer purchase limit for this ticket type.',
+            ErrorCode::QueueNotActive => 'This event is not flagged high-demand; it has no active waiting room.',
+            ErrorCode::ChallengeRequired => 'This event requires a challenge_response to join its waiting room.',
+            ErrorCode::ChallengeFailed => 'The supplied challenge_response was rejected.',
+            ErrorCode::QueueEntryNotFound => 'No queue entry has this id for the resolved tenant.',
         };
     }
 }

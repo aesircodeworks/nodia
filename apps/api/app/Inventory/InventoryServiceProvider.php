@@ -2,6 +2,8 @@
 
 namespace App\Inventory;
 
+use App\Inventory\Support\ChallengeVerifier;
+use App\Inventory\Support\NoOpChallengeVerifier;
 use App\Inventory\Support\RateLimiterKeys;
 use App\Support\Outbox\EventTypeRegistry;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -30,6 +32,18 @@ use Illuminate\Support\ServiceProvider;
  */
 class InventoryServiceProvider extends ServiceProvider
 {
+    /**
+     * Stage-10 plan, Scope "A challenge hook at queue entry": the
+     * default App\Inventory\Support\ChallengeVerifier binding until a
+     * real provider lands behind an ADR. Tests swap this binding
+     * explicitly (App\Inventory\Support\FakeChallengeVerifier) to
+     * exercise the challenge_failed path.
+     */
+    public function register(): void
+    {
+        $this->app->bind(ChallengeVerifier::class, NoOpChallengeVerifier::class);
+    }
+
     public function boot(EventTypeRegistry $registry): void
     {
         $registry->register('HoldCreated');

@@ -117,6 +117,10 @@ test('the registry holds exactly the known codes', function () {
         'assignment_not_found',
         'customer_required',
         'purchase_limit_exceeded',
+        'queue_not_active',
+        'challenge_required',
+        'challenge_failed',
+        'queue_entry_not_found',
     ]);
 });
 
@@ -232,6 +236,10 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'assignment_not_found' => [ErrorCode::AssignmentNotFound, 404, 'Assignment not found', '/problems/assignment-not-found'],
     'customer_required' => [ErrorCode::CustomerRequired, 422, 'Customer required', '/problems/customer-required'],
     'purchase_limit_exceeded' => [ErrorCode::PurchaseLimitExceeded, 409, 'Purchase limit exceeded', '/problems/purchase-limit-exceeded'],
+    'queue_not_active' => [ErrorCode::QueueNotActive, 409, 'Queue not active', '/problems/queue-not-active'],
+    'challenge_required' => [ErrorCode::ChallengeRequired, 403, 'Challenge required', '/problems/challenge-required'],
+    'challenge_failed' => [ErrorCode::ChallengeFailed, 403, 'Challenge failed', '/problems/challenge-failed'],
+    'queue_entry_not_found' => [ErrorCode::QueueEntryNotFound, 404, 'Queue entry not found', '/problems/queue-entry-not-found'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

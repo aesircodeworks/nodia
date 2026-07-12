@@ -72,6 +72,9 @@ use App\Identity\Mail\PasswordResetMail;
 use App\Identity\Mail\StaffInvitationMail;
 use App\Inventory\Enums\EventSeatStatus;
 use App\Inventory\Enums\HoldStatus;
+use App\Inventory\Enums\QueueEntryStatus;
+use App\Inventory\Exceptions\ChallengeFailedException;
+use App\Inventory\Exceptions\ChallengeRequiredException;
 use App\Inventory\Exceptions\CustomerRequiredException;
 use App\Inventory\Exceptions\EventNotSeatedException;
 use App\Inventory\Exceptions\HoldEventNotFoundException;
@@ -83,6 +86,8 @@ use App\Inventory\Exceptions\HoldNotReleasableException;
 use App\Inventory\Exceptions\InsufficientHoldInventoryException;
 use App\Inventory\Exceptions\InsufficientInventoryException;
 use App\Inventory\Exceptions\PurchaseLimitExceededException;
+use App\Inventory\Exceptions\QueueEntryNotFoundException;
+use App\Inventory\Exceptions\QueueNotActiveException;
 use App\Inventory\Exceptions\SalesWindowClosedException;
 use App\Inventory\Exceptions\SeatNotModifiableException;
 use App\Inventory\Exceptions\SeatSelectionInvalidException;
@@ -256,6 +261,7 @@ arch()->preset()->laravel()->ignoring([
     EventStatus::class,
     HoldStatus::class,
     EventSeatStatus::class,
+    QueueEntryStatus::class,
     OrderStatus::class,
     TicketStatus::class,
     PromoCodeDiscountType::class,
@@ -349,6 +355,10 @@ arch()->preset()->laravel()->ignoring([
     TicketTypeInventoryNotFoundException::class,
     CustomerRequiredException::class,
     PurchaseLimitExceededException::class,
+    QueueNotActiveException::class,
+    ChallengeRequiredException::class,
+    ChallengeFailedException::class,
+    QueueEntryNotFoundException::class,
     MissingTenantHeaderException::class,
     InvalidTenantHeaderException::class,
     TenantAccessDeniedException::class,
