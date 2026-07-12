@@ -15,7 +15,7 @@ Nothing from this stage has landed: there is no `app/CheckIn` bounded context, n
 
 - [x] T1 `checkin.manage` capability and template-role wiring (identity)
 - [x] T2 `check_ins` table with RLS, model, enum, factory, isolation tests (checkin)
-- [ ] T3 `check_in_assignments` table with RLS, model, factory, isolation tests (checkin)
+- [x] T3 `check_in_assignments` table with RLS, model, factory, isolation tests (checkin)
 - [ ] T4 `event_signing_keys` table with RLS, model, enum, encrypted cast, factory, isolation tests (orders)
 - [ ] T5 Key rotation and get-or-create Actions, provider swap behind `TicketSigningKeyProvider`, deployment-transition and rotation concurrency tests (orders)
 - [ ] T6 Check-in policy layer and `CheckEventAssignment` Action (checkin)
@@ -55,5 +55,17 @@ TDD: `tests/Isolation/CheckInsIsolationTest.php` and its `CheckInFixture` (build
 Test evidence: `php artisan test tests/Isolation/CheckInsIsolationTest.php tests/Unit/CheckIn/CheckInConstraintsTest.php` (13 passed, 19 assertions); `php artisan test --testsuite=Isolation` (278 passed, 552 assertions); `php artisan test --testsuite=Architecture` (40 passed, 97 assertions); `composer lint` clean after Pint auto-fixed import ordering in the two touched files. No Data class changed, so `composer types:generate` was not run.
 
 Commit: `da94284` feat(checkin): add check_ins table with RLS, model, enum, factory.
+
+No deviations from the plan.
+
+#### T3: 2026-07-12
+
+Added the `check_in_assignments` table (migration, RLS policy in the same migration, unique `(tenant_id, event_id, user_id)`), `App\CheckIn\Models\CheckInAssignment` (`HasUuids`, `Fillable`), and a factory. No enum or status column, so no Architecture preset changes were needed: `App\CheckIn\Models` was already added to the Laravel preset's `ignoring()` list in T2 and covers this model too.
+
+TDD: `tests/Isolation/CheckInAssignmentsIsolationTest.php` and its `CheckInAssignmentFixture` (building on `EventFixture`, with two inline `users` rows since `users` carries no `tenant_id`, mirroring `CheckInFixture`) written first against the standard `Rls::applyTenantPolicies` posture; confirmed failing (`Class "App\CheckIn\Models\CheckInAssignment" not found`) before the migration and model landed.
+
+Test evidence: `php artisan test tests/Isolation/CheckInAssignmentsIsolationTest.php` (8 passed, 13 assertions); `php artisan test --testsuite=Isolation` (286 passed, 565 assertions); `php artisan test --testsuite=Architecture` (40 passed, 97 assertions); `./vendor/bin/pint --dirty` clean. No Data class changed, so `composer types:generate` was not run.
+
+Commit: `b836ba2` feat(checkin): add check_in_assignments table with RLS, model, factory.
 
 No deviations from the plan.
