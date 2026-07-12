@@ -24,7 +24,7 @@ Dependencies are in place: Stage 6 (`CreateHold`, `ReleaseHold`, `CommitHold`, `
 - [x] T1 `on_sale_policy` column, `OnSalePolicyData`, event create/update/read contracts, OpenAPI, TypeScript (catalog)
 - [x] T2 `max_per_customer` column, ticket type contracts, and the Catalog Action read surface exposing it to Inventory (catalog)
 - [x] T3 `config/onsale.php` and the named rate limiter tiers with 429 problem-document coverage (inventory)
-- [ ] T4 `purchase_counters` table with RLS and CHECK, model, guarded upsert and decrement operations (inventory)
+- [x] T4 `purchase_counters` table with RLS and CHECK, model, guarded upsert and decrement operations (inventory)
 - [ ] T5 Purchase-limit enforcement in the hold lifecycle, `counted_quantity` on hold items, `customer_required`, concurrency simulation (inventory)
 - [ ] T6 Queue join and position endpoints, Redis entrant lifecycle, `ChallengeVerifier` with fake and no-op implementations (inventory)
 - [ ] T7 Gatekeeper command, admission Lua scripts, budget accounting, signed admission tokens with key rotation (inventory)
@@ -117,3 +117,30 @@ Test evidence (all run from `apps/api` against the real PostgreSQL test database
 Commits:
 
 - `0f2e381` feat(inventory): add config/onsale.php and the named rate limiter tiers
+
+### T4: `purchase_counters` table, RLS, model, and guarded counter operations (2026-07-12)
+
+Landed the isolation and unit halves of TDD Slice 3 (stage-10 plan, task breakdown item 5; depends on T2's `max_per_customer` column, already landed):
+
+- New migration `2026_07_12_000054_create_purchase_counters_table.php`: `purchase_counters` (UUIDv7 `id` via `HasUuids`, non-null `tenant_id`/`customer_id`/`ticket_type_id`, real FKs on all three mirroring `holds`' own posture, `quantity` integer non-null default 0), `unique(customer_id, ticket_type_id)` as the upsert conflict target, a separate index on `ticket_type_id` for the per-type lookup the composite unique's own leading column (`customer_id`) does not serve, the `purchase_counters_quantity_non_negative` CHECK as defense in depth (mirroring `ticket_type_inventory`'s own CHECK-as-backstop posture), and its RLS policy (`Rls::applyTenantPolicies`) shipped in the same migration.
+- `App\Inventory\Models\PurchaseCounter` (plus factory): a narrow counter model in the same shape as `TicketTypeInventory`, `quantity` documented as mutated only through the guarded statements below, never a bare Eloquent save.
+- `App\Inventory\Support\PurchaseCounters` (new, mirroring `RateLimiterKeys`'s own Support placement): the two guarded operations as static methods, deliberately not throwing on guard failure so the caller (T5's `CreateHold`/release wiring, not yet built) decides the domain-exception response.
+  - `increment(tenantId, customerId, ticketTypeId, quantity, ?limit): bool` issues the plan's literal `INSERT ... ON CONFLICT (customer_id, ticket_type_id) DO UPDATE SET quantity = purchase_counters.quantity + excluded.quantity WHERE purchase_counters.quantity + excluded.quantity <= :limit` via `DB::affectingStatement` (Laravel's query builder has no upsert variant that accepts a guard `WHERE` on the conflict branch, so this is raw SQL, not `DB::table(...)->upsert()`), returning whether the affected-row count was nonzero. A null `$limit` short-circuits to `true` with no row touched at all, which is the "unlimited ticket types skip the counter entirely" behavior tested directly here rather than deferred to T5's caller-side branching, so the skip is exercised by this task's own unit tests without needing `CreateHold` wired up yet.
+  - `decrement(customerId, ticketTypeId, counted): int` issues `UPDATE purchase_counters SET quantity = quantity - :counted WHERE customer_id = :customer AND ticket_type_id = :type AND quantity >= :counted` through the Eloquent query builder (mirroring `ReleasesHoldInventory::releaseHeldQuantity`'s own shape), returning the affected-row count so a future caller can decide whether zero rows is an invariant violation worth raising on. `$counted === 0` (an item whose ticket type carried no limit at hold time, so `counted_quantity` was never set) short-circuits to a no-op, the decrement-side mirror of `increment`'s own null-limit skip.
+- `docs/system-design.md` 3.2 amended in this same change per the plan's own instruction ("Decide before task 5"): resolved the context-ownership question by keeping the stage-10 waiting room (rate-limit tiers, purchase counters, queue, gatekeeper, admission tokens) entirely under `Inventory/` rather than introducing a `Support/OnSale` context, with a new `Support/` line added to the Inventory directory listing (`RateLimiterKeys`, `PurchaseCounters`, and a note that the not-yet-built queue/gatekeeper/token machinery lands there too) and a short paragraph ahead of the directory tree stating the reasoning the plan itself gives (protects the hold path Inventory owns; the availability cache fronts Inventory's own reads).
+- No OpenAPI or Data-class change: T4 adds no endpoint and no wire shape (`composer types:generate` not run, no Data class touched), matching the plan's own TDD sequencing for Slice 3's isolation and unit halves (no "Contract (first)" step listed).
+
+Deviation from a literal reading of the task instructions: the instructions describe "the two internal Inventory operations" without specifying the unlimited-type skip belongs to the guard itself versus the caller; this task builds the skip into `PurchaseCounters::increment`/`decrement` directly (a null `$limit` or zero `$counted` short-circuits before touching the database) so that the "unlimited ticket types skipping the counter entirely" unit test the task instructions call for is exercised by this task alone, without needing T5's `CreateHold` wiring to exist first. T5 will still decide, from `HoldableTicketTypeData::maxPerCustomer`, what `$limit` to pass per item; this task's operations are the reusable primitive either branch (limited or unlimited) calls unconditionally.
+
+Test evidence (all run from `apps/api` against the real PostgreSQL test database):
+
+- `php artisan test --testsuite=Isolation --filter=PurchaseCounter`: 11 passed, 17 assertions (cross-tenant SELECT, UPDATE, and DELETE affect zero rows; `WITH CHECK` rejects a foreign `tenant_id`; the quantity non-negative CHECK and the `unique(customer_id, ticket_type_id)` constraint are shipped and enforced; platform read/write posture; raw-SQL query still scoped).
+- `php artisan test --testsuite=Unit --filter=PurchaseCounter`: 8 passed, 15 assertions (insert-branch and update-branch of the upsert guard both succeed within the limit; an increment crossing the limit affects zero rows and leaves the row unchanged; a null limit skips the counter entirely; decrement reverses exactly the recorded amount; the guard blocks a decrement larger than the recorded quantity and leaves it unchanged; the CHECK constraint is independently confirmed shipped; a zero-counted decrement is a no-op).
+- `php artisan test --testsuite=Unit --filter=Inventory`: 93 passed, 212 assertions (no regression in the existing Inventory unit suite).
+- `php artisan test --testsuite=Architecture`: 40 passed, 97 assertions.
+- `./vendor/bin/pint --test` on every changed file: passed.
+- `./vendor/bin/phpstan analyse --memory-limit=1G` on every changed non-test file: 0 errors.
+
+Commits:
+
+- `796652c` feat(inventory): add purchase_counters table, RLS, and guarded counter operations
