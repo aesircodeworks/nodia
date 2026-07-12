@@ -86,6 +86,14 @@ Test-first (RefundExecutionTest, observed failing before the seam existed): acce
 
 Note: with the executor registered, the sync test queue advances a refund immediately after creation, so CreateRefundTest's replay assertion now compares the stable resource fields rather than the byte-identical body, and CreateRefundActionTest's fixture payment gained a gateway_reference. Evidence: CreateRefundTest, CreateRefundActionTest, RefundExecutionTest 26/26.
 
+#### T9 part 2 and T12: completion, sweeper, refund ledger legs (2026-07-12 02:45 -03)
+
+Tests written and observed failing first: RefundCompletionTest (full refund end to end with order refunded, both tickets voided, RefundCompleted recorded once, and the three balanced returned-policy legs after the sweeper delivers the ordered projection; two sequential partials accumulating to refunded with selective then remaining voiding; duplicate completion webhook producing one outcome and one void pass; duplicate RefundCompleted delivery producing exactly one three-leg set through insertOrIgnore; the failure webhook routing to failed with the reservation released and the order still paid; the reconciliation sweeper resolving a stranded processing refund with a late webhook a no-op) and RefundCompletionContentionTest (complete vs fail racing processing admits exactly one outcome; four parallel duplicate failures release the reservation exactly once; a parallel duplicate order transition to refunded resolves by affected-row count).
+
+Landed: CompleteRefund (one transaction: refund transition, order transition chosen by whether the reservation equals the payment amount, voiding from the persisted ticket selection with null meaning all issued, RefundCompleted recorded; an order that left the refund arc logs a warning without losing the completion), RefundCompleted event with the commission policy derived from the persisted commission row fact, ProcessGatewayWebhook routing refund kinds through the platform-resolved refund with the same duplicate semantics as payments, ReconcileProcessingRefunds plus its command scheduled every five minutes, the ledger projection consuming RefundCompleted with both leg sets, and the RefundCompleted type registration.
+
+One test-only fix: the reservation contention fixture's payment lacked a gateway_reference, so the now-registered executor failed the refund and released the reservation mid-test. Evidence: RefundCompletionTest 6/6 first run, Concurrency Refund filter passing twice consecutively, Payments/Orders/Outbox filters 527/527, Pint clean.
+
 ### Review rounds
 
 ### Decisions and deviations

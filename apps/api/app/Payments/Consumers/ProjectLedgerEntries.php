@@ -2,8 +2,10 @@
 
 namespace App\Payments\Consumers;
 
+use App\Payments\Enums\RefundCommissionPolicy;
 use App\Payments\Models\LedgerEntry;
 use App\Payments\Models\Payment;
+use App\Payments\Models\Refund;
 use App\Payments\Support\LedgerEntrySetBuilder;
 use App\Payments\Support\LedgerLeg;
 use App\Support\Money\Money;
@@ -37,6 +39,7 @@ final readonly class ProjectLedgerEntries implements KeyedOrderedOutboxSubscribe
     {
         match ($event->type) {
             'PaymentConfirmed' => $this->applyPaymentConfirmed($event),
+            'RefundCompleted' => $this->applyRefundCompleted($event),
             default => null,
         };
     }
@@ -52,6 +55,19 @@ final readonly class ProjectLedgerEntries implements KeyedOrderedOutboxSubscribe
         );
 
         $this->insert($event, $legs, 'payment', $payment->id);
+    }
+
+    private function applyRefundCompleted(OutboxEvent $event): void
+    {
+        $refund = Refund::query()->findOrFail((string) $event->payload['refund_id']);
+
+        $legs = $this->builder->refundLegs(
+            $refund->money,
+            Money::of($refund->commission_amount, $refund->currency),
+            $refund->commission_amount > 0 ? RefundCommissionPolicy::Returned : RefundCommissionPolicy::Retained,
+        );
+
+        $this->insert($event, $legs, 'refund', $refund->id);
     }
 
     /**

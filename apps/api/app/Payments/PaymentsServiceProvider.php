@@ -39,10 +39,11 @@ class PaymentsServiceProvider extends ServiceProvider
         $registry->register('PaymentFailed');
         $registry->register('PaymentExpired');
         $registry->register('RefundInitiated');
+        $registry->register('RefundCompleted');
 
         $subscribers->register(
             ProjectLedgerEntries::NAME,
-            ['PaymentConfirmed'],
+            ['PaymentConfirmed', 'RefundCompleted'],
             $this->app->make(ProjectLedgerEntries::class),
         );
 

@@ -49,6 +49,7 @@ it('never reserves past the payment amount under parallel partial refunds', func
             'order_id' => $order->id,
             'status' => PaymentStatus::Confirmed,
             'money' => Money::of(5_000, 'USD'),
+            'gateway_reference' => 'fake_'.Str::uuid7(),
         ])->id;
     });
 

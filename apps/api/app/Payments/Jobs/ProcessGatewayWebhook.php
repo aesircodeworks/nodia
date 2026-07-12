@@ -2,15 +2,19 @@
 
 namespace App\Payments\Jobs;
 
+use App\Payments\Actions\CompleteRefund;
 use App\Payments\Actions\ConfirmPayment;
 use App\Payments\Actions\FailPayment;
+use App\Payments\Actions\FailRefund;
 use App\Payments\Enums\GatewayWebhookStatus;
 use App\Payments\Enums\PaymentStatus;
+use App\Payments\Enums\RefundStatus;
 use App\Payments\Gateways\GatewayRegistry;
 use App\Payments\Gateways\NormalizedPaymentEvent;
 use App\Payments\Gateways\WebhookKind;
 use App\Payments\Models\GatewayWebhookEvent;
 use App\Payments\Models\Payment;
+use App\Payments\Models\Refund;
 use App\Support\Audit\ActivityLogger;
 use App\Support\Tenancy\TenantTransaction;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -59,6 +63,12 @@ final class ProcessGatewayWebhook implements ShouldQueue
             return;
         }
 
+        if (in_array($normalized->kind, [WebhookKind::RefundCompleted, WebhookKind::RefundFailed], true)) {
+            $this->conclude($tx, $sentinel, $this->applyRefund($tx, $row, $normalized));
+
+            return;
+        }
+
         $payment = $tx->asPlatform(function () use ($row, $normalized): ?Payment {
             $payment = Payment::query()
                 ->where('gateway', $row->gateway)
@@ -88,6 +98,57 @@ final class ProcessGatewayWebhook implements ShouldQueue
         $status = $tx->asTenant($payment->tenant_id, fn (): GatewayWebhookStatus => $this->apply($payment, $normalized));
 
         $this->conclude($tx, $sentinel, $status);
+    }
+
+    /**
+     * Refund events resolve the refund by gateway reference under the
+     * platform role (the same sanctioned system use as payments, and
+     * likewise activity-logged), then apply the conditional transition
+     * inside a tenant-scoped transaction. Duplicates of an
+     * already-applied outcome are processed; anything else late is
+     * ignored.
+     */
+    private function applyRefund(TenantTransaction $tx, GatewayWebhookEvent $row, NormalizedPaymentEvent $normalized): GatewayWebhookStatus
+    {
+        $refund = $tx->asPlatform(function () use ($row, $normalized): ?Refund {
+            $refund = Refund::query()
+                ->where('gateway_reference', $normalized->gatewayReference)
+                ->first();
+
+            app(ActivityLogger::class)->record(
+                description: sprintf('Webhook tenant resolution for %s event %s', $row->gateway, $row->gateway_event_id),
+                causer: null,
+                event: 'platform_role_use',
+                properties: [
+                    'gateway' => $row->gateway,
+                    'gateway_event_id' => $row->gateway_event_id,
+                    'resolved_tenant_id' => $refund?->tenant_id,
+                ],
+            );
+
+            return $refund;
+        });
+
+        if ($refund === null) {
+            return GatewayWebhookStatus::Ignored;
+        }
+
+        return $tx->asTenant($refund->tenant_id, function () use ($refund, $normalized): GatewayWebhookStatus {
+            $applied = match ($normalized->kind) {
+                WebhookKind::RefundCompleted => app(CompleteRefund::class)($refund->id),
+                default => app(FailRefund::class)($refund->id, (string) $normalized->failureCode),
+            };
+
+            if ($applied !== null) {
+                return GatewayWebhookStatus::Processed;
+            }
+
+            $expected = $normalized->kind === WebhookKind::RefundCompleted ? RefundStatus::Completed : RefundStatus::Failed;
+
+            return Refund::query()->findOrFail($refund->id)->status === $expected
+                ? GatewayWebhookStatus::Processed
+                : GatewayWebhookStatus::Ignored;
+        });
     }
 
     private function apply(Payment $payment, NormalizedPaymentEvent $normalized): GatewayWebhookStatus

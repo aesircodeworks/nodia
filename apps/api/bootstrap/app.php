@@ -32,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // webhooks every 5 minutes (system-design 13).
         $schedule->command('payments:expire')->everyMinute();
         $schedule->command('payments:reconcile')->everyFiveMinutes();
+        $schedule->command('payments:reconcile-refunds')->everyFiveMinutes();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
