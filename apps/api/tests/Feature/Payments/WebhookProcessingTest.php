@@ -18,6 +18,7 @@ use App\Payments\Gateways\FakeGateway;
 use App\Payments\Gateways\FakeWebhookDelivery;
 use App\Payments\Jobs\ProcessGatewayWebhook;
 use App\Payments\Models\Payment;
+use App\Payments\Support\CommissionCalculator;
 use App\Support\Audit\Models\ActivityLogEntry;
 use App\Support\Money\Money;
 use App\Support\Outbox\Models\OutboxEvent;
@@ -168,6 +169,27 @@ function deliverWebhook(FakeWebhookDelivery $delivery)
 }
 
 describe('webhook-driven payment processing', function (): void {
+    it('persists the tenant-configured commission on the payment row at confirmation', function (): void {
+        $fixture = processingFixture();
+
+        app(TenantTransaction::class)->asPlatform(function () use ($fixture): void {
+            Tenant::query()->whereKey($fixture['tenantId'])->update(['commission_bps' => 300]);
+        });
+
+        deliverWebhook(app(FakeGateway::class)->confirmationWebhook($fixture['reference'], Money::of(250, 'USD')))->assertStatus(200);
+
+        $payment = app(TenantTransaction::class)->asPlatform(
+            fn () => Payment::query()->findOrFail($fixture['paymentId']),
+        );
+
+        // 300 bps of the fixture's gross, independent of the gateway fee.
+        $expected = (new CommissionCalculator)->bpsOf($payment->money, 300);
+
+        expect($payment->status)->toBe(PaymentStatus::Confirmed)
+            ->and($payment->fee_amount)->toBe(250)
+            ->and($payment->commission_amount)->toBe($expected->amount);
+    });
+
     it('drives the async purchase to paid end to end', function (): void {
         $fixture = processingFixture();
         $fee = Money::of(250, 'USD');

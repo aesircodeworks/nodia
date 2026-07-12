@@ -83,6 +83,22 @@ it('confirms an initiated payment, persisting the fee and a zero commission in t
         ->and($confirmed->confirmed_at)->not->toBeNull();
 });
 
+it('persists the commission from the tenant configuration in the confirming statement', function (): void {
+    app(TenantTransaction::class)->asPlatform(function (): void {
+        Tenant::query()->whereKey($this->tenantId)->update(['commission_bps' => 250]);
+    });
+
+    $payment = initiatedPayment($this->tenantId, $this->orderId);
+
+    $confirmed = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(ConfirmPayment::class)($payment->id, Money::of(125, 'USD')),
+    );
+
+    expect($confirmed->commission_amount)->toBe(125)
+        ->and($confirmed->fee_amount)->toBe(125);
+});
+
 it('confirms an initiated payment inside its window', function (): void {
     $payment = initiatedPayment($this->tenantId, $this->orderId, ['expires_at' => now()->addMinutes(30)]);
 
