@@ -357,6 +357,39 @@ it('re-verifies a rejected scan from scratch on resubmission once the blocking c
     expect($rows)->toBe(1);
 });
 
+it('rejects a caller holding no checkin capability wholesale with 403, never a 200 batch of rejected outcomes', function (): void {
+    ['eventId' => $eventId, 'ticketId' => $ticketId] = batchTicket($this->tenantId);
+    batchKey($this->tenantId, $eventId, 'secret-1');
+    $payload = batchPayload($ticketId, $eventId, 0, 'secret-1');
+
+    $headers = [
+        'Authorization' => 'Bearer '.TenantStaff::token($this->tenantId, Capability::OrdersView),
+        'X-Tenant-Id' => $this->tenantId,
+    ];
+
+    $response = $this->postJson('/v1/check-in-batches', [
+        'device_id' => 'device-1',
+        'scans' => [['client_scan_id' => (string) Str::uuid7(), 'qr_payload' => $payload, 'scanned_at' => now()->toIso8601String()]],
+    ], $headers);
+
+    $response->assertStatus(403);
+    $response->assertJsonPath('code', 'checkin_not_assigned');
+});
+
+it('rejects a non-uuid client_scan_id with a validation problem', function (): void {
+    ['eventId' => $eventId, 'ticketId' => $ticketId] = batchTicket($this->tenantId);
+    batchKey($this->tenantId, $eventId, 'secret-1');
+    $payload = batchPayload($ticketId, $eventId, 0, 'secret-1');
+
+    $response = $this->postJson('/v1/check-in-batches', [
+        'device_id' => 'device-1',
+        'scans' => [['client_scan_id' => 'not-a-uuid', 'qr_payload' => $payload, 'scanned_at' => now()->toIso8601String()]],
+    ], batchManageHeaders($this->tenantId));
+
+    $response->assertStatus(422);
+    $response->assertJsonPath('code', 'request.validation_failed');
+});
+
 it('rejects a batch of more than 500 scans wholesale with batch_too_large', function (): void {
     ['eventId' => $eventId, 'ticketId' => $ticketId] = batchTicket($this->tenantId);
     batchKey($this->tenantId, $eventId, 'secret-1');

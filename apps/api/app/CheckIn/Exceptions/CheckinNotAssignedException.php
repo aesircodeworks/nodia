@@ -22,6 +22,11 @@ final class CheckinNotAssignedException extends RuntimeException implements HasE
         return new self(sprintf('The acting user is not authorized for event "%s".', $eventId));
     }
 
+    public static function forScanner(): self
+    {
+        return new self('The acting user holds no check-in scanning capability.');
+    }
+
     public function errorCode(): ErrorCode
     {
         return ErrorCode::CheckinNotAssigned;

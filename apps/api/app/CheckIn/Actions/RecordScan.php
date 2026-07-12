@@ -98,7 +98,7 @@ final class RecordScan
 
         $this->assertAuthorized($userId, $eventId);
 
-        [$result, $checkIn, $problem] = DB::transaction(function () use ($tenantId, $ticketId, $eventId, $userId, $data, $scannedAt): array {
+        [$result, $checkIn, $problem, $wasReplay] = DB::transaction(function () use ($tenantId, $ticketId, $eventId, $userId, $data, $scannedAt): array {
             $checkInId = (string) Str::uuid7();
             $syncedAt = Date::now();
 
@@ -131,8 +131,25 @@ final class RecordScan
                     ),
                 ));
 
-                return [CheckInResult::Accepted, $accepted, null];
+                return [CheckInResult::Accepted, $accepted, null, false];
             } catch (UniqueConstraintViolationException) {
+                // A concurrent request replaying the same (device_id,
+                // client_scan_id) committed its row between this call's
+                // opening replay probe and this insert: the losing insert
+                // trips the (tenant_id, device_id, client_scan_id) unique
+                // index, not the accepted-ticket one, so treat it as the
+                // replay it is and return the original persisted result
+                // rather than misclassifying it as a ticket duplicate.
+                $replay = CheckIn::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('device_id', $data->deviceId)
+                    ->where('client_scan_id', $data->clientScanId)
+                    ->first();
+
+                if ($replay !== null) {
+                    return [$replay->result, $replay, null, true];
+                }
+
                 $existing = CheckIn::query()
                     ->where('ticket_id', $ticketId)
                     ->where('result', CheckInResult::Accepted)
@@ -167,9 +184,13 @@ final class RecordScan
                     ),
                 ));
 
-                return [CheckInResult::Duplicate, $duplicate, $existing];
+                return [CheckInResult::Duplicate, $duplicate, $existing, false];
             }
         });
+
+        if ($wasReplay) {
+            return new RecordScanOutcome(CheckInResultData::fromModel($checkIn), wasReplay: true);
+        }
 
         if ($result === CheckInResult::Duplicate) {
             /** @var CheckIn $problem */

@@ -7987,6 +7987,10 @@ components:
       required:
         - client_scan_id
         - outcome
+        - check_in_id
+        - code
+        - first_scanned_at
+        - first_device_id
       properties:
         client_scan_id:
           type: string

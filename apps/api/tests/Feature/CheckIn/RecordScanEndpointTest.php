@@ -503,3 +503,19 @@ it('validates the request body', function (): void {
     $response->assertStatus(422);
     $response->assertJsonPath('code', 'request.validation_failed');
 });
+
+it('rejects a non-uuid client_scan_id with a validation problem', function (): void {
+    ['eventId' => $eventId, 'ticketId' => $ticketId] = recordScanTicket($this->tenantId);
+    recordScanKey($this->tenantId, $eventId, 'secret-1');
+    $payload = recordScanPayload($ticketId, $eventId, 0, 'secret-1');
+
+    $response = $this->postJson('/v1/check-ins', [
+        'qr_payload' => $payload,
+        'device_id' => 'device-1',
+        'client_scan_id' => 'not-a-uuid',
+        'scanned_at' => now()->toIso8601String(),
+    ], recordScanManageHeaders($this->tenantId));
+
+    $response->assertStatus(422);
+    $response->assertJsonPath('code', 'request.validation_failed');
+});

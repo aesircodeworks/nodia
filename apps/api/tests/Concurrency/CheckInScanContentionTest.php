@@ -160,3 +160,82 @@ it('accepts exactly one scan and persists every other as a flagged duplicate und
         ->and($checkedInEvents)->toBe(1)
         ->and($duplicateEvents)->toBe(SCAN_WORKERS - 1);
 });
+
+it('treats a parallel replay of the same device and client_scan_id as one accepted result, never a 500', function (): void {
+    $tenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);
+
+    ['eventId' => $eventId, 'ticketId' => $ticketId, 'userId' => $userId, 'secret' => $secret] = app(TenantTransaction::class)->asTenant(
+        $tenantId,
+        function () use ($tenantId): array {
+            $event = Event::factory()->create(['tenant_id' => $tenantId, 'status' => EventStatus::Published]);
+            $ticketType = TicketType::factory()->create(['tenant_id' => $tenantId, 'event_id' => $event->id]);
+            $customer = Customer::factory()->create([
+                'tenant_id' => $tenantId,
+                'email' => Str::uuid7()->toString().'@example.com',
+            ]);
+            $order = Order::factory()->create([
+                'tenant_id' => $tenantId,
+                'customer_id' => $customer->id,
+                'event_id' => $event->id,
+                'hold_id' => Str::uuid7()->toString(),
+            ]);
+            $ticket = Ticket::factory()->create([
+                'tenant_id' => $tenantId,
+                'order_id' => $order->id,
+                'ticket_type_id' => $ticketType->id,
+                'event_id' => $event->id,
+            ]);
+            $secret = 'replay-secret';
+            EventSigningKey::factory()->create([
+                'tenant_id' => $tenantId,
+                'event_id' => $event->id,
+                'key_version' => 1,
+                'status' => SigningKeyStatus::Active,
+                'secret' => $secret,
+            ]);
+            $user = User::factory()->create();
+            Membership::factory()->create([
+                'user_id' => $user->id,
+                'tenant_id' => $tenantId,
+                'role_id' => Role::factory()->create([
+                    'tenant_id' => $tenantId,
+                    'capabilities' => [Capability::CheckinManage->value],
+                ])->id,
+                'scope' => MembershipScope::Tenant,
+            ]);
+
+            return ['eventId' => $event->id, 'ticketId' => $ticket->id, 'userId' => $user->id, 'secret' => $secret];
+        },
+    );
+
+    $signature = hash_hmac('sha256', $ticketId.'|'.$eventId.'|0', $secret);
+    $payload = rtrim(strtr(base64_encode((string) json_encode([
+        'ticket_id' => $ticketId,
+        'event_id' => $eventId,
+        'rotation' => 0,
+        'signature' => $signature,
+    ])), '+/', '-_'), '=');
+
+    $deviceId = 'replay-device';
+    $clientScanId = (string) Str::uuid7();
+
+    $results = ParallelRunner::run(SCAN_WORKERS, function () use ($tenantId, $userId, $payload, $deviceId, $clientScanId): string {
+        return app(TenantTransaction::class)->asTenant($tenantId, function () use ($userId, $payload, $deviceId, $clientScanId): string {
+            $data = new RecordScanData($payload, $deviceId, $clientScanId, now()->toIso8601String());
+
+            $outcome = (app(RecordScan::class))($data, $userId);
+
+            return $outcome->data->result->value;
+        });
+    });
+
+    [$rowCount, $checkedInEvents] = app(TenantTransaction::class)->asTenant($tenantId, fn () => [
+        CheckIn::query()->where('ticket_id', $ticketId)->count(),
+        OutboxEvent::query()->where('tenant_id', $tenantId)->where('type', 'TicketCheckedIn')->count(),
+    ]);
+
+    expect($results)->toHaveCount(SCAN_WORKERS)
+        ->and(array_values(array_unique($results)))->toBe(['accepted'])
+        ->and($rowCount)->toBe(1)
+        ->and($checkedInEvents)->toBe(1);
+});

@@ -27,7 +27,7 @@ class OfflineScanData extends Data
     public static function rules(): array
     {
         return [
-            'client_scan_id' => ['required', 'string', 'max:255'],
+            'client_scan_id' => ['required', 'string', 'uuid'],
             'qr_payload' => ['required', 'string'],
             'scanned_at' => ['required', 'date'],
         ];

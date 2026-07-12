@@ -30,7 +30,7 @@ class RecordScanData extends Data
         return [
             'qr_payload' => ['required', 'string'],
             'device_id' => ['required', 'string', 'max:255'],
-            'client_scan_id' => ['required', 'string', 'max:255'],
+            'client_scan_id' => ['required', 'string', 'uuid'],
             'scanned_at' => ['required', 'date'],
         ];
     }

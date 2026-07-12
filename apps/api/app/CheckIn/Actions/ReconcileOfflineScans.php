@@ -14,8 +14,10 @@ use App\CheckIn\Events\DuplicateScanDetectedPayload;
 use App\CheckIn\Events\TicketCheckedIn;
 use App\CheckIn\Events\TicketCheckedInPayload;
 use App\CheckIn\Exceptions\BatchTooLargeException;
+use App\CheckIn\Exceptions\CheckinNotAssignedException;
 use App\CheckIn\Models\CheckIn;
 use App\Identity\Actions\ResolveActingCapabilities;
+use App\Identity\Capability;
 use App\Orders\Actions\VerifyCheckInQr;
 use App\Orders\Data\VerifyCheckInQrData;
 use App\Orders\Enums\QrVerificationOutcome;
@@ -75,6 +77,18 @@ final class ReconcileOfflineScans
 
         $tenantId = $this->tenantContext->tenantId();
         $capabilities = ($this->resolveCapabilities)($userId);
+
+        // Envelope-level gate: a caller holding neither checkin.scan nor
+        // checkin.manage can never authorize any scan, so an empty or
+        // otherwise per-scan-clean batch must still be refused wholesale
+        // (403 checkin_not_assigned) rather than returning a 200 result,
+        // matching the single-scan endpoint's capability posture.
+        if (
+            ! in_array(Capability::CheckinScan->value, $capabilities, true)
+            && ! in_array(Capability::CheckinManage->value, $capabilities, true)
+        ) {
+            throw CheckinNotAssignedException::forScanner();
+        }
 
         $results = [];
 
@@ -229,10 +243,10 @@ final class ReconcileOfflineScans
 
         // Everything from here on (the existing-row lock, the demote, and
         // the follow-up insert) runs as one Postgres transaction so the
-        // swap is atomic end to end; a nested savepoint isolates the
-        // follow-up insert's own possible unique-violation retry from
-        // this outer transaction, the same reason the first insert
-        // attempt above needs its own nested transaction.
+        // swap is atomic end to end: if the follow-up insert violates the
+        // partial unique index the transaction rolls back wholesale,
+        // undoing the demote, and the caught violation below drives a
+        // retry rather than leaving a demoted row with no replacement.
         try {
             return DB::transaction(function () use (
                 $tenantId,
@@ -308,27 +322,27 @@ final class ReconcileOfflineScans
                     return null;
                 }
 
-                try {
-                    $accepted = DB::transaction(fn (): CheckIn => CheckIn::query()->create([
-                        'id' => $checkInId,
-                        'tenant_id' => $tenantId,
-                        'ticket_id' => $ticketId,
-                        'event_id' => $eventId,
-                        'user_id' => $userId,
-                        'device_id' => $deviceId,
-                        'client_scan_id' => $clientScanId,
-                        'result' => CheckInResult::Accepted,
-                        'scanned_at' => $scannedAt,
-                        'synced_at' => $syncedAt,
-                    ]));
-                } catch (UniqueConstraintViolationException) {
-                    // The partial unique index rejected this insert even
-                    // though the demote just above freed the slot:
-                    // extremely unlikely (would need a third concurrent
-                    // accepted insert to win the race in between), but
-                    // retried rather than assumed away.
-                    return null;
-                }
+                // The follow-up insert must NOT be isolated in its own
+                // savepoint: if the partial unique index rejects it (a
+                // third concurrent accepted insert won the slot the demote
+                // just freed), the violation has to propagate out of this
+                // whole transaction so the demote above rolls back too.
+                // Swallowing it here would commit a demotion with no
+                // replacement accepted row, stranding the ticket without
+                // any accepted check-in and breaking first-scan-wins. The
+                // outer catch turns the propagated violation into a retry.
+                $accepted = CheckIn::query()->create([
+                    'id' => $checkInId,
+                    'tenant_id' => $tenantId,
+                    'ticket_id' => $ticketId,
+                    'event_id' => $eventId,
+                    'user_id' => $userId,
+                    'device_id' => $deviceId,
+                    'client_scan_id' => $clientScanId,
+                    'result' => CheckInResult::Accepted,
+                    'scanned_at' => $scannedAt,
+                    'synced_at' => $syncedAt,
+                ]);
 
                 $this->outbox->record(new DuplicateScanDetected(
                     $tenantId,
