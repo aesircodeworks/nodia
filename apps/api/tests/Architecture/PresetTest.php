@@ -1,6 +1,7 @@
 <?php
 
 use App\CheckIn\Enums\CheckInResult;
+use App\CheckIn\Exceptions\CheckinNotAssignedException;
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\EventCatalogServiceProvider;
 use App\EventCatalog\Exceptions\CurrencyMismatchException as TicketTypeCurrencyMismatchException;
@@ -87,6 +88,7 @@ use App\Orders\Exceptions\PromoCodeExhaustedException;
 use App\Orders\Exceptions\PromoCodeImmutableFieldException;
 use App\Orders\Exceptions\PromoCodeInvalidException;
 use App\Orders\Exceptions\PromoCodeNotActiveException;
+use App\Orders\Exceptions\SigningKeyEventNotFoundException;
 use App\Orders\Mail\OrderConfirmationMail;
 use App\Orders\OrdersServiceProvider;
 use App\Payments\Enums\GatewayWebhookStatus;
@@ -374,10 +376,12 @@ arch()->preset()->laravel()->ignoring([
     PromoCodeExhaustedException::class,
     PromoCodeCurrencyMismatchException::class,
     PromoCodeImmutableFieldException::class,
+    SigningKeyEventNotFoundException::class,
     'App\Support\Audit\Models',
     'App\Support\Outbox\Models',
     'App\Support\Media\Models',
     MediaNotFoundException::class,
     CheckInResult::class,
+    CheckinNotAssignedException::class,
     'App\CheckIn\Models',
 ]);

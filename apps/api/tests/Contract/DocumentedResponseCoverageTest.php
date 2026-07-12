@@ -3804,6 +3804,71 @@ function documentedResponseExercisers(): array
                 'X-Tenant-Id' => $tenant->id,
             ]);
         },
+        // Stage-09 plan, Endpoints "GET/POST /v1/events/{event}/signing-keys".
+        'get /v1/events/{event}/signing-keys 200' => function (): TestResponse {
+            $tenant = contractTenant();
+            $event = contractEvent($tenant);
+            $headers = ['Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']), 'X-Tenant-Id' => $tenant->id];
+
+            test()->postJson('/v1/events/'.$event->id.'/signing-keys', [], $headers);
+
+            return test()->getJson('/v1/events/'.$event->id.'/signing-keys', $headers);
+        },
+        'get /v1/events/{event}/signing-keys 401' => function (): TestResponse {
+            $tenant = contractTenant();
+            $event = contractEvent($tenant);
+
+            return test()->getJson('/v1/events/'.$event->id.'/signing-keys');
+        },
+        'get /v1/events/{event}/signing-keys 403' => function (): TestResponse {
+            $tenant = contractTenant();
+            $event = contractEvent($tenant);
+
+            return test()->getJson('/v1/events/'.$event->id.'/signing-keys', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.scan']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/events/{event}/signing-keys 404' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->getJson('/v1/events/'.Str::uuid7().'/signing-keys', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/events/{event}/signing-keys 201' => function (): TestResponse {
+            $tenant = contractTenant();
+            $event = contractEvent($tenant);
+
+            return test()->postJson('/v1/events/'.$event->id.'/signing-keys', [], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/events/{event}/signing-keys 401' => function (): TestResponse {
+            $tenant = contractTenant();
+            $event = contractEvent($tenant);
+
+            return test()->postJson('/v1/events/'.$event->id.'/signing-keys', []);
+        },
+        'post /v1/events/{event}/signing-keys 403' => function (): TestResponse {
+            $tenant = contractTenant();
+            $event = contractEvent($tenant);
+
+            return test()->postJson('/v1/events/'.$event->id.'/signing-keys', [], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.scan']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/events/{event}/signing-keys 404' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->postJson('/v1/events/'.Str::uuid7().'/signing-keys', [], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
     ];
 }
 

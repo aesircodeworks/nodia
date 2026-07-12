@@ -3569,6 +3569,112 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/NotFoundProblem'
+  /v1/events/{event}/signing-keys:
+    parameters:
+      - name: event
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: listEventSigningKeys
+      summary: List an event's active and retired QR signing keys
+      description: >-
+        Tenant admin surface (stage-09 plan, Endpoints "GET
+        /v1/events/{event}/signing-keys"): authorizes through
+        checkin.scan plus an assignment row for the event, or
+        checkin.manage as a bypass, evaluated by the CheckIn context's
+        CheckEventAssignment Action. Returns every non-revoked key
+        (active and retired) so a device can verify QRs rendered under
+        an older version; revoked keys never appear. Unpaginated bounded
+        collection, ordered by key_version. secret crosses the wire only
+        here, base64-encoded.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The event's non-revoked signing keys.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SigningKeyList'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller holds neither checkin.scan nor checkin.manage, or
+            holds checkin.scan with no check-in assignment for this
+            event (code checkin_not_assigned in both cases).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/CheckinNotAssignedProblem'
+        '404':
+          description: No event is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SigningKeyEventNotFoundProblem'
+    post:
+      operationId: rotateEventSigningKey
+      summary: Rotate an event's QR signing key
+      description: >-
+        Tenant admin surface behind checkin.manage, audited (stage-09
+        plan, Endpoints "POST /v1/events/{event}/signing-keys"). Retires
+        the current active key via a conditional UPDATE and inserts the
+        next version as active, in one transaction. revoke_previous
+        (default false) marks the outgoing key revoked instead of merely
+        retired, the leak-response path: revoked keys stop verifying and
+        stop appearing in the GET list, while retired keys keep both.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RotateSigningKeyRequest'
+      responses:
+        '201':
+          description: The newly active signing key.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SigningKey'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller has no membership in the asserted tenant (code
+            tenant_access_denied), the acting membership does not hold
+            checkin.manage (code missing_capability), or the acting
+            membership mandates confirmed MFA and has not confirmed it
+            (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/StaffCapabilityForbiddenProblem'
+        '404':
+          description: No event is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SigningKeyEventNotFoundProblem'
   /v1/storefront/events:
     get:
       operationId: listStorefrontEvents
@@ -6999,6 +7105,100 @@ components:
                 code:
                   type: string
                   enum: [promo_code_immutable_field]
+      unevaluatedProperties: false
+    SigningKey:
+      type: object
+      description: >-
+        The staff signing-key wire shape (stage-09 plan, Endpoints
+        "GET/POST /v1/events/{event}/signing-keys"). secret is
+        base64-encoded opaque binary key material and crosses the wire
+        only here, TLS everywhere assumed.
+      required:
+        - id
+        - key_version
+        - secret
+        - status
+        - activated_at
+        - retired_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        key_version:
+          type: integer
+          minimum: 1
+        secret:
+          type: string
+          format: byte
+        status:
+          type: string
+          enum: [active, retired, revoked]
+        activated_at:
+          type: string
+          format: date-time
+        retired_at:
+          type: string
+          format: date-time
+          nullable: true
+      additionalProperties: false
+    SigningKeyList:
+      type: object
+      description: >-
+        Unpaginated bounded collection envelope for GET
+        /v1/events/{event}/signing-keys (stage-09 plan, Endpoints): no
+        pagination metadata to carry, mirroring CapabilityList's own
+        posture.
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SigningKey'
+      additionalProperties: false
+    RotateSigningKeyRequest:
+      type: object
+      description: >-
+        POST /v1/events/{event}/signing-keys request body (stage-09
+        plan, Endpoints). revoke_previous defaults to false.
+      properties:
+        revoke_previous:
+          type: boolean
+          default: false
+      additionalProperties: false
+    CheckinNotAssignedProblem:
+      description: >-
+        Problem document for a 403 on a check-in-scoped staff endpoint
+        (stage-09 plan, Authorization semantics paragraph): the caller
+        holds neither checkin.scan nor checkin.manage, or holds
+        checkin.scan with no check-in assignment row for the target
+        event. Both denial reasons render the same code.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [403]
+            code:
+              type: string
+              enum: [checkin_not_assigned]
+      unevaluatedProperties: false
+    SigningKeyEventNotFoundProblem:
+      description: >-
+        Problem document for GET/POST /v1/events/{event}/signing-keys
+        when the given event id resolves to no visible row for the
+        acting tenant (stage-09 plan, Endpoints, code event_not_found).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [404]
+            code:
+              type: string
+              enum: [event_not_found]
       unevaluatedProperties: false
     CheckPromoCodeRequest:
       type: object

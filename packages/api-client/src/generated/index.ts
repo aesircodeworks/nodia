@@ -592,6 +592,9 @@ export type RoleData = {
   capabilities: string[];
   is_template: boolean;
 };
+export type RotateSigningKeyData = {
+  revoke_previous?: boolean;
+};
 export type SeatData = {
   id: string;
   section: string;
@@ -624,6 +627,17 @@ export type SeatMapSummaryData = {
   seat_count: number;
   created_at: string;
   updated_at: string;
+};
+export type SigningKeyData = {
+  id: string;
+  key_version: number;
+  secret: string;
+  status: string;
+  activated_at: string;
+  retired_at: string | null;
+};
+export type SigningKeyListData = {
+  data: SigningKeyData[];
 };
 export type SigningKeyStatus = 'active' | 'retired' | 'revoked';
 export type StaffTokenRequestData = {
