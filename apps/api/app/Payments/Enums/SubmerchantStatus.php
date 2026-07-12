@@ -18,4 +18,13 @@ enum SubmerchantStatus: string
     case Active = 'active';
     case Rejected = 'rejected';
     case Disabled = 'disabled';
+
+    /**
+     * Quarantine state for a gateway status string the adapter's status
+     * map does not recognize (stage-08d plan, Slice 4). Never thrown,
+     * never silently dropped: an unmapped raw status lands here so
+     * support can investigate instead of the account either stalling
+     * invisibly or being coerced into a wrong normalized state.
+     */
+    case NeedsReview = 'needs_review';
 }

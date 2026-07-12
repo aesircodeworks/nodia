@@ -7961,7 +7961,7 @@ components:
           type: string
         status:
           type: string
-          enum: [pending, under_review, action_required, active, rejected, disabled]
+          enum: [pending, under_review, action_required, active, rejected, disabled, needs_review]
         gateway_account_reference:
           type: ['string', 'null']
         onboarding_url:

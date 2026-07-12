@@ -27,6 +27,14 @@ use Illuminate\Support\Facades\DB;
  * listed source for active. Anything not listed here (rejected or
  * disabled attempting any other transition, a stale event repeating an
  * already-superseded intermediate state) affects zero rows.
+ *
+ * needs_review is the quarantine target for an unmapped raw gateway
+ * status (stage-08d plan, Slice 4): it is reachable from the same
+ * non-terminal sources as action_required, never from active, rejected,
+ * or disabled, so a stale or malformed webhook can never regress a
+ * completed or already-terminal onboarding into review. Once
+ * quarantined, a subsequent recognized status resumes the normal
+ * forward chain exactly like an action_required detour would.
  */
 final class TransitionSubmerchantAccount
 {
@@ -34,12 +42,13 @@ final class TransitionSubmerchantAccount
      * @var array<string, list<SubmerchantStatus>>
      */
     private const array SOURCES = [
-        SubmerchantStatus::UnderReview->value => [SubmerchantStatus::Pending, SubmerchantStatus::ActionRequired],
-        SubmerchantStatus::ActionRequired->value => [SubmerchantStatus::Pending, SubmerchantStatus::UnderReview],
-        SubmerchantStatus::Active->value => [SubmerchantStatus::Pending, SubmerchantStatus::UnderReview, SubmerchantStatus::ActionRequired, SubmerchantStatus::Disabled],
-        SubmerchantStatus::Rejected->value => [SubmerchantStatus::Pending, SubmerchantStatus::UnderReview, SubmerchantStatus::ActionRequired],
+        SubmerchantStatus::UnderReview->value => [SubmerchantStatus::Pending, SubmerchantStatus::ActionRequired, SubmerchantStatus::NeedsReview],
+        SubmerchantStatus::ActionRequired->value => [SubmerchantStatus::Pending, SubmerchantStatus::UnderReview, SubmerchantStatus::NeedsReview],
+        SubmerchantStatus::Active->value => [SubmerchantStatus::Pending, SubmerchantStatus::UnderReview, SubmerchantStatus::ActionRequired, SubmerchantStatus::Disabled, SubmerchantStatus::NeedsReview],
+        SubmerchantStatus::Rejected->value => [SubmerchantStatus::Pending, SubmerchantStatus::UnderReview, SubmerchantStatus::ActionRequired, SubmerchantStatus::NeedsReview],
         SubmerchantStatus::Disabled->value => [SubmerchantStatus::Active],
         SubmerchantStatus::Pending->value => [SubmerchantStatus::Rejected],
+        SubmerchantStatus::NeedsReview->value => [SubmerchantStatus::Pending, SubmerchantStatus::UnderReview, SubmerchantStatus::ActionRequired],
     ];
 
     public function __construct(private readonly ActivityLogger $activityLogger) {}

@@ -27,10 +27,15 @@ final class FakeGateway implements GatewayAdapter
 
     private const SIGNATURE_HEADER = 'X-Fake-Signature';
 
+    private readonly SubmerchantStatusMap $submerchantStatusMap;
+
     public function __construct(
         private readonly FakeGatewayScenarios $scenarios,
         private readonly string $identifier = self::IDENTIFIER,
-    ) {}
+        ?SubmerchantStatusMap $submerchantStatusMap = null,
+    ) {
+        $this->submerchantStatusMap = $submerchantStatusMap ?? SubmerchantStatusMap::identity();
+    }
 
     public function identifier(): string
     {
@@ -167,12 +172,14 @@ final class FakeGateway implements GatewayAdapter
         }
 
         $reference = $payload['reference'] ?? null;
-        $status = SubmerchantStatus::tryFrom((string) ($payload['status'] ?? ''));
+        $rawStatus = $payload['status'] ?? null;
         $requirements = $payload['requirements'] ?? [];
 
-        if (! is_string($reference) || $reference === '' || $status === null || ! is_array($requirements)) {
+        if (! is_string($reference) || $reference === '' || ! is_string($rawStatus) || $rawStatus === '' || ! is_array($requirements)) {
             return null;
         }
+
+        $status = $this->submerchantStatusMap->resolve($rawStatus);
 
         return new NormalizedSubmerchantEvent($reference, $status, array_values(array_map('strval', $requirements)));
     }
@@ -316,11 +323,29 @@ final class FakeGateway implements GatewayAdapter
         array $requirements = [],
         ?string $eventId = null,
     ): FakeWebhookDelivery {
+        return $this->submerchantStatusWebhookRaw($gatewayAccountReference, $status->value, $requirements, $eventId);
+    }
+
+    /**
+     * Builds a submerchant status webhook carrying a raw status string
+     * rather than a normalized SubmerchantStatus, so tests can script an
+     * adapter's own (possibly unmapped) vocabulary through the same
+     * webhook path a real gateway's payload would take (stage-08d plan,
+     * Slice 4).
+     *
+     * @param  list<string>  $requirements
+     */
+    public function submerchantStatusWebhookRaw(
+        string $gatewayAccountReference,
+        string $rawStatus,
+        array $requirements = [],
+        ?string $eventId = null,
+    ): FakeWebhookDelivery {
         return $this->sign([
             'id' => $eventId ?? 'evt_'.Str::uuid7(),
             'type' => 'submerchant.status_changed',
             'reference' => $gatewayAccountReference,
-            'status' => $status->value,
+            'status' => $rawStatus,
             'requirements' => $requirements,
         ]);
     }

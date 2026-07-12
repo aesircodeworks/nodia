@@ -257,6 +257,7 @@ export type ErrorCode =
   | 'refund_tickets_not_in_order'
   | 'gateway_unknown'
   | 'gateway_not_enabled'
+  | 'gateway_not_configured'
   | 'submerchant_already_onboarded'
   | 'submerchant_not_active';
 export type EventAvailabilityData = {
@@ -670,7 +671,13 @@ export type SubmerchantAccountData = {
   updated_at: string;
 };
 export type SubmerchantStatus =
-  'pending' | 'under_review' | 'action_required' | 'active' | 'rejected' | 'disabled';
+  | 'pending'
+  | 'under_review'
+  | 'action_required'
+  | 'active'
+  | 'rejected'
+  | 'disabled'
+  | 'needs_review';
 export type TenantData = {
   id: string;
   name: string;

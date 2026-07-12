@@ -62,6 +62,13 @@ $legal = [
     [SubmerchantStatus::Active, SubmerchantStatus::Disabled],
     [SubmerchantStatus::Disabled, SubmerchantStatus::Active],
     [SubmerchantStatus::Rejected, SubmerchantStatus::Pending],
+    [SubmerchantStatus::Pending, SubmerchantStatus::NeedsReview],
+    [SubmerchantStatus::UnderReview, SubmerchantStatus::NeedsReview],
+    [SubmerchantStatus::ActionRequired, SubmerchantStatus::NeedsReview],
+    [SubmerchantStatus::NeedsReview, SubmerchantStatus::UnderReview],
+    [SubmerchantStatus::NeedsReview, SubmerchantStatus::ActionRequired],
+    [SubmerchantStatus::NeedsReview, SubmerchantStatus::Active],
+    [SubmerchantStatus::NeedsReview, SubmerchantStatus::Rejected],
 ];
 
 $illegal = [
@@ -82,6 +89,11 @@ $illegal = [
     [SubmerchantStatus::UnderReview, SubmerchantStatus::Disabled],
     [SubmerchantStatus::ActionRequired, SubmerchantStatus::Pending],
     [SubmerchantStatus::ActionRequired, SubmerchantStatus::Disabled],
+    [SubmerchantStatus::Active, SubmerchantStatus::NeedsReview],
+    [SubmerchantStatus::Rejected, SubmerchantStatus::NeedsReview],
+    [SubmerchantStatus::Disabled, SubmerchantStatus::NeedsReview],
+    [SubmerchantStatus::NeedsReview, SubmerchantStatus::Pending],
+    [SubmerchantStatus::NeedsReview, SubmerchantStatus::Disabled],
 ];
 
 foreach ($legal as [$from, $to]) {

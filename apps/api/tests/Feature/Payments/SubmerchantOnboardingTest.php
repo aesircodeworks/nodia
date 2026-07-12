@@ -6,6 +6,7 @@ use App\Identity\Models\Membership;
 use App\Identity\Models\Role;
 use App\Models\User;
 use App\Payments\Enums\SubmerchantStatus;
+use App\Payments\Gateways\FakeGateway;
 use App\Payments\Gateways\FakeGatewayScenarios;
 use App\Payments\Gateways\GatewaySubmerchantResult;
 use App\Payments\Models\SubmerchantAccount;
@@ -312,5 +313,31 @@ describe('GET /v1/submerchant-accounts/{submerchant_account}', function (): void
         $this->getJson('/v1/submerchant-accounts/'.$account->id, submerchantHeaders($this->tenantId, Capability::OrdersView))
             ->assertStatus(403)
             ->assertJsonPath('code', 'missing_capability');
+    });
+
+    it('renders only the normalized needs_review status when a webhook carries an unmapped raw status, never the raw string', function (): void {
+        $account = seededSubmerchantAccount($this->tenantId, [
+            'gateway' => 'fake',
+            'status' => SubmerchantStatus::Pending,
+            'gateway_account_reference' => 'sm_ref_quarantine',
+        ]);
+
+        $rawStatus = 'gateway_status_this_platform_has_never_seen';
+        $delivery = app(FakeGateway::class)->submerchantStatusWebhookRaw('sm_ref_quarantine', $rawStatus);
+
+        $this->call('POST', '/v1/webhooks/fake', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+            'HTTP_X_FAKE_SIGNATURE' => $delivery->headers['X-Fake-Signature'],
+        ], $delivery->body)->assertStatus(200);
+
+        $response = $this->getJson('/v1/submerchant-accounts/'.$account->id, submerchantHeaders($this->tenantId, Capability::PayoutsView));
+
+        $response->assertOk()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('id', $account->id)
+            ->assertJsonPath('status', 'needs_review');
+
+        expect($response->getContent())->not->toContain($rawStatus);
     });
 });

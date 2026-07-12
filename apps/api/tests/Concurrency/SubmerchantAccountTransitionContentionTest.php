@@ -94,3 +94,62 @@ it('lets exactly one of a racing webhook and refresh win the transition', functi
     expect($account->status)->toBeIn([SubmerchantStatus::Active, SubmerchantStatus::Rejected])
         ->and($results)->toHaveCount(2);
 });
+
+/**
+ * Stage-08d plan, Slice 4 concurrency rule: an already-active account is
+ * completed onboarding. A stale duplicate webhook that would move it
+ * backwards races a legitimate refresh confirming it is still active;
+ * because active is never a listed source for under_review in
+ * TransitionSubmerchantAccount::SOURCES, the guarded conditional UPDATE
+ * lets the stale attempt affect zero rows regardless of ordering, so the
+ * account never regresses no matter which contender's query runs first.
+ */
+it('never regresses a completed onboarding when a stale webhook races a confirming refresh', function (): void {
+    [$tenantId, $accountId] = app(TenantTransaction::class)->asPlatform(function (): array {
+        $tenant = Tenant::factory()->create(['enabled_gateways' => ['fake']]);
+
+        return [$tenant->id, $tenant->id];
+    });
+
+    $accountId = app(TenantTransaction::class)->asTenant($tenantId, fn () => SubmerchantAccount::factory()->create([
+        'tenant_id' => $tenantId,
+        'gateway' => 'fake',
+        'status' => SubmerchantStatus::Active,
+        'gateway_account_reference' => 'sm_ref_stale',
+        'activated_at' => now(),
+    ])->id);
+
+    $results = ParallelRunner::runEach(
+        function (): string {
+            // A late duplicate delivery of an earlier under_review status,
+            // arriving well after the account already went active.
+            $delivery = app(FakeGateway::class)->submerchantStatusWebhook('sm_ref_stale', SubmerchantStatus::UnderReview);
+
+            app(IngestGatewayWebhook::class)(
+                app(FakeGateway::class),
+                $delivery->body,
+                ['X-Fake-Signature' => $delivery->headers['X-Fake-Signature']],
+            );
+
+            return 'stale_webhook';
+        },
+        function () use ($tenantId, $accountId): string {
+            app(FakeGatewayScenarios::class)->scriptSubmerchantStatus('sm_ref_stale', GatewaySubmerchantResult::active('sm_ref_stale'));
+
+            $applied = app(TenantTransaction::class)->asTenant(
+                $tenantId,
+                fn () => app(RefreshSubmerchantStatus::class)($accountId),
+            );
+
+            return 'refresh:'.$applied->status->value;
+        },
+    );
+
+    $account = app(TenantTransaction::class)->asTenant(
+        $tenantId,
+        fn () => SubmerchantAccount::query()->findOrFail($accountId),
+    );
+
+    expect($account->status)->toBe(SubmerchantStatus::Active)
+        ->and($results)->toHaveCount(2);
+});

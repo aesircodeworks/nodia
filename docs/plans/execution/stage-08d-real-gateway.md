@@ -196,6 +196,104 @@ Test evidence (apps/api):
 
 Commit: 2396500
 
+### Task 8d-4: KYC abstraction hardening with needs_review quarantine (2026-07-12)
+
+Hardened the Stage 8c sub-merchant onboarding port so status
+normalization is data-driven per adapter and an unrecognized gateway
+status quarantines instead of throwing or being silently dropped
+(stage-08d plan, Slice 4):
+
+- `app/Payments/Enums/SubmerchantStatus.php`: added `NeedsReview =
+  'needs_review'`, a platform-normalized state, not a gateway one.
+- `app/Payments/Gateways/SubmerchantStatusMap.php`: new value object
+  wrapping `array<string, SubmerchantStatus>`; `resolve()` returns
+  `NeedsReview` for any raw status absent from the map;
+  `identity()` builds the map whose raw vocabulary is the enum's own
+  values, FakeGateway's default. Each adapter owns its own map
+  instance, so a second adapter with a disjoint vocabulary plugs in by
+  constructing a different map, never by touching this class or its
+  caller.
+- `app/Payments/Gateways/FakeGateway.php`: constructor gained an
+  optional `SubmerchantStatusMap` (defaults to `identity()`);
+  `normalizeSubmerchantWebhook()` now resolves the raw `status` string
+  through the map instead of `SubmerchantStatus::tryFrom()`, so an
+  unmapped raw status quarantines to `needs_review` rather than the
+  event being dropped (`tryFrom` returning null previously discarded it
+  entirely, which the plan explicitly rules out). Added
+  `submerchantStatusWebhookRaw()` so tests can script an adapter's raw
+  wire vocabulary (including strings a real gateway would send but the
+  map has no entry for) through the same webhook path a real payload
+  takes; `submerchantStatusWebhook()` (the SubmerchantStatus-typed
+  helper already used by every 8c test) now delegates to it.
+- `app/Payments/Actions/TransitionSubmerchantAccount.php`: extended the
+  `SOURCES` transition matrix so `needs_review` is reachable from the
+  same non-terminal sources as `action_required` (pending, under_review,
+  action_required), and forward-transitions out of `needs_review` the
+  same way `action_required` does (to under_review, action_required,
+  active, rejected). `needs_review` is never reachable from `active`,
+  `rejected`, or `disabled`, so a stale or malformed webhook can never
+  regress a completed or terminal onboarding into review; this is
+  enforced by the same conditional-UPDATE-by-affected-row-count
+  mechanism as every other transition, not a special case.
+- `docs/openapi/openapi.yaml`: `needs_review` added to the
+  `SubmerchantAccountData.status` enum.
+- `composer types:generate`: regenerated (`SubmerchantStatus` enum
+  changed); `packages/api-client/src/generated/index.ts` and
+  `typescript-transformer-manifest.json` committed.
+
+Tests (failing first, per the double loop):
+- `tests/Unit/Payments/SubmerchantStatusNormalizationTest.php`: a
+  second adapter identity (`altgw`), built as a `FakeGateway` instance
+  configured with an entirely disjoint raw vocabulary map
+  (`verified`/`in_review`/`action_needed`/`declined`/`new_application`
+  instead of the enum's own values), exercised through
+  `StartSubmerchantOnboarding`, `IngestGatewayWebhook` (the webhook
+  path), `RefreshSubmerchantStatus`, and the `SubmerchantAccount`
+  model: a recognized raw status maps to the correct normalized enum
+  value; a raw status absent from the map quarantines to
+  `needs_review`; the same raw string (`verified`) resolves differently
+  across the alt map and the identity map, proving the mapping is
+  per-adapter data, not a shared hardcoded switch.
+- `tests/Unit/Payments/TransitionSubmerchantAccountTest.php`: extended
+  the existing full-matrix legal/illegal transition table with every
+  `needs_review` source and target pair, including the illegal cases
+  proving `active`, `rejected`, and `disabled` can never regress into
+  `needs_review`.
+- `tests/Feature/Payments/SubmerchantOnboardingTest.php`: a webhook
+  carrying a raw status no adapter map recognizes lands the account on
+  `needs_review` on the wire (`GET /v1/submerchant-accounts/{id}`), and
+  the raw status string never appears anywhere in the response body
+  (asserted with `assertConformsToOpenApi()` plus a literal
+  not-contains check on the raw string).
+- `tests/Concurrency/SubmerchantAccountTransitionContentionTest.php`:
+  new case racing a stale duplicate webhook (an earlier `under_review`
+  status arriving late) against a refresh confirming an
+  already-`active` account; because `active` is never a listed source
+  for `under_review`, the conditional UPDATE's affected-row-count guard
+  lets the stale contender affect zero rows regardless of which
+  transaction's `WHERE status = ...` predicate is evaluated first, so
+  the account is `active` after both contenders finish under
+  `ParallelRunner`, proving the "stale webhook cannot regress a
+  completed onboarding" invariant under real concurrent Postgres access,
+  not just deterministically in a single-threaded unit test.
+
+No new tenant-scoped table (needs_review is an enum member on the
+existing `submerchant_accounts.status` column, backed by the same
+merged migration); no new isolation test required.
+
+Test evidence (apps/api):
+- `php artisan test --filter='SubmerchantStatusNormalizationTest|TransitionSubmerchantAccountTest|SubmerchantOnboardingTest|SubmerchantAccountTransitionContentionTest'`: 87 passed, 251 assertions.
+- `php artisan test tests/Unit/Payments tests/Feature/Payments`: 342 passed, 1355 assertions (no regression from the 325/1309 baseline recorded after task 8d-3).
+- `php artisan test --testsuite=Isolation`: 270 passed, 539 assertions.
+- `php artisan test --testsuite=Concurrency`: 44 passed, 192 assertions.
+- `php artisan test --testsuite=Architecture`: 40 passed, 97 assertions.
+- `./vendor/bin/pint --test` (touched files, after one pint-applied
+  fix to the feature test's import ordering): clean.
+- `./vendor/bin/phpstan analyse` (touched files, `--memory-limit=1G`):
+  0 errors.
+
+No deviation from the plan.
+
 ### Review rounds
 
 ### Decisions and deviations
