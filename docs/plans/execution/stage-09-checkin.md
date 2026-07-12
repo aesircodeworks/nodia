@@ -54,6 +54,6 @@ TDD: `tests/Isolation/CheckInsIsolationTest.php` and its `CheckInFixture` (build
 
 Test evidence: `php artisan test tests/Isolation/CheckInsIsolationTest.php tests/Unit/CheckIn/CheckInConstraintsTest.php` (13 passed, 19 assertions); `php artisan test --testsuite=Isolation` (278 passed, 552 assertions); `php artisan test --testsuite=Architecture` (40 passed, 97 assertions); `composer lint` clean after Pint auto-fixed import ordering in the two touched files. No Data class changed, so `composer types:generate` was not run.
 
-Commit: `<pending>` feat(checkin): add check_ins table with RLS, model, enum, factory.
+Commit: `da94284` feat(checkin): add check_ins table with RLS, model, enum, factory.
 
 No deviations from the plan.
