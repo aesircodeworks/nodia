@@ -5023,6 +5023,78 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/NotFoundProblem'
+  /v1/submerchant-accounts/{submerchant_account}/refresh:
+    parameters:
+      - name: submerchant_account
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: refreshSubmerchantAccount
+      summary: Refresh a sub-merchant account from the gateway
+      description: >-
+        Staff surface under the tenancy.admin group (stage-08c plan,
+        Endpoints; Slice 3): requires payouts.manage and a
+        confirmed-MFA session; the call is activity-logged. The manual
+        fallback for a missed status webhook: pulls the gateway's
+        current view with fetchSubmerchantStatus and applies the same
+        conditional transition the webhook path uses, so a webhook and
+        a refresh racing the same account converge on one winner. A
+        row with no gateway_account_reference yet is returned
+        unchanged.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: X-Tenant-Id
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The sub-merchant account after refresh.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmerchantAccount'
+        '401':
+          description: Missing or invalid staff bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            Missing payouts.manage capability, or the acting membership
+            mandates confirmed MFA (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
+        '404':
+          description: >-
+            Unknown or cross-tenant sub-merchant account id (code
+            request.not_found); RLS makes the cross-tenant case
+            indistinguishable from absence.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '503':
+          description: >-
+            The circuit breaker for this gateway is open, or the
+            adapter reported a transport failure (code
+            gateway_unavailable). Carries Retry-After.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/GatewayUnavailableProblem'
   /v1/ledger-entries:
     get:
       operationId: listLedgerEntries

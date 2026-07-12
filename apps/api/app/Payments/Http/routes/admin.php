@@ -31,6 +31,7 @@ Route::middleware(RequireCapability::class.':'.Capability::LedgerView->value)->g
 
 Route::middleware([RequireCapability::class.':'.Capability::PayoutsManage->value, RecordActivityAudit::class])->group(function (): void {
     Route::post('/submerchant-accounts', [SubmerchantAccountController::class, 'store']);
+    Route::post('/submerchant-accounts/{submerchant_account}/refresh', [SubmerchantAccountController::class, 'refresh'])->whereUuid('submerchant_account');
 });
 
 Route::middleware(RequireCapability::class.':'.Capability::PayoutsView->value)->group(function (): void {

@@ -6,15 +6,18 @@ use App\Payments\Actions\CompleteRefund;
 use App\Payments\Actions\ConfirmPayment;
 use App\Payments\Actions\FailPayment;
 use App\Payments\Actions\FailRefund;
+use App\Payments\Actions\TransitionSubmerchantAccount;
 use App\Payments\Enums\GatewayWebhookStatus;
 use App\Payments\Enums\PaymentStatus;
 use App\Payments\Enums\RefundStatus;
 use App\Payments\Gateways\GatewayRegistry;
 use App\Payments\Gateways\NormalizedPaymentEvent;
+use App\Payments\Gateways\NormalizedSubmerchantEvent;
 use App\Payments\Gateways\WebhookKind;
 use App\Payments\Models\GatewayWebhookEvent;
 use App\Payments\Models\Payment;
 use App\Payments\Models\Refund;
+use App\Payments\Models\SubmerchantAccount;
 use App\Support\Audit\ActivityLogger;
 use App\Support\Tenancy\TenantTransaction;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -58,6 +61,14 @@ final class ProcessGatewayWebhook implements ShouldQueue
         $normalized = $adapter?->normalizeWebhook($row->payload);
 
         if ($normalized === null) {
+            $submerchantEvent = $adapter?->normalizeSubmerchantWebhook($row->payload);
+
+            if ($submerchantEvent !== null) {
+                $this->conclude($tx, $sentinel, $this->applySubmerchant($tx, $row, $submerchantEvent));
+
+                return;
+            }
+
             $this->conclude($tx, $sentinel, GatewayWebhookStatus::Ignored);
 
             return;
@@ -146,6 +157,54 @@ final class ProcessGatewayWebhook implements ShouldQueue
             $expected = $normalized->kind === WebhookKind::RefundCompleted ? RefundStatus::Completed : RefundStatus::Failed;
 
             return Refund::query()->findOrFail($refund->id)->status === $expected
+                ? GatewayWebhookStatus::Processed
+                : GatewayWebhookStatus::Ignored;
+        });
+    }
+
+    /**
+     * Sub-merchant status events carry no tenant context, so the account
+     * is resolved by (gateway, gateway_account_reference) under the
+     * platform role, mirroring the payment/refund resolution above
+     * (system-design 4.3, activity-logged); the conditional transition
+     * then runs inside a tenant-scoped transaction. A zero-row transition
+     * whose account already carries the reported status is a duplicate
+     * and is processed; anything else stale or illegal is ignored.
+     */
+    private function applySubmerchant(TenantTransaction $tx, GatewayWebhookEvent $row, NormalizedSubmerchantEvent $normalized): GatewayWebhookStatus
+    {
+        $account = $tx->asPlatform(function () use ($row, $normalized): ?SubmerchantAccount {
+            $account = SubmerchantAccount::query()
+                ->where('gateway', $row->gateway)
+                ->where('gateway_account_reference', $normalized->gatewayAccountReference)
+                ->first();
+
+            app(ActivityLogger::class)->record(
+                description: sprintf('Webhook tenant resolution for %s event %s', $row->gateway, $row->gateway_event_id),
+                causer: null,
+                event: 'platform_role_use',
+                properties: [
+                    'gateway' => $row->gateway,
+                    'gateway_event_id' => $row->gateway_event_id,
+                    'resolved_tenant_id' => $account?->tenant_id,
+                ],
+            );
+
+            return $account;
+        });
+
+        if ($account === null) {
+            return GatewayWebhookStatus::Ignored;
+        }
+
+        return $tx->asTenant($account->tenant_id, function () use ($account, $normalized): GatewayWebhookStatus {
+            $applied = app(TransitionSubmerchantAccount::class)($account->id, $normalized->status, $normalized->requirements);
+
+            if ($applied !== null) {
+                return GatewayWebhookStatus::Processed;
+            }
+
+            return SubmerchantAccount::query()->findOrFail($account->id)->status === $normalized->status
                 ? GatewayWebhookStatus::Processed
                 : GatewayWebhookStatus::Ignored;
         });

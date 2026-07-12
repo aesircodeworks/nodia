@@ -2,6 +2,7 @@
 
 namespace App\Payments\Http\Controllers;
 
+use App\Payments\Actions\RefreshSubmerchantStatus;
 use App\Payments\Actions\StartSubmerchantOnboarding;
 use App\Payments\Data\StartSubmerchantOnboardingData;
 use App\Payments\Data\SubmerchantAccountData;
@@ -53,5 +54,10 @@ class SubmerchantAccountController
             ?? throw SubmerchantAccountNotFoundException::forId($submerchantAccount);
 
         return SubmerchantAccountData::fromModel($account);
+    }
+
+    public function refresh(string $submerchantAccount, RefreshSubmerchantStatus $refresh): JsonResponse
+    {
+        return response()->json(SubmerchantAccountData::fromModel($refresh($submerchantAccount)), 200);
     }
 }

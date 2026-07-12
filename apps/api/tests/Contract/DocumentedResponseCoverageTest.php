@@ -3686,6 +3686,57 @@ function documentedResponseExercisers(): array
                 'X-Tenant-Id' => $tenant->id,
             ]);
         },
+        'post /v1/submerchant-accounts/{submerchant_account}/refresh 200' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+            $bearer = contractPayoutsManageBearer($tenant);
+
+            $account = contractSubmerchantAccount($tenant, 'fake');
+
+            return test()->postJson('/v1/submerchant-accounts/'.$account->id.'/refresh', [], [
+                'Authorization' => 'Bearer '.$bearer,
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/submerchant-accounts/{submerchant_account}/refresh 401' => function (): TestResponse {
+            return test()->postJson('/v1/submerchant-accounts/'.Str::uuid7().'/refresh', []);
+        },
+        'post /v1/submerchant-accounts/{submerchant_account}/refresh 403' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->postJson('/v1/submerchant-accounts/'.Str::uuid7().'/refresh', [], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['payouts.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/submerchant-accounts/{submerchant_account}/refresh 404' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->postJson('/v1/submerchant-accounts/'.Str::uuid7().'/refresh', [], [
+                'Authorization' => 'Bearer '.contractPayoutsManageBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/submerchant-accounts/{submerchant_account}/refresh 503' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+            $bearer = contractPayoutsManageBearer($tenant);
+
+            $account = app(TenantTransaction::class)->asTenant(
+                $tenant->id,
+                fn () => SubmerchantAccount::factory()->create([
+                    'tenant_id' => $tenant->id,
+                    'gateway' => 'fake',
+                    'gateway_account_reference' => 'sm_ref_contract_refresh',
+                ]),
+            );
+
+            config()->set('payments.circuit_breaker.failure_threshold', 1);
+            app(CircuitBreaker::class)->recordFailure('fake');
+
+            return test()->postJson('/v1/submerchant-accounts/'.$account->id.'/refresh', [], [
+                'Authorization' => 'Bearer '.$bearer,
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
     ];
 }
 

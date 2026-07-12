@@ -150,6 +150,23 @@ final class FakeGateway implements GatewayAdapter
         return NormalizedPaymentEvent::confirmed($reference, Money::of($amount, $currency));
     }
 
+    public function normalizeSubmerchantWebhook(array $payload): ?NormalizedSubmerchantEvent
+    {
+        if (($payload['type'] ?? null) !== 'submerchant.status_changed') {
+            return null;
+        }
+
+        $reference = $payload['reference'] ?? null;
+        $status = SubmerchantStatus::tryFrom((string) ($payload['status'] ?? ''));
+        $requirements = $payload['requirements'] ?? [];
+
+        if (! is_string($reference) || $reference === '' || $status === null || ! is_array($requirements)) {
+            return null;
+        }
+
+        return new NormalizedSubmerchantEvent($reference, $status, array_values(array_map('strval', $requirements)));
+    }
+
     public function queryPayment(string $gatewayReference): ?NormalizedPaymentEvent
     {
         return $this->scenarios->queryResultFor($gatewayReference);

@@ -12,7 +12,7 @@
 - [x] T2 payments: submerchant_accounts migration with RLS, SubmerchantAccount model, SubmerchantStatus enum, factory, isolation tests (slice 2)
 - [x] T3 identity: register payouts.manage capability, financially privileged, template role wiring
 - [x] T4 payments: StartSubmerchantOnboarding action, POST/list/detail endpoints, Data objects, OpenAPI, error codes, duplicate-start concurrency test (slice 2)
-- [ ] T5 payments: sub-merchant webhook normalization, transition Action, refresh endpoint, concurrency and duplicate-delivery tests (slice 3)
+- [x] T5 payments: sub-merchant webhook normalization, transition Action, refresh endpoint, concurrency and duplicate-delivery tests (slice 3)
 - [ ] T6 payments: checkout offer and initiation gating on active sub-merchant, submerchant_not_active code (slice 4)
 - [ ] T7 payments: payouts migration with RLS, Payout model, PayoutStatus enum, factory, isolation tests (slice 5)
 - [ ] T8 payments: RecordGatewayPayout action, payout webhook normalization, PayoutExecuted event, outbox recording, concurrency test (slice 5)
@@ -120,3 +120,29 @@ Test evidence (from `apps/api`):
 - `composer types:generate`: ran and committed regenerated output (`Capability::PayoutsManage`, the three new `ErrorCode` members, `StartSubmerchantOnboardingData`, `SubmerchantAccountData`).
 
 No deviation from the plan's endpoint or error-code shapes. Commit: `982adc5` (`feat(payments): add submerchant onboarding start and read endpoints`).
+
+#### T5: sub-merchant webhook normalization, transition Action, refresh endpoint (2026-07-12)
+
+Landed:
+
+- `App\Payments\Gateways\NormalizedSubmerchantEvent` (gatewayAccountReference, `SubmerchantStatus`, requirements list), a sibling to `NormalizedPaymentEvent` rather than a shared union: the sub-merchant payload shape and its resolution key (`gateway_account_reference`, not a payment/refund reference) are unrelated, and keeping it separate left every existing payment/refund webhook test untouched. `GatewayAdapter::normalizeSubmerchantWebhook(array $payload): ?NormalizedSubmerchantEvent` added to the interface (single implementer, `FakeGateway`); it only recognizes `submerchant.status_changed` payloads and returns null for everything else, so it never intercepts a payment/refund event routed through the pre-existing `normalizeWebhook`.
+- `App\Payments\Actions\TransitionSubmerchantAccount`: the full `SubmerchantStatus` matrix from the stage plan's Data model section, encoded as a `target => list<legal sources>` map (six targets, the two toggle pairs, and the `rejected -> pending` retry), applied as one conditional `UPDATE ... WHERE id = ? AND status IN (...)` checked by affected-row count. `activated_at` is stamped only on a transition landing on `active`; `requirements` is always overwritten with whatever the caller passed (defaulting `[]`), so a webhook that resolves `action_required`'s requirements and a later `active` webhook that clears them both land correctly without a separate code path. The out-of-order forward-skip case (active arriving while still pending) needs no special casing: `pending` is already a listed source for `active`.
+- `App\Payments\Actions\RefreshSubmerchantStatus`: the manual fallback, same circuit-breaker success/failure recording pattern as `StartSubmerchantOnboarding`, calls `fetchSubmerchantStatus` and feeds the result straight into `TransitionSubmerchantAccount`. A row with no `gateway_account_reference` yet (gateway never acknowledged) is returned unchanged rather than erroring, since there is nothing to refresh.
+- `App\Payments\Jobs\ProcessGatewayWebhook` gained an `applySubmerchant` branch, entered only when `normalizeWebhook` returns null and `normalizeSubmerchantWebhook` returns non-null: resolves the account by `(gateway, gateway_account_reference)` under the platform role with the same `platform_role_use` activity-log call the payment/refund branches already make (system-design 4.3), then applies the transition inside a tenant-scoped transaction. A zero-row transition whose account already carries the reported status is treated as processed (duplicate); anything else zero-row is ignored. This reuses the job's existing top-of-`handle()` guard (`$row->status !== Received` returns immediately) for the duplicate-delivery invariant, exactly as the pre-existing payment path does: a second delivery of the same gateway event id re-enqueues the same row but the job no-ops before doing any work, so only one `platform_role_use` entry and one state change ever land, with no new dedup logic needed.
+- `SubmerchantAccountController::refresh` and `POST /v1/submerchant-accounts/{submerchant_account}/refresh`, gated on `payouts.manage` plus `RecordActivityAudit`, alongside the existing `store` route. The controller wraps the response in an explicit `response()->json(..., 200)`: laravel-data's default `ResponsableData::calculateResponseStatus` returns 201 for any POST, which is correct for `store` but wrong for a POST that fetches-and-transitions rather than creates, so `refresh` overrides it explicitly (caught by a first failing conformance/status-code run against the OpenAPI-documented 200).
+- OpenAPI: the refresh path added after the existing detail path, 200/401/403/404/503 responses documented; `DocumentedResponseCoverageTest` gained the five matching exercisers (`post /v1/submerchant-accounts/{submerchant_account}/refresh {200,401,403,404,503}`), following the T4 precedent of adding exercisers as part of the same slice rather than leaving contract coverage to a separate pass.
+- Tests: `tests/Unit/Payments/TransitionSubmerchantAccountTest.php` (13 legal transitions and 17 illegal ones data-driven over the full matrix, plus one explicit out-of-order forward-skip case); `tests/Feature/Payments/SubmerchantOnboardingWebhookTest.php` (pending-to-active with `activated_at`, `action_required` requirements, `rejected`, the `rejected`-to-`pending` retry, the platform_role_use audit count, duplicate delivery producing one state change and one activity entry, an unmatched-reference webhook ignored, and the refresh endpoint's 200/404/403 paths); `tests/Concurrency/SubmerchantAccountTransitionContentionTest.php` (a webhook delivery to `active` racing a refresh to a scripted `rejected` result on the same account via `ParallelRunner::runEach`, asserting the account lands on exactly one of the two targets).
+
+Test evidence (from `apps/api`):
+
+- `php artisan test --filter=TransitionSubmerchantAccountTest`: 31 passed, 80 assertions.
+- `php artisan test --filter=SubmerchantOnboardingWebhookTest`: 10 passed, 30 assertions.
+- `php artisan test --filter=SubmerchantAccountTransitionContentionTest`: 1 passed, 2 assertions (run three times in a row to check for flakiness; all three green).
+- `php artisan test --testsuite=Feature --filter=Payments`: 125 passed, 689 assertions.
+- `php artisan test --testsuite=Unit`: 883 passed, 2136 assertions.
+- `php artisan test --testsuite=Architecture`: 40 passed, 97 assertions.
+- `php artisan test --testsuite=Concurrency`: 42 passed, 187 assertions.
+- `php artisan test --testsuite=Contract`: 382 passed, 2449 assertions (full contract regression, confirms the five new exercisers pass and nothing else broke).
+- `vendor/bin/pint --test` on all touched/new files: passed (after one auto-fix run on the new feature test file's import ordering).
+
+No Data class changed in this slice (the transition and refresh actions work directly with the model and existing `SubmerchantAccountData`), so `composer types:generate` was not run. No deviation from the plan's transition matrix, endpoint shape, or error codes (`request.not_found`, `gateway_unavailable` were already registered).
