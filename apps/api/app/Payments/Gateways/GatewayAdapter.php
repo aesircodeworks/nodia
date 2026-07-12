@@ -54,6 +54,15 @@ interface GatewayAdapter
     public function normalizeSubmerchantWebhook(array $payload): ?NormalizedSubmerchantEvent;
 
     /**
+     * Maps a persisted raw payload to a normalized payout webhook event
+     * (payout created or payout status changed), or null when the
+     * payload carries no payout consequence (stage-08c plan, Slice 5).
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function normalizePayoutWebhook(array $payload): ?NormalizedPayoutEvent;
+
+    /**
      * Poller backstop for missed webhooks (system-design 13): the current
      * gateway-side outcome for a reference, or null while still pending.
      */

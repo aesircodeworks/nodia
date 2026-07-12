@@ -6,16 +6,19 @@ use App\Payments\Actions\CompleteRefund;
 use App\Payments\Actions\ConfirmPayment;
 use App\Payments\Actions\FailPayment;
 use App\Payments\Actions\FailRefund;
+use App\Payments\Actions\RecordGatewayPayout;
 use App\Payments\Actions\TransitionSubmerchantAccount;
 use App\Payments\Enums\GatewayWebhookStatus;
 use App\Payments\Enums\PaymentStatus;
 use App\Payments\Enums\RefundStatus;
 use App\Payments\Gateways\GatewayRegistry;
 use App\Payments\Gateways\NormalizedPaymentEvent;
+use App\Payments\Gateways\NormalizedPayoutEvent;
 use App\Payments\Gateways\NormalizedSubmerchantEvent;
 use App\Payments\Gateways\WebhookKind;
 use App\Payments\Models\GatewayWebhookEvent;
 use App\Payments\Models\Payment;
+use App\Payments\Models\Payout;
 use App\Payments\Models\Refund;
 use App\Payments\Models\SubmerchantAccount;
 use App\Support\Audit\ActivityLogger;
@@ -65,6 +68,14 @@ final class ProcessGatewayWebhook implements ShouldQueue
 
             if ($submerchantEvent !== null) {
                 $this->conclude($tx, $sentinel, $this->applySubmerchant($tx, $row, $submerchantEvent));
+
+                return;
+            }
+
+            $payoutEvent = $adapter?->normalizePayoutWebhook($row->payload);
+
+            if ($payoutEvent !== null) {
+                $this->conclude($tx, $sentinel, $this->applyPayout($tx, $row, $payoutEvent));
 
                 return;
             }
@@ -205,6 +216,61 @@ final class ProcessGatewayWebhook implements ShouldQueue
             }
 
             return SubmerchantAccount::query()->findOrFail($account->id)->status === $normalized->status
+                ? GatewayWebhookStatus::Processed
+                : GatewayWebhookStatus::Ignored;
+        });
+    }
+
+    /**
+     * Payout events carry no tenant context either, so the tenant is
+     * resolved through the sub-merchant account by (gateway,
+     * gateway_account_reference) under the platform role, mirroring
+     * applySubmerchant above (system-design 4.3, activity-logged). The
+     * upsert-or-transition then runs inside a tenant-scoped transaction.
+     * A no-op that leaves the mirror already carrying the reported
+     * status is a duplicate and is processed; anything else (no
+     * sub-merchant match, or a status-changed event with no existing row
+     * to transition) is ignored.
+     */
+    private function applyPayout(TenantTransaction $tx, GatewayWebhookEvent $row, NormalizedPayoutEvent $normalized): GatewayWebhookStatus
+    {
+        $account = $tx->asPlatform(function () use ($row, $normalized): ?SubmerchantAccount {
+            $account = SubmerchantAccount::query()
+                ->where('gateway', $row->gateway)
+                ->where('gateway_account_reference', $normalized->gatewayAccountReference)
+                ->first();
+
+            app(ActivityLogger::class)->record(
+                description: sprintf('Webhook tenant resolution for %s event %s', $row->gateway, $row->gateway_event_id),
+                causer: null,
+                event: 'platform_role_use',
+                properties: [
+                    'gateway' => $row->gateway,
+                    'gateway_event_id' => $row->gateway_event_id,
+                    'resolved_tenant_id' => $account?->tenant_id,
+                ],
+            );
+
+            return $account;
+        });
+
+        if ($account === null) {
+            return GatewayWebhookStatus::Ignored;
+        }
+
+        return $tx->asTenant($account->tenant_id, function () use ($row, $account, $normalized): GatewayWebhookStatus {
+            $applied = app(RecordGatewayPayout::class)($account->tenant_id, $row->gateway, $normalized);
+
+            if ($applied !== null) {
+                return GatewayWebhookStatus::Processed;
+            }
+
+            $existing = Payout::query()
+                ->where('gateway', $row->gateway)
+                ->where('gateway_reference', $normalized->gatewayReference)
+                ->first();
+
+            return $existing !== null && $existing->status === $normalized->status
                 ? GatewayWebhookStatus::Processed
                 : GatewayWebhookStatus::Ignored;
         });

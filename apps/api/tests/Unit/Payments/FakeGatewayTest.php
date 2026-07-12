@@ -278,17 +278,18 @@ it('lists payouts only from the scripted scenario store, optionally filtered sin
 
 it('emits a payout executed webhook the adapter verifies', function (): void {
     $executedAt = CarbonImmutable::parse('2026-07-12T10:00:00Z');
-    $delivery = $this->gateway->payoutStatusWebhook('fake_po_1', PayoutStatus::Paid, $executedAt);
+    $delivery = $this->gateway->payoutStatusWebhook('fakesm_tenant-1', 'fake_po_1', PayoutStatus::Paid, $executedAt);
 
     $parsed = $this->gateway->parseWebhook($delivery->body, $delivery->headers);
 
-    expect($parsed->payload['reference'])->toBe('fake_po_1')
+    expect($parsed->payload['account_reference'])->toBe('fakesm_tenant-1')
+        ->and($parsed->payload['reference'])->toBe('fake_po_1')
         ->and($parsed->payload['status'])->toBe('paid')
         ->and($parsed->payload['executed_at'])->toBe($executedAt->toIso8601String());
 });
 
 it('emits a payout failed webhook the adapter verifies', function (): void {
-    $delivery = $this->gateway->payoutStatusWebhook('fake_po_1', PayoutStatus::Failed);
+    $delivery = $this->gateway->payoutStatusWebhook('fakesm_tenant-1', 'fake_po_1', PayoutStatus::Failed);
 
     $parsed = $this->gateway->parseWebhook($delivery->body, $delivery->headers);
 
@@ -298,19 +299,54 @@ it('emits a payout failed webhook the adapter verifies', function (): void {
 });
 
 it('emits a payout created webhook carrying the amount', function (): void {
-    $delivery = $this->gateway->payoutCreatedWebhook('fake_po_1', Money::of(1500, 'BRL'));
+    $delivery = $this->gateway->payoutCreatedWebhook('fakesm_tenant-1', 'fake_po_1', Money::of(1500, 'BRL'));
 
     $parsed = $this->gateway->parseWebhook($delivery->body, $delivery->headers);
 
-    expect($parsed->payload['reference'])->toBe('fake_po_1')
+    expect($parsed->payload['account_reference'])->toBe('fakesm_tenant-1')
+        ->and($parsed->payload['reference'])->toBe('fake_po_1')
         ->and($parsed->payload['status'])->toBe('pending')
         ->and($parsed->payload['amount'])->toBe(['amount' => 1500, 'currency' => 'BRL']);
 });
 
 it('emits duplicate payout webhooks sharing one gateway event id when scripted', function (): void {
-    $first = $this->gateway->payoutStatusWebhook('fake_po_1', PayoutStatus::Paid, eventId: 'evt_po_dup');
-    $second = $this->gateway->payoutStatusWebhook('fake_po_1', PayoutStatus::Paid, eventId: 'evt_po_dup');
+    $first = $this->gateway->payoutStatusWebhook('fakesm_tenant-1', 'fake_po_1', PayoutStatus::Paid, eventId: 'evt_po_dup');
+    $second = $this->gateway->payoutStatusWebhook('fakesm_tenant-1', 'fake_po_1', PayoutStatus::Paid, eventId: 'evt_po_dup');
 
     expect($this->gateway->parseWebhook($first->body, $first->headers)->gatewayEventId)
         ->toBe($this->gateway->parseWebhook($second->body, $second->headers)->gatewayEventId);
+});
+
+it('normalizes a payout created webhook payload', function (): void {
+    $delivery = $this->gateway->payoutCreatedWebhook('fakesm_tenant-1', 'fake_po_1', Money::of(1500, 'BRL'));
+    $parsed = $this->gateway->parseWebhook($delivery->body, $delivery->headers);
+
+    $normalized = $this->gateway->normalizePayoutWebhook($parsed->payload);
+
+    expect($normalized->gatewayAccountReference)->toBe('fakesm_tenant-1')
+        ->and($normalized->gatewayReference)->toBe('fake_po_1')
+        ->and($normalized->status)->toBe(PayoutStatus::Pending)
+        ->and($normalized->amount)->toEqual(Money::of(1500, 'BRL'))
+        ->and($normalized->executedAt)->toBeNull();
+});
+
+it('normalizes a payout status changed webhook payload with no amount', function (): void {
+    $executedAt = CarbonImmutable::parse('2026-07-12T10:00:00Z');
+    $delivery = $this->gateway->payoutStatusWebhook('fakesm_tenant-1', 'fake_po_1', PayoutStatus::Paid, $executedAt);
+    $parsed = $this->gateway->parseWebhook($delivery->body, $delivery->headers);
+
+    $normalized = $this->gateway->normalizePayoutWebhook($parsed->payload);
+
+    expect($normalized->gatewayAccountReference)->toBe('fakesm_tenant-1')
+        ->and($normalized->gatewayReference)->toBe('fake_po_1')
+        ->and($normalized->status)->toBe(PayoutStatus::Paid)
+        ->and($normalized->amount)->toBeNull()
+        ->and($normalized->executedAt)->toEqual($executedAt);
+});
+
+it('returns null normalizing an unrelated webhook payload as a payout event', function (): void {
+    $delivery = $this->gateway->confirmationWebhook('fake_pay_1', Money::of(100, 'BRL'));
+    $parsed = $this->gateway->parseWebhook($delivery->body, $delivery->headers);
+
+    expect($this->gateway->normalizePayoutWebhook($parsed->payload))->toBeNull();
 });

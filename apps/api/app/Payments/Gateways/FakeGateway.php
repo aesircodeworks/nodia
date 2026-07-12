@@ -167,6 +167,40 @@ final class FakeGateway implements GatewayAdapter
         return new NormalizedSubmerchantEvent($reference, $status, array_values(array_map('strval', $requirements)));
     }
 
+    public function normalizePayoutWebhook(array $payload): ?NormalizedPayoutEvent
+    {
+        $accountReference = $payload['account_reference'] ?? null;
+        $reference = $payload['reference'] ?? null;
+        $status = PayoutStatus::tryFrom((string) ($payload['status'] ?? ''));
+
+        if (! is_string($accountReference) || $accountReference === '' || ! is_string($reference) || $reference === '' || $status === null) {
+            return null;
+        }
+
+        $executedAt = is_string($payload['executed_at'] ?? null) ? CarbonImmutable::parse($payload['executed_at']) : null;
+
+        return match ($payload['type'] ?? null) {
+            'payout.created' => $this->normalizedPayoutCreated($accountReference, $reference, $status, $payload),
+            'payout.status_changed' => new NormalizedPayoutEvent($accountReference, $reference, $status, null, $executedAt),
+            default => null,
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function normalizedPayoutCreated(string $accountReference, string $reference, PayoutStatus $status, array $payload): ?NormalizedPayoutEvent
+    {
+        $amount = $payload['amount']['amount'] ?? null;
+        $currency = $payload['amount']['currency'] ?? null;
+
+        if (! is_int($amount) || $amount < 0 || ! is_string($currency) || preg_match('/^[A-Z]{3}$/', $currency) !== 1) {
+            return null;
+        }
+
+        return new NormalizedPayoutEvent($accountReference, $reference, $status, Money::of($amount, $currency), null);
+    }
+
     public function queryPayment(string $gatewayReference): ?NormalizedPaymentEvent
     {
         return $this->scenarios->queryResultFor($gatewayReference);
@@ -264,11 +298,16 @@ final class FakeGateway implements GatewayAdapter
         ]);
     }
 
-    public function payoutCreatedWebhook(string $gatewayReference, Money $amount, ?string $eventId = null): FakeWebhookDelivery
-    {
+    public function payoutCreatedWebhook(
+        string $gatewayAccountReference,
+        string $gatewayReference,
+        Money $amount,
+        ?string $eventId = null,
+    ): FakeWebhookDelivery {
         return $this->sign([
             'id' => $eventId ?? 'evt_'.Str::uuid7(),
             'type' => 'payout.created',
+            'account_reference' => $gatewayAccountReference,
             'reference' => $gatewayReference,
             'amount' => ['amount' => $amount->amount, 'currency' => $amount->currency],
             'status' => PayoutStatus::Pending->value,
@@ -276,6 +315,7 @@ final class FakeGateway implements GatewayAdapter
     }
 
     public function payoutStatusWebhook(
+        string $gatewayAccountReference,
         string $gatewayReference,
         PayoutStatus $status,
         ?CarbonImmutable $executedAt = null,
@@ -284,6 +324,7 @@ final class FakeGateway implements GatewayAdapter
         return $this->sign([
             'id' => $eventId ?? 'evt_'.Str::uuid7(),
             'type' => 'payout.status_changed',
+            'account_reference' => $gatewayAccountReference,
             'reference' => $gatewayReference,
             'status' => $status->value,
             'executed_at' => $executedAt?->toIso8601String(),

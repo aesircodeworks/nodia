@@ -40,6 +40,7 @@ class PaymentsServiceProvider extends ServiceProvider
         $registry->register('PaymentExpired');
         $registry->register('RefundInitiated');
         $registry->register('RefundCompleted');
+        $registry->register('PayoutExecuted');
 
         $subscribers->register(
             ProjectLedgerEntries::NAME,
