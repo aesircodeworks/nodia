@@ -283,3 +283,15 @@ Codex review of Stage 9, round 3. Three important findings; all addressed in cod
 Test evidence: `php artisan test tests/Unit/CheckIn/RecordScanTest.php tests/Unit/CheckIn/ReconcileOfflineScansTest.php tests/Feature/CheckIn/CheckInManifestEndpointTest.php` (20 passed); `composer -d apps/api run lint` (Pint, passed). No Data class changed, so no `types:generate` drift.
 
 Declined findings: none.
+
+## CI (2026-07-12 18:23:34 -03)
+
+Pushed `feat/api-implementation` (commit `f29e97a`) to origin and watched every triggered workflow to green:
+
+- API run `29209312947`: success (Lint/Larastan, Architecture/Isolation/Concurrency/Feature/Contract suites, API Contract Drift with no drift against committed generated types).
+- Checkin run `29209312941`: success.
+- Storefront run `29209312943`: success.
+- Admin run `29209312946`: success.
+- Packages run `29209312956`: success.
+
+Pre-push local scoped verification (commits after the gate entry, review rounds 1 through 3): `composer -d apps/api run lint` (Pint, passed); `php artisan test tests/Unit/CheckIn tests/Feature/CheckIn tests/Unit/Orders/VerifyCheckInQrTest.php` (91 passed, 274 assertions); `php artisan test --testsuite=Concurrency --filter=CheckIn` (5 passed, 24 assertions); `composer -d apps/api run types:generate` then `git status --short packages/api-client/src/generated` (no drift). No CI failures, so no additional fixes were required.
