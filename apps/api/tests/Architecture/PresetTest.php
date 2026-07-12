@@ -88,14 +88,25 @@ use App\Orders\Exceptions\PromoCodeNotActiveException;
 use App\Orders\Mail\OrderConfirmationMail;
 use App\Orders\OrdersServiceProvider;
 use App\Payments\Enums\GatewayWebhookStatus;
+use App\Payments\Enums\LedgerAccount;
+use App\Payments\Enums\LedgerDirection;
 use App\Payments\Enums\PaymentMethodConfirmation;
 use App\Payments\Enums\PaymentStatus;
+use App\Payments\Enums\RefundCommissionPolicy;
+use App\Payments\Enums\RefundStatus;
 use App\Payments\Exceptions\GatewayUnavailableException;
 use App\Payments\Exceptions\IdempotencyKeyMissingException;
 use App\Payments\Exceptions\IdempotencyKeyReuseMismatchException;
 use App\Payments\Exceptions\OrderNotPayableException;
 use App\Payments\Exceptions\PaymentMethodNotAvailableException;
+use App\Payments\Exceptions\PaymentNotRefundableException;
 use App\Payments\Exceptions\PaymentOrderNotFoundException;
+use App\Payments\Exceptions\RefundAmountExceedsRefundableException;
+use App\Payments\Exceptions\RefundCurrencyMismatchException;
+use App\Payments\Exceptions\RefundNotFoundException;
+use App\Payments\Exceptions\RefundPaymentNotFoundException;
+use App\Payments\Exceptions\RefundTicketsNotInOrderException;
+use App\Payments\Exceptions\UnbalancedLedgerEntrySetException;
 use App\Payments\Exceptions\WebhookSignatureInvalidException;
 use App\Payments\Exceptions\WebhookUnparseableException;
 use App\Payments\Gateways\GatewayPaymentOutcome;
@@ -206,6 +217,10 @@ arch()->preset()->laravel()->ignoring([
     PaymentStatus::class,
     PaymentMethodConfirmation::class,
     GatewayWebhookStatus::class,
+    LedgerAccount::class,
+    LedgerDirection::class,
+    RefundCommissionPolicy::class,
+    RefundStatus::class,
     GatewayPaymentOutcome::class,
     WebhookKind::class,
     'App\Support\Outbox\Jobs',
@@ -313,6 +328,13 @@ arch()->preset()->laravel()->ignoring([
     IdempotencyKeyMissingException::class,
     IdempotencyKeyReuseMismatchException::class,
     PaymentMethodNotAvailableException::class,
+    PaymentNotRefundableException::class,
+    RefundAmountExceedsRefundableException::class,
+    RefundCurrencyMismatchException::class,
+    RefundNotFoundException::class,
+    RefundPaymentNotFoundException::class,
+    RefundTicketsNotInOrderException::class,
+    UnbalancedLedgerEntrySetException::class,
     OrderHoldExpiredException::class,
     HoldAlreadyConvertedException::class,
     OrderNotFoundException::class,
