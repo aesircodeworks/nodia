@@ -11,6 +11,7 @@ use App\Http\Middleware\RecordActivityAudit;
 use App\Http\Middleware\RequireCapability;
 use App\Identity\Capability;
 use App\Payments\Http\Controllers\LedgerController;
+use App\Payments\Http\Controllers\PayoutController;
 use App\Payments\Http\Controllers\RefundController;
 use App\Payments\Http\Controllers\SubmerchantAccountController;
 use Illuminate\Support\Facades\Route;
@@ -37,4 +38,6 @@ Route::middleware([RequireCapability::class.':'.Capability::PayoutsManage->value
 Route::middleware(RequireCapability::class.':'.Capability::PayoutsView->value)->group(function (): void {
     Route::get('/submerchant-accounts', [SubmerchantAccountController::class, 'index']);
     Route::get('/submerchant-accounts/{submerchant_account}', [SubmerchantAccountController::class, 'show'])->whereUuid('submerchant_account');
+    Route::get('/payouts', [PayoutController::class, 'index']);
+    Route::get('/payouts/{payout}', [PayoutController::class, 'show'])->whereUuid('payout');
 });

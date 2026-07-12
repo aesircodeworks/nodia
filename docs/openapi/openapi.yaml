@@ -5212,6 +5212,128 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/MissingCapabilityProblem'
+  /v1/payouts:
+    get:
+      operationId: listPayouts
+      summary: List payouts mirrored from the gateway for the acting tenant
+      description: >-
+        Finance read behind payouts.view (stage-08c plan, Endpoints;
+        payouts.view is financially privileged, so a confirmed MFA
+        session is required). Payouts are a high-volume mirror of
+        gateway payout objects, so the list cursor-paginates with a
+        fixed newest-first order (sort=-created_at, tie-broken
+        descending by id, not caller-adjustable). Allowed filters:
+        filter[status], filter[gateway] (exact); no sorts; unknown
+        parameters are rejected with 400 invalid_query_parameter.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          style: deepObject
+          explode: true
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              gateway:
+                type: string
+            additionalProperties:
+              type: string
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: per_page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: One cursor page of payouts.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayoutCursorPage'
+        '400':
+          description: >-
+            A filter or sort parameter outside the endpoint allowlist
+            (code invalid_query_parameter).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/InvalidQueryParameterProblem'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing payouts.view,
+            or unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
+  /v1/payouts/{payout}:
+    parameters:
+      - name: payout
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getPayout
+      summary: Fetch one payout
+      description: >-
+        Finance read behind payouts.view (stage-08c plan, Endpoints).
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The payout.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payout'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing payouts.view,
+            or unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
+        '404':
+          description: >-
+            Unknown or cross-tenant payout id (code request.not_found);
+            RLS makes the cross-tenant case indistinguishable from
+            absence.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
   /v1/storefront/orders/{order}/payments:
     parameters:
       - name: order
@@ -7745,6 +7867,70 @@ components:
             errors:
               type: object
       unevaluatedProperties: false
+    Payout:
+      type: object
+      description: >-
+        A mirror of one gateway payout object (stage-08c plan, Data
+        model "payouts"; system-design 7.3, 8.3). discrepancy is
+        non-null only when reconciliation found the mirrored amount
+        diverging from ledger expectations.
+      required:
+        - id
+        - gateway
+        - gateway_reference
+        - amount
+        - status
+        - executed_at
+        - reconciled_at
+        - discrepancy
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        gateway:
+          type: string
+        gateway_reference:
+          type: string
+        amount:
+          $ref: '#/components/schemas/Money'
+        status:
+          type: string
+          enum: [pending, in_transit, paid, failed, canceled]
+        executed_at:
+          type: ['string', 'null']
+          format: date-time
+        reconciled_at:
+          type: ['string', 'null']
+          format: date-time
+        discrepancy:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        created_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    PayoutCursorPage:
+      type: object
+      description: >-
+        Cursor-paginated envelope (data, links, meta) for the payout
+        list (stage-08c plan, Endpoints).
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Payout'
+        links:
+          type: array
+          items: {}
+        meta:
+          $ref: '#/components/schemas/CursorPageMeta'
+      additionalProperties: false
     SubmerchantAccount:
       type: object
       description: >-

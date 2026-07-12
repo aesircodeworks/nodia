@@ -505,6 +505,17 @@ export type PaymentMethodOfferData = {
   confirmation_window_minutes: number | null;
 };
 export type PaymentStatus = 'initiated' | 'confirmed' | 'failed' | 'expired';
+export type PayoutData = {
+  id: string;
+  gateway: string;
+  gateway_reference: string;
+  amount: Money;
+  status: PayoutStatus;
+  executed_at: string | null;
+  reconciled_at: string | null;
+  discrepancy: Money | null;
+  created_at: string;
+};
 export type PayoutStatus = 'pending' | 'in_transit' | 'paid' | 'failed' | 'canceled';
 export type ProblemData = {
   type: string;

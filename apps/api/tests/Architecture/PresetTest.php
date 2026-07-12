@@ -105,6 +105,7 @@ use App\Payments\Exceptions\OrderNotPayableException;
 use App\Payments\Exceptions\PaymentMethodNotAvailableException;
 use App\Payments\Exceptions\PaymentNotRefundableException;
 use App\Payments\Exceptions\PaymentOrderNotFoundException;
+use App\Payments\Exceptions\PayoutNotFoundException;
 use App\Payments\Exceptions\RefundAmountExceedsRefundableException;
 use App\Payments\Exceptions\RefundCurrencyMismatchException;
 use App\Payments\Exceptions\RefundNotFoundException;
@@ -349,6 +350,7 @@ arch()->preset()->laravel()->ignoring([
     SubmerchantAlreadyOnboardedException::class,
     SubmerchantNotActiveException::class,
     SubmerchantAccountNotFoundException::class,
+    PayoutNotFoundException::class,
     OrderHoldExpiredException::class,
     HoldAlreadyConvertedException::class,
     OrderNotFoundException::class,

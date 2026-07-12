@@ -21,6 +21,7 @@ use App\Orders\Actions\MarkOrderPaid;
 use App\Orders\Models\PromoCode;
 use App\Payments\Gateways\FakeGateway;
 use App\Payments\Gateways\FakeGatewayScenarios;
+use App\Payments\Models\Payout;
 use App\Payments\Models\SubmerchantAccount;
 use App\Payments\Support\CircuitBreaker;
 use App\Support\Money\Money;
@@ -100,6 +101,11 @@ afterEach(function (): void {
             // breakdown item 4) write submerchant_accounts referencing the
             // tenant with no cascade, so they go ahead of the tenant delete.
             DB::table('submerchant_accounts')->where('tenant_id', $tenantId)->delete();
+
+            // The payout exercisers (stage-08c plan, task breakdown item 9)
+            // write payouts referencing the tenant with no cascade, same
+            // reasoning as submerchant_accounts above.
+            DB::table('payouts')->where('tenant_id', $tenantId)->delete();
 
             // The refund exercisers (stage-08b plan, task breakdown item 8)
             // write refunds referencing payments with no cascade, so they go
@@ -3737,6 +3743,66 @@ function documentedResponseExercisers(): array
                 'X-Tenant-Id' => $tenant->id,
             ]);
         },
+        'get /v1/payouts 200' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+            $bearer = contractPayoutsViewBearer($tenant);
+
+            contractPayout($tenant);
+
+            return test()->getJson('/v1/payouts', [
+                'Authorization' => 'Bearer '.$bearer,
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/payouts 400' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->getJson('/v1/payouts?filter[bogus]=1', [
+                'Authorization' => 'Bearer '.contractPayoutsViewBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/payouts 401' => function (): TestResponse {
+            return test()->getJson('/v1/payouts');
+        },
+        'get /v1/payouts 403' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->getJson('/v1/payouts', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/payouts/{payout} 200' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+            $bearer = contractPayoutsViewBearer($tenant);
+
+            $payout = contractPayout($tenant);
+
+            return test()->getJson('/v1/payouts/'.$payout->id, [
+                'Authorization' => 'Bearer '.$bearer,
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/payouts/{payout} 401' => function (): TestResponse {
+            return test()->getJson('/v1/payouts/'.Str::uuid7());
+        },
+        'get /v1/payouts/{payout} 403' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->getJson('/v1/payouts/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/payouts/{payout} 404' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->getJson('/v1/payouts/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.contractPayoutsViewBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
     ];
 }
 
@@ -3968,6 +4034,14 @@ function contractSubmerchantAccount(Tenant $tenant, string $gateway): Submerchan
     return app(TenantTransaction::class)->asTenant(
         $tenant->id,
         fn () => SubmerchantAccount::factory()->create(['tenant_id' => $tenant->id, 'gateway' => $gateway]),
+    );
+}
+
+function contractPayout(Tenant $tenant): Payout
+{
+    return app(TenantTransaction::class)->asTenant(
+        $tenant->id,
+        fn () => Payout::factory()->create(['tenant_id' => $tenant->id]),
     );
 }
 
