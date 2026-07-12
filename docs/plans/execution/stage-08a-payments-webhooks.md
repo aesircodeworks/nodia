@@ -23,7 +23,7 @@
 - [x] T11 feat(orders): GenerateTicketPdf consumer with medialibrary storage (slice 10)
 - [x] T12 feat(orders): activate staff resend-tickets action with qr_rotation_counter bump (slice 11 dependency)
 - [x] T13 test(payments): scripted-scenario integration matrix (slice 11)
-- [ ] T14 docs: update roadmap Implementation Status and api-implementation-plan status table for Stage 8a
+- [x] T14 docs: update roadmap Implementation Status and api-implementation-plan status table for Stage 8a
 
 ### Task entries
 
@@ -113,6 +113,36 @@ No push yet; push and CI verification happen once after the review loop.
 - Pint passed; Larastan passed with 0 errors.
 - Full test run: 2341 passed, 9475 assertions, 0 failed. A first attempt failed twice on leftover state (`outbox_test_effects` and its rows) inherited from a run composer's 300-second process timeout had killed mid-suite; a clean re-run plus the Isolation and Concurrency suites run individually are all green, so the failures were environmental, not code defects. Run the full suite via `php artisan test` from apps/api rather than the composer script when it may exceed 300 seconds.
 - types:generate produced no drift in packages/api-client/src/generated; pnpm typecheck passes in all four workspaces.
+
+### CI (2026-07-11 22:21 -03)
+
+- First push (fe85c50): Packages failed (run 29174807274), API, Storefront, Admin, Checkin green. The failure was `@typescript-eslint/no-explicit-any` on the regenerated `details?: Record<string, any>` in packages/api-client/src/generated/index.ts, a rule the local gates never run against regenerated output. Root cause fixed at the source per the repo precedent (CreateTenantData.payoutSchedule): InitiatePaymentData.details now carries `#[LiteralTypeScriptType('Record<string, unknown>')]` with the TypeScriptTransformer Optional attribute, generating `details?: Record<string, unknown>`. Commit 220ecdf.
+- Second push (220ecdf): all five workflows green: API 29175019194, Packages 29175019212, Storefront 29175019200, Admin 29175019197, Checkin 29175019215.
+
+### Final summary (2026-07-11 22:21 -03)
+
+- Tasks: T1 through T13 completed; T14 is this close-out. 13 of 13 implementation tasks done, none blocked.
+- Local gate: green (Pint, Larastan 0 errors, 2341 tests passing with 9475 assertions, no contract drift, pnpm typecheck clean in all four workspaces).
+- Review: three codex rounds. Round 1: 1 blocking (declined as factually wrong, reasoning recorded), 2 important (fixed), 1 minor (already-journaled deviation). Round 2: 2 important (fixed). Round 3: 1 blocking and 1 important (both fixed). Every fix landed test-first with the failure observed before the change. No unaddressed blocking or important findings remain; the loop ended at the 3-round cap with all actionable findings resolved rather than with an explicit approve verdict.
+- Ship: branch pushed, all five CI workflows green at HEAD 220ecdf after one root-cause fix for a CI-only ESLint failure on regenerated output.
+- Roadmap note: the roadmap Implementation Status table tracks the full-stack product phases (specs/ folders) and has never been advanced by API stage close-outs; Phase 4 (First Payment and Ticket Issuance) also spans storefront work that has not shipped, so it stays as is and only the master plan status table changes.
+
+### Exit criteria walk
+
+1. Sync card purchase over HTTP, paid within the initiating request: met. InitiatePaymentSyncTest "pays the order within the initiating request on sync approve" (order paid, inventory committed, 2 tickets, hold committed).
+2. Async Pix purchase end to end with polling: met. InitiatePaymentAsyncTest (next_action display_code, awaiting_payment, hold extended, GET /v1/storefront/payments/{payment}) and WebhookProcessingTest "drives the async purchase to paid end to end".
+3. Idempotency replay, mismatch 409, one row under parallel same-key initiation: met. InitiatePaymentSyncTest replay and mismatch tests plus the round 3 cross-order reuse test; Concurrency same-key contention proves one payment row and identical responses.
+4. Duplicate webhooks serial and parallel produce one transition, one ticket batch, one email, one PDF per ticket: met. WebhookProcessingTest five-delivery storm plus job re-runs, parallel-duplicate concurrency test, PaymentScenarioMatrixTest webhook-storm scenario.
+5. Invalid signature 401 persists nothing; valid webhooks always 2xx after persist: met. WebhookIngestionTest (401 persists zero rows, duplicate event id both return 200, unparseable 422).
+6. Sweeper expiry with exact availability recovery and a confirm-vs-expire race with exactly one outcome: met. PaymentExpiryAndReconcileTest and PaymentTerminalContentionTest.
+7. Sync decline 402 with order pending, hold intact, retry succeeds: met. InitiatePaymentSyncTest decline test including the follow-up approved retry.
+8. Offer excludes slow methods per policy, below cutoff, and open-breaker gateways while others remain; initiation against an open breaker returns 503 with Retry-After: met. PaymentMethodOfferTest matrix and CircuitBreakerFeatureTest.
+9. Reconciliation poller resolves a missed webhook: met. PaymentExpiryAndReconcileTest poller tests (confirm and gateway-side failure, grace period respected, idempotent against webhooks).
+10. Isolation covers payments and gateway_webhook_events; concurrency covers every guarded transition; architecture confirms cross-context access only through Actions and events: met. PaymentsIsolationTest, webhook events isolation test, Concurrency suite (35 tests), Architecture suite green.
+11. RLS in creating migrations, OpenAPI contracts merged with conformance passing, generated TypeScript committed without drift, Larastan and Pint clean: met. Both migrations ship Rls policies; Contract suite green including the 19 Stage 8a response exercisers; types:generate clean at HEAD; lint and analyse green.
+12. System-design 9.3 lists PaymentExpired (ab03f33), 4.3 sanctions system webhook tenant resolution (9876459), master plan status table updated in this commit: met.
+
+Stage 8a status: Done.
 
 ### Decisions and deviations
 
