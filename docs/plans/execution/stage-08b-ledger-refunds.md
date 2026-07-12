@@ -149,3 +149,22 @@ Deviation: fixed TenantFixture::clean (test support code, not part of the plan's
 ### Review rounds
 
 ### Decisions and deviations
+
+### Gate
+
+Sun Jul 12 01:41:18 -03 2026 (America/Sao_Paulo)
+
+Ran the full API quality gates from the repo root after the stage 8b implementation work.
+
+- `composer -d apps/api run lint` (Pint): passed.
+- `composer -d apps/api run analyse` (Larastan): passed, 0 errors.
+- `composer -d apps/api run test` (Pest, all suites): green after fixes, 2492/2492 tests, 0 failures, 0 errors. (Composer's own 300s process timeout tripped on the first run, so the suite was driven via `php artisan test`; that is a runner-timeout artifact, not a test failure.)
+- `composer -d apps/api run types:generate` then `git status --short packages/api-client/src/generated`: clean, no contract drift. No TypeScript changed, so `pnpm typecheck` was not needed.
+
+Three failures surfaced on the first full run and were fixed properly:
+
+1. `SeedTemplateRolesTest` "grants the Owner template every capability except tenants.manage" failed because the new `ledger.view` capability was absent from the Owner (and Finance) templates. Fixed by seeding `Capability::LedgerView` into both templates, since it is a financially privileged capability alongside `payouts.view`. Commit scope `identity`.
+2. `Architecture/PresetTest` failed because the stage 8b payments exceptions (`RefundCurrencyMismatchException` and six others) and enums (`RefundStatus`, `LedgerAccount`, `LedgerDirection`, `RefundCommissionPolicy`) were not in the laravel-preset allowlist. Added them. Commit scope `payments` (test).
+3. 28 concurrency-suite errors: `delete from tenants` hit `ledger_entries_tenant_id_foreign`. Root cause: the stage 8b `ledger_entries` migration gave `tenant_id` a real foreign key, but the table is append-only (a trigger denies DELETE to every role), so any tenant a ledger row references becomes permanently undeletable. The isolation suite's `LedgerEntryFixture` seeds two persistent tenants with ledger rows, and the concurrency suite (which runs right after isolation in the same process) sweeps all non-platform tenants in teardown, wedging on those rows. Fixed by dropping the foreign key and using a plain `uuid('tenant_id')` column, mirroring the deliberate `activity_log` precedent; a financial ledger is meant to outlive the records it describes. Commit scope `payments`.
+
+Commits: `fix(payments): keep ledger_entries append-only without a tenant foreign key`, `fix(identity): grant ledger.view to the Owner and Finance templates`, `test(payments): allowlist stage 8b ledger and refund classes in the preset`.
