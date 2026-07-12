@@ -99,6 +99,7 @@ test('the registry holds exactly the known codes', function () {
         'refund_tickets_not_in_order',
         'gateway_unknown',
         'gateway_not_enabled',
+        'gateway_not_configured',
         'submerchant_already_onboarded',
         'submerchant_not_active',
     ]);
@@ -198,6 +199,7 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'webhook_unparseable' => [ErrorCode::WebhookUnparseable, 422, 'Webhook unparseable', '/problems/webhook-unparseable'],
     'gateway_unknown' => [ErrorCode::GatewayUnknown, 422, 'Gateway unknown', '/problems/gateway-unknown'],
     'gateway_not_enabled' => [ErrorCode::GatewayNotEnabled, 409, 'Gateway not enabled', '/problems/gateway-not-enabled'],
+    'gateway_not_configured' => [ErrorCode::GatewayNotConfigured, 409, 'Gateway not configured', '/problems/gateway-not-configured'],
     'submerchant_already_onboarded' => [ErrorCode::SubmerchantAlreadyOnboarded, 409, 'Submerchant already onboarded', '/problems/submerchant-already-onboarded'],
     'submerchant_not_active' => [ErrorCode::SubmerchantNotActive, 409, 'Submerchant not active', '/problems/submerchant-not-active'],
 ]);
