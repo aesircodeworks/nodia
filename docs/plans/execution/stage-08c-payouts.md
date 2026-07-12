@@ -13,7 +13,7 @@
 - [x] T3 identity: register payouts.manage capability, financially privileged, template role wiring
 - [x] T4 payments: StartSubmerchantOnboarding action, POST/list/detail endpoints, Data objects, OpenAPI, error codes, duplicate-start concurrency test (slice 2)
 - [x] T5 payments: sub-merchant webhook normalization, transition Action, refresh endpoint, concurrency and duplicate-delivery tests (slice 3)
-- [ ] T6 payments: checkout offer and initiation gating on active sub-merchant, submerchant_not_active code (slice 4)
+- [x] T6 payments: checkout offer and initiation gating on active sub-merchant, submerchant_not_active code (slice 4)
 - [ ] T7 payments: payouts migration with RLS, Payout model, PayoutStatus enum, factory, isolation tests (slice 5)
 - [ ] T8 payments: RecordGatewayPayout action, payout webhook normalization, PayoutExecuted event, outbox recording, concurrency test (slice 5)
 - [ ] T9 payments: payout read endpoints with cursor pagination, Data objects, OpenAPI (slice 5)
@@ -146,3 +146,27 @@ Test evidence (from `apps/api`):
 - `vendor/bin/pint --test` on all touched/new files: passed (after one auto-fix run on the new feature test file's import ordering).
 
 No Data class changed in this slice (the transition and refresh actions work directly with the model and existing `SubmerchantAccountData`), so `composer types:generate` was not run. No deviation from the plan's transition matrix, endpoint shape, or error codes (`request.not_found`, `gateway_unavailable` were already registered).
+
+#### T6: checkout offer and initiation gating on active sub-merchant (2026-07-12)
+
+Landed:
+
+- `App\Payments\Actions\BuildPaymentMethodOffer` now resolves an `array<string, bool>` sub-merchant-active map (queries `SubmerchantAccount` for the tenant, scoped to the enabled gateways in play, `status === Active`) and passes it to `OfferAssembler::assemble` alongside a new `bool $requireActiveSubmerchant = true` parameter (both the assembler's flag and this action's own new `__invoke` parameter of the same name), completing the wiring the Slice 1 (T1) assembler change left for this slice: a gateway whose capability reports `splitSupport` is now genuinely withheld from a live checkout offer unless its sub-merchant account is `active`.
+- `App\Payments\Actions\InitiatePayment::offeredMethod` distinguishes the two ways a method can be absent from the offer: a first pass with normal gating finds the method and proceeds as before; on a miss, a second pass with `requireActiveSubmerchant: false` checks whether the method exists once sub-merchant gating is ignored, and if so throws the new `SubmerchantNotActiveException` (409) instead of falling through to the existing `PaymentMethodNotAvailableException` (422). This keeps the offer endpoint and the initiation action sharing one code path (`BuildPaymentMethodOffer`) rather than duplicating the capability-and-currency logic, per the plan's own framing that initiation gating extends the offer's gating.
+- New `ErrorCode::SubmerchantNotActive = 'submerchant_not_active'` (409, title "Submerchant not active") and `App\Payments\Exceptions\SubmerchantNotActiveException` (`HasErrorCode`), following the existing `GatewayNotEnabledException` shape exactly.
+- OpenAPI: `submerchant_not_active` added to the existing `PaymentInitiationConflictProblem` schema's `code` enum (alongside `order_not_payable` and `idempotency_key_reuse_mismatch`) and to the 409 response description on `POST /v1/storefront/orders/{order}/payments`; no new response entry, so `DocumentedResponseCoverageTest` needed no new exerciser (an existing 409 exerciser already asserts conformance against the widened enum).
+- Tests (feature-first): `tests/Feature/Payments/SubmerchantOfferGatingTest.php` toggles a fake-gateway sub-merchant account through `pending` (offer excludes), `active` (offer includes; initiation succeeds), and `disabled` (offer excludes again), plus a no-account-at-all case, and asserts initiation against a `pending` account renders `submerchant_not_active`; this suite turns on `payments.gateways.fake.split_support` for its duration (restored to `false` in `afterEach`, matching the T1 config key) since `splitSupport` is what makes the gating apply. `tests/Unit/Payments/OfferAssemblerTest.php`'s composition tests from T1 already cover the assembler's pure-function behavior (no gap found requiring new unit tests there); `tests/Unit/Problems/ErrorCodeTest.php` extended with the new code's registry membership, status, title, and type-slug rows.
+- `tests/Architecture/PresetTest.php` updated to add `SubmerchantNotActiveException` to the list of `HasErrorCode` exceptions the Laravel preset should not flag as living outside `App\Exceptions` (same precedent as every other Payments exception).
+
+Test evidence (from `apps/api`):
+
+- `php artisan test --filter=SubmerchantOfferGatingTest`: 6 passed, 29 assertions.
+- `php artisan test --testsuite=Feature --filter=Payments`: 131 passed, 718 assertions (full Payments feature regression, confirms the offer and initiation paths in earlier slices still hold under the new gating).
+- `php artisan test --testsuite=Unit`: 884 passed, 2140 assertions.
+- `php artisan test --testsuite=Architecture`: 40 passed, 97 assertions.
+- `php artisan test --testsuite=Contract`: 382 passed, 2449 assertions.
+- `php artisan test --testsuite=Concurrency`: 42 passed, 187 assertions (full regression; no new concurrency test needed, this slice adds no new invariant-guarding transition).
+- `vendor/bin/pint --test` on all touched/new files: passed.
+- `composer types:generate`: ran and committed regenerated output (`ErrorCode::SubmerchantNotActive`).
+
+Deviation: the plan's error-code text says "409 gateway_not_enabled semantics extended by a distinct code submerchant_not_active" — read as "the same conflict-response shape as the existing 409 gateway conflicts, under a new code," not as reusing `GatewayNotEnabled` itself; `GatewayNotEnabled` guards a different invariant (the gateway identifier isn't in `enabled_gateways` at all, checked at onboarding time) and conflating the two would blur two distinct failure causes behind one code. No other deviation from the plan's gating description or endpoint shapes. Commit: `f010e75` (`feat(payments): gate checkout offer and initiation on active sub-merchant`).
