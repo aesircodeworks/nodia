@@ -18,8 +18,8 @@
 - [x] T8 payments: RecordGatewayPayout action, payout webhook normalization, PayoutExecuted event, outbox recording, concurrency test (slice 5)
 - [x] T9 payments: payout read endpoints with cursor pagination, Data objects, OpenAPI (slice 5)
 - [x] T10 payments: ProjectLedgerEntries subscription to PayoutExecuted, balanced entry pair, replay rebuild test (slice 6)
-- [ ] T11 payments: ReconcilePayouts scheduled command, missed-payout creation, discrepancy flagging, activity log (slice 6)
-- [ ] T12 payments: stage exit end-to-end loop test across scripted failure modes; flip status table to Done (slice 7)
+- [x] T11 payments: ReconcilePayouts scheduled command, missed-payout creation, discrepancy flagging, activity log (slice 6)
+- [x] T12 payments: stage exit end-to-end loop test across scripted failure modes; flip status table to Done (slice 7)
 
 ### Review rounds
 
@@ -281,3 +281,26 @@ Test evidence (from `apps/api`):
 - `vendor/bin/pint --test` on all touched/new files: passed.
 - An earlier attempt running the Unit suite in the background concurrently with a foreground Feature run produced spurious failures (`relation "events" does not exist`, unrelated 404s) from shared-database contention between the two simultaneous `php artisan test` processes, not from this change; rerunning each suite serially confirmed all green, and no code was altered in response to the spurious run.
 - `composer -d apps/api run types:generate` not run: no Data class changed in this task.
+
+#### T12: Stage exit capstone loop and status table flip (2026-07-12)
+
+Landed:
+
+- `tests/Feature/Payments/StageExitCapstoneTest.php` (new): the stage's capstone, entirely over HTTP against the fake gateway. Two scenarios:
+  - The happy path: onboards a tenant's sub-merchant account (POST `/v1/submerchant-accounts`, scripted to activate immediately), places and confirms an order through an async payment plus its confirmation webhook, partially refunds it over HTTP with a refund-completion webhook, places and confirms a second order synchronously, fully refunds it, then delivers a payout-created and payout-paid webhook sized to exactly the accumulated `tenant_net` balance. The ledger balance invariant (every reference balances per currency; the running `tenant_net` credit-minus-debit total matches an independently tracked expectation built from the persisted payment/refund row facts, never the ledger projection itself, mirroring T10's `LedgerInvariantHarnessTest` pattern) is asserted after every step, and the final assertion confirms the payout's amount equals the tenant net balance drawn down, leaving `tenant_net` at exactly zero.
+  - The scripted-failure-mode rerun: a declined payment (no payment row, ledger untouched), an expired payment (`payments:expire`, ledger untouched), a confirmed purchase whose confirmation webhook is delivered twice (single ledger effect), a full refund whose completion webhook is delivered twice (single ledger effect), and a payout whose created and failed webhooks are each delivered twice (one row, one `failed` transition, zero `PayoutExecuted` events, and no `ledger_entries` row referencing the payout at all, proving a failed payout leaves the ledger completely untouched while the books built from the earlier purchase and refund still balance).
+- `docs/api-implementation-plan.md`: flipped the Stage 8c status table row from "In progress" to "Done" in the same change.
+- Deviation from the plan's literal task list: the checklist in this journal had T11 and T12 both still unchecked even though T11 (`ReconcilePayouts`) was already landed and committed (`b857e3e`) in an earlier task of this run; this entry also corrects that checklist bookkeeping gap, no code change involved.
+- No Data class changed (the capstone reuses every Data object, action, and endpoint shipped by T1-T11 unmodified), so `composer types:generate` was not run.
+- Two false starts during TDD, both fixed before the first green run: (1) the test's `beforeEach` initially froze time to `2026-07-12T09:00:00Z` (today, per the session's `currentDate`), which raced the real wall clock issuing OAuth staff tokens after the freeze and produced "the token was issued in the future" from the JWT `iat` constraint; switched to `2026-07-11T12:00:00Z`, matching the anchor date every other stage-08b/8c harness test already uses, which sits safely in the past. (2) the default `FakeGateway::createSubmerchant` returns `pending`, not `active`; the happy-path scenario needed `FakeGatewayScenarios::scriptSubmerchantCreation(GatewaySubmerchantResult::active(...))` before the onboarding POST, matching `SubmerchantOnboardingTest`'s own precedent, since the capstone's payment initiation and payout webhook both need an active account.
+- One assertion in the failure-mode scenario was wrong on first write, not the implementation: a full refund of a payment whose `fee_amount` is non-zero (this scenario uses the async `pix` flow, which always carries the fixed `Money::of(300, 'USD')` confirmation fee) reduces `tenant_net` by the refund's gross amount without reversing the fee leg, since the gateway fee was already paid and refunding it is out of scope for this stage; the tenant absorbs it, exactly as `LedgerInvariantHarnessTest`'s own formula computes. The test had hard-coded an expectation that the running `tenant_net` returns to exactly zero after that refund; corrected to assert only the invariant harness's independently tracked expectation (which lands at `-300`), not a fixed zero.
+
+Test evidence (from `apps/api`):
+
+- `php artisan test --filter=StageExitCapstoneTest`: 2 passed, 67 assertions.
+- `php artisan test --testsuite=Feature --filter=Payments`: 159 passed, 893 assertions.
+- `php artisan test --testsuite=Architecture`: 40 passed, 97 assertions.
+- `vendor/bin/pint --test` on `tests/Feature/Payments/StageExitCapstoneTest.php`: passed.
+- `composer -d apps/api run types:generate` not run: no Data class changed in this task.
+
+This closes Stage 8c: all 12 tasks across all 7 slices are landed, the master plan's status table row reads Done, and the capstone HTTP loop proves the full purchase-confirmation-refund-payout money path holds balanced books under every scripted failure mode the fake gateway can script (exit criterion 11). The stage gate (full `composer lint`, `composer analyse`, `composer test`, and the architecture suite together) is left to the gate phase per the task instructions, which runs once after all tasks in the stage.
