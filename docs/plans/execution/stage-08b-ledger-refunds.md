@@ -40,6 +40,16 @@ No code change required. T1 done.
 
 Slice 1 landed test-first: feature tests on PATCH /v1/tenants/{tenant} (update both fields, defaults on read, invalid policy and out-of-range bps rejected with request.validation_failed) and unit tests for the RefundCommissionPolicy enum and CommissionCalculator (bps of gross, round half up pinned at boundaries) were written and observed failing before any implementation. Additive tenants migration adds commission_bps (default 0) and refund_commission_policy (default retained), no format CHECK per the settlement_currency precedent. TenantData and UpdateTenantData extended, UpdateBranding applies the fields, OpenAPI Tenant and TenantUpdateRequest schemas updated, TypeScript regenerated. Tenant model carries attribute defaults so freshly created models serialize without a re-read (the two POST wire-shape tests caught this). Evidence: CommissionCalculatorTest 11/11, TenantEndpointsTest 28/28, Contract suite 340/340, Tenancy filter 260/260, api-client tsc clean.
 
+#### T3: confirmation persists the breakdown (2026-07-11 23:05 -03)
+
+Slice 2 test-first: PaymentStateMachineTest gained a failing test proving the confirming statement persists the tenant-configured commission (250 bps of a 5000 gross = 125), observed failing at commission 0 before the change; WebhookProcessingTest gained the FakeGateway feature path with a 300 bps tenant. CommissionResolver now injects TenantContext, the new Tenancy ResolveTenantCommissionConfig Action, and CommissionCalculator; ConfirmPayment is untouched (the seam was built for this in 8a). The pre-existing zero-commission tests keep passing as the default-config case. Evidence: PaymentStateMachineTest 9/9, WebhookProcessingTest 9/9, PaymentScenarioMatrixTest and InitiatePaymentSyncTest 16/16. Commit 1226452.
+
+#### T4: ledger_entries and the entry-set builder (2026-07-11 23:30 -03)
+
+Slice 3 test-first: LedgerEntriesIsolationTest and LedgerEntriesTest (append-only trigger on UPDATE and DELETE, amount > 0 check, duplicate insertOrIgnore no-op through the (source_event_id, account) unique, four balanced payment legs, both refund-policy leg sets, zero-leg omission, unbalanced and currency-mismatch rejection) were written and observed failing before the migration existed. Migration ships the table, checks, indexes, RLS, and the append-only trigger (create or replace, since migrate:fresh drops tables but not functions). New: LedgerAccount, LedgerDirection, LedgerLeg, LedgerEntrySetBuilder, UnbalancedLedgerEntrySetException, LedgerEntry model.
+
+Deviation: the isolation fixture uses two dedicated persistent tenants and per-test row ids instead of the standard TenantFixture seed/clean cycle, because the append-only trigger blocks DELETE for every role and the suite's honest downgraded connection has no TRUNCATE privilege; rows accumulate for the process exactly like activity_log's, and TenantFixture::clean would otherwise fail on the tenants FK. Evidence: LedgerEntriesIsolationTest 6/6, UnscopedTablesSweepTest 2/2, LedgerEntriesTest and CommissionCalculatorTest 26/26.
+
 ### Review rounds
 
 ### Decisions and deviations
