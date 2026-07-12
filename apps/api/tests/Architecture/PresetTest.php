@@ -97,6 +97,7 @@ use App\Payments\Enums\RefundCommissionPolicy;
 use App\Payments\Enums\RefundStatus;
 use App\Payments\Enums\SubmerchantStatus;
 use App\Payments\Exceptions\GatewayFixtureNotCoveredException;
+use App\Payments\Exceptions\GatewayNotConfiguredException;
 use App\Payments\Exceptions\GatewayNotEnabledException;
 use App\Payments\Exceptions\GatewayUnavailableException;
 use App\Payments\Exceptions\GatewayUnknownException;
@@ -348,6 +349,7 @@ arch()->preset()->laravel()->ignoring([
     UnbalancedLedgerEntrySetException::class,
     GatewayUnknownException::class,
     GatewayNotEnabledException::class,
+    GatewayNotConfiguredException::class,
     GatewayFixtureNotCoveredException::class,
     SubmerchantAlreadyOnboardedException::class,
     SubmerchantNotActiveException::class,

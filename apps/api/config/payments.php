@@ -27,6 +27,9 @@ return [
                 'boleto' => 4320,
             ],
         ],
+        'pending' => [
+            'enabled' => (bool) env('PAYMENTS_PENDING_GATEWAY_ENABLED', false),
+        ],
     ],
 
     /*

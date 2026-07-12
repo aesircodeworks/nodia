@@ -5417,8 +5417,10 @@ paths:
           description: >-
             The order is not pending (code order_not_payable), the key
             was reused with a different payload (code
-            idempotency_key_reuse_mismatch), or the method's gateway has
-            no active sub-merchant account (code submerchant_not_active).
+            idempotency_key_reuse_mismatch), the method's gateway has
+            no active sub-merchant account (code submerchant_not_active),
+            or the method's gateway is registered but not configured
+            (code gateway_not_configured).
           content:
             application/problem+json:
               schema:
@@ -7582,10 +7584,13 @@ components:
     PaymentInitiationConflictProblem:
       description: >-
         Problem document for payment initiation conflicts (stage-08a
-        plan, Endpoints; stage-08c plan, Slice 4): the order is not
-        pending, the Idempotency-Key was reused with a different
-        payload, or the requested method's gateway has no active
-        sub-merchant account.
+        plan, Endpoints; stage-08c plan, Slice 4; stage-08d plan, Slice
+        3): the order is not pending, the Idempotency-Key was reused
+        with a different payload, the requested method's gateway has no
+        active sub-merchant account, or the only gateway that could
+        serve the method is registered but not configured (code
+        gateway_not_configured, distinct from gateway_unavailable's
+        open-circuit-breaker meaning).
       allOf:
         - $ref: '#/components/schemas/Problem'
         - type: object
@@ -7595,7 +7600,7 @@ components:
               enum: [409]
             code:
               type: string
-              enum: [order_not_payable, idempotency_key_reuse_mismatch, submerchant_not_active]
+              enum: [order_not_payable, idempotency_key_reuse_mismatch, submerchant_not_active, gateway_not_configured]
       unevaluatedProperties: false
     PaymentMethodNotAvailableProblem:
       description: >-

@@ -102,6 +102,7 @@ enum ErrorCode: string
     case RefundTicketsNotInOrder = 'refund_tickets_not_in_order';
     case GatewayUnknown = 'gateway_unknown';
     case GatewayNotEnabled = 'gateway_not_enabled';
+    case GatewayNotConfigured = 'gateway_not_configured';
     case SubmerchantAlreadyOnboarded = 'submerchant_already_onboarded';
     case SubmerchantNotActive = 'submerchant_not_active';
 
@@ -203,6 +204,7 @@ enum ErrorCode: string
             self::RefundTicketsNotInOrder => 422,
             self::GatewayUnknown => 422,
             self::GatewayNotEnabled => 409,
+            self::GatewayNotConfigured => 409,
             self::SubmerchantAlreadyOnboarded => 409,
             self::SubmerchantNotActive => 409,
         };
@@ -306,6 +308,7 @@ enum ErrorCode: string
             self::RefundTicketsNotInOrder => 'Refund tickets not in order',
             self::GatewayUnknown => 'Gateway unknown',
             self::GatewayNotEnabled => 'Gateway not enabled',
+            self::GatewayNotConfigured => 'Gateway not configured',
             self::SubmerchantAlreadyOnboarded => 'Submerchant already onboarded',
             self::SubmerchantNotActive => 'Submerchant not active',
         };

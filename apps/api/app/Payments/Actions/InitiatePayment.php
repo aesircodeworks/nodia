@@ -13,6 +13,7 @@ use App\Payments\Data\InitiatePaymentData;
 use App\Payments\Data\PaymentMethodOfferData;
 use App\Payments\Enums\PaymentStatus;
 use App\Payments\Events\PaymentInitiated;
+use App\Payments\Exceptions\GatewayNotConfiguredException;
 use App\Payments\Exceptions\GatewayUnavailableException;
 use App\Payments\Exceptions\IdempotencyKeyReuseMismatchException;
 use App\Payments\Exceptions\OrderNotPayableException;
@@ -27,6 +28,7 @@ use App\Payments\Support\RequestHash;
 use App\Support\Money\Money;
 use App\Support\Outbox\OutboxRecorder;
 use App\Support\Tenancy\TenantContext;
+use App\Tenancy\Actions\ResolveEnabledGateways;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Date;
@@ -59,6 +61,7 @@ final class InitiatePayment
         private readonly ExtendHold $extendHold,
         private readonly OutboxRecorder $outbox,
         private readonly CircuitBreaker $breaker,
+        private readonly ResolveEnabledGateways $enabledGateways,
     ) {}
 
     public function __invoke(OrderPaymentContextData $order, InitiatePaymentData $data, string $idempotencyKey): PaymentInitiationResult
@@ -145,6 +148,14 @@ final class InitiatePayment
      * (stage-08c plan, Slice 4; system-design 7.3) is a distinct 409
      * rather than the generic 422 payment_method_not_available: a second
      * pass with sub-merchant gating disabled tells the two cases apart.
+     *
+     * A method absent because the tenant's only relevant gateway is a
+     * registered-but-not-configured skeleton (stage-08d plan, Slice 3:
+     * PendingGatewayAdapter, whose capabilities support nothing so it
+     * never appears in any offer pass above) gets its own 409
+     * gateway_not_configured rather than the generic 422: the tenant
+     * enabled a gateway that cannot yet serve any method, which is a
+     * platform configuration gap, not a request the buyer got wrong.
      */
     private function offeredMethod(OrderPaymentContextData $order, string $method): PaymentMethodOfferData
     {
@@ -157,6 +168,14 @@ final class InitiatePayment
         foreach (($this->buildOffer)($order, excludeOpenBreakers: false, requireActiveSubmerchant: false) as $item) {
             if ($item->method === $method) {
                 throw SubmerchantNotActiveException::forGateway($item->gateway);
+            }
+        }
+
+        foreach (($this->enabledGateways)((string) $this->tenantContext->tenantId()) as $identifier) {
+            $adapter = $this->gateways->get($identifier);
+
+            if ($adapter !== null && $adapter->capabilities()->methods === [] && $adapter->capabilities()->currencies === []) {
+                throw GatewayNotConfiguredException::forGateway($identifier);
             }
         }
 
