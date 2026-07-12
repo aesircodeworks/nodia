@@ -4,10 +4,13 @@ namespace App\Payments\Gateways;
 
 use App\Payments\Data\NextActionData;
 use App\Payments\Enums\PaymentMethodConfirmation;
+use App\Payments\Enums\PayoutStatus;
+use App\Payments\Enums\SubmerchantStatus;
 use App\Payments\Exceptions\GatewayUnavailableException;
 use App\Payments\Exceptions\WebhookSignatureInvalidException;
 use App\Payments\Exceptions\WebhookUnparseableException;
 use App\Support\Money\Money;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
 
 /**
@@ -44,7 +47,7 @@ final class FakeGateway implements GatewayAdapter
             ],
             currencies: config('payments.gateways.fake.currencies'),
             asyncConfirmation: true,
-            splitSupport: false,
+            splitSupport: (bool) config('payments.gateways.fake.split_support', false),
         );
     }
 
@@ -190,6 +193,81 @@ final class FakeGateway implements GatewayAdapter
             'type' => 'refund.failed',
             'reference' => $refundReference,
             'failure_code' => $failureCode,
+        ]);
+    }
+
+    public function createSubmerchant(SubmerchantRegistrationRequest $request): GatewaySubmerchantResult
+    {
+        $scripted = $this->scenarios->consumeSubmerchantCreation();
+
+        if ($scripted !== null) {
+            return $scripted;
+        }
+
+        $reference = 'fakesm_'.$request->tenantId;
+
+        return GatewaySubmerchantResult::pending($reference, "https://fake-gateway.test/onboarding/{$reference}");
+    }
+
+    public function fetchSubmerchantStatus(string $gatewayAccountReference): GatewaySubmerchantResult
+    {
+        return $this->scenarios->submerchantStatusFor($gatewayAccountReference)
+            ?? GatewaySubmerchantResult::pending($gatewayAccountReference, "https://fake-gateway.test/onboarding/{$gatewayAccountReference}");
+    }
+
+    public function listPayouts(?CarbonImmutable $since = null): array
+    {
+        if ($since === null) {
+            return $this->scenarios->payouts();
+        }
+
+        return array_values(array_filter(
+            $this->scenarios->payouts(),
+            fn (GatewayPayoutRecord $record): bool => $record->executedAt !== null && $record->executedAt->greaterThan($since),
+        ));
+    }
+
+    /**
+     * @param  list<string>  $requirements
+     */
+    public function submerchantStatusWebhook(
+        string $gatewayAccountReference,
+        SubmerchantStatus $status,
+        array $requirements = [],
+        ?string $eventId = null,
+    ): FakeWebhookDelivery {
+        return $this->sign([
+            'id' => $eventId ?? 'evt_'.Str::uuid7(),
+            'type' => 'submerchant.status_changed',
+            'reference' => $gatewayAccountReference,
+            'status' => $status->value,
+            'requirements' => $requirements,
+        ]);
+    }
+
+    public function payoutCreatedWebhook(string $gatewayReference, Money $amount, ?string $eventId = null): FakeWebhookDelivery
+    {
+        return $this->sign([
+            'id' => $eventId ?? 'evt_'.Str::uuid7(),
+            'type' => 'payout.created',
+            'reference' => $gatewayReference,
+            'amount' => ['amount' => $amount->amount, 'currency' => $amount->currency],
+            'status' => PayoutStatus::Pending->value,
+        ]);
+    }
+
+    public function payoutStatusWebhook(
+        string $gatewayReference,
+        PayoutStatus $status,
+        ?CarbonImmutable $executedAt = null,
+        ?string $eventId = null,
+    ): FakeWebhookDelivery {
+        return $this->sign([
+            'id' => $eventId ?? 'evt_'.Str::uuid7(),
+            'type' => 'payout.status_changed',
+            'reference' => $gatewayReference,
+            'status' => $status->value,
+            'executed_at' => $executedAt?->toIso8601String(),
         ]);
     }
 

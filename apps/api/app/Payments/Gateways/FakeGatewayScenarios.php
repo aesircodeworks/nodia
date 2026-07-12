@@ -24,6 +24,15 @@ final class FakeGatewayScenarios
     /** @var array<string, int> */
     private array $refundCalls = [];
 
+    /** @var list<GatewaySubmerchantResult> */
+    private array $submerchantCreations = [];
+
+    /** @var array<string, GatewaySubmerchantResult> */
+    private array $submerchantStatuses = [];
+
+    /** @var list<GatewayPayoutRecord> */
+    private array $payouts = [];
+
     public function failNextCreate(int $times = 1): void
     {
         $this->failCreates = $times;
@@ -84,5 +93,50 @@ final class FakeGatewayScenarios
     public function refundCallsFor(string $refundId): int
     {
         return $this->refundCalls[$refundId] ?? 0;
+    }
+
+    /**
+     * Queues the outcome the next createSubmerchant call returns; consumed
+     * FIFO so a test can script a sequence of onboarding attempts.
+     */
+    public function scriptSubmerchantCreation(GatewaySubmerchantResult $result): void
+    {
+        $this->submerchantCreations[] = $result;
+    }
+
+    public function consumeSubmerchantCreation(): ?GatewaySubmerchantResult
+    {
+        return array_shift($this->submerchantCreations);
+    }
+
+    /**
+     * Scripts what fetchSubmerchantStatus returns for a given reference,
+     * simulating webhook-equivalent gateway-side transitions the poller
+     * or refresh endpoint would observe.
+     */
+    public function scriptSubmerchantStatus(string $gatewayAccountReference, GatewaySubmerchantResult $result): void
+    {
+        $this->submerchantStatuses[$gatewayAccountReference] = $result;
+    }
+
+    public function submerchantStatusFor(string $gatewayAccountReference): ?GatewaySubmerchantResult
+    {
+        return $this->submerchantStatuses[$gatewayAccountReference] ?? null;
+    }
+
+    /**
+     * @param  list<GatewayPayoutRecord>  $records
+     */
+    public function scriptPayouts(array $records): void
+    {
+        $this->payouts = $records;
+    }
+
+    /**
+     * @return list<GatewayPayoutRecord>
+     */
+    public function payouts(): array
+    {
+        return $this->payouts;
     }
 }

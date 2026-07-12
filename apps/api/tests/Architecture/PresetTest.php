@@ -92,8 +92,10 @@ use App\Payments\Enums\LedgerAccount;
 use App\Payments\Enums\LedgerDirection;
 use App\Payments\Enums\PaymentMethodConfirmation;
 use App\Payments\Enums\PaymentStatus;
+use App\Payments\Enums\PayoutStatus;
 use App\Payments\Enums\RefundCommissionPolicy;
 use App\Payments\Enums\RefundStatus;
+use App\Payments\Enums\SubmerchantStatus;
 use App\Payments\Exceptions\GatewayUnavailableException;
 use App\Payments\Exceptions\IdempotencyKeyMissingException;
 use App\Payments\Exceptions\IdempotencyKeyReuseMismatchException;
@@ -221,6 +223,8 @@ arch()->preset()->laravel()->ignoring([
     LedgerDirection::class,
     RefundCommissionPolicy::class,
     RefundStatus::class,
+    SubmerchantStatus::class,
+    PayoutStatus::class,
     GatewayPaymentOutcome::class,
     WebhookKind::class,
     'App\Support\Outbox\Jobs',

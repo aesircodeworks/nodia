@@ -17,7 +17,14 @@ use App\Payments\Gateways\MethodCapability;
 final class OfferAssembler
 {
     /**
+     * $submerchantActiveByGateway is keyed by gateway identifier and
+     * consulted only for gateways whose capabilities report splitSupport
+     * (system-design 7.3): without an active Sub-merchant account the
+     * gateway cannot split the charge, so its methods are withheld. A
+     * gateway missing from the map is treated as not active.
+     *
      * @param  array<string, GatewayCapabilities>  $capabilitiesByGateway
+     * @param  array<string, bool>  $submerchantActiveByGateway
      * @return list<PaymentMethodOfferData>
      */
     public function assemble(
@@ -26,11 +33,16 @@ final class OfferAssembler
         AsyncPaymentPolicyData $policy,
         int $remainingInventory,
         int $defaultCutoff,
+        array $submerchantActiveByGateway = [],
     ): array {
         $offer = [];
 
         foreach ($capabilitiesByGateway as $gateway => $capabilities) {
             if (! $capabilities->supportsCurrency($currency)) {
+                continue;
+            }
+
+            if ($capabilities->splitSupport && ! ($submerchantActiveByGateway[$gateway] ?? false)) {
                 continue;
             }
 

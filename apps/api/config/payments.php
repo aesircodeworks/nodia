@@ -21,6 +21,7 @@ return [
             'webhook_secret' => env('FAKE_GATEWAY_WEBHOOK_SECRET', 'fake-gateway-secret'),
             'fee_bps' => (int) env('FAKE_GATEWAY_FEE_BPS', 250),
             'currencies' => ['BRL', 'USD'],
+            'split_support' => (bool) env('FAKE_GATEWAY_SPLIT_SUPPORT', false),
             'windows' => [
                 'pix' => 30,
                 'boleto' => 4320,

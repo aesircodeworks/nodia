@@ -1,6 +1,8 @@
 <?php
 
 use App\Payments\Enums\PaymentMethodConfirmation;
+use App\Payments\Enums\PayoutStatus;
+use App\Payments\Enums\SubmerchantStatus;
 use App\Payments\Exceptions\GatewayUnavailableException;
 use App\Payments\Exceptions\WebhookSignatureInvalidException;
 use App\Payments\Exceptions\WebhookUnparseableException;
@@ -8,9 +10,13 @@ use App\Payments\Gateways\FakeGateway;
 use App\Payments\Gateways\FakeGatewayScenarios;
 use App\Payments\Gateways\GatewayPaymentOutcome;
 use App\Payments\Gateways\GatewayPaymentRequest;
+use App\Payments\Gateways\GatewayPayoutRecord;
+use App\Payments\Gateways\GatewaySubmerchantResult;
 use App\Payments\Gateways\NormalizedPaymentEvent;
+use App\Payments\Gateways\SubmerchantRegistrationRequest;
 use App\Payments\Gateways\WebhookKind;
 use App\Support\Money\Money;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
 
 /*
@@ -168,4 +174,143 @@ it('answers poller queries only from the scripted scenario store', function (): 
     $this->scenarios->scriptQueryResult('fake_abc', NormalizedPaymentEvent::confirmed('fake_abc', Money::of(363, 'BRL')));
 
     expect($this->gateway->queryPayment('fake_abc')->kind)->toBe(WebhookKind::Confirmed);
+});
+
+/*
+ * Stage-08c plan, Slice 1: GatewayAdapter sub-merchant and payout
+ * operations, exercised through FakeGateway scenario controls.
+ */
+
+function submerchantRequest(string $tenantId = 'tenant-1'): SubmerchantRegistrationRequest
+{
+    return new SubmerchantRegistrationRequest(
+        tenantId: $tenantId,
+        settlementCurrency: 'BRL',
+        payoutSchedule: 'weekly',
+    );
+}
+
+it('starts sub-merchant onboarding pending by default, with a deterministic reference and onboarding url', function (): void {
+    $result = $this->gateway->createSubmerchant(submerchantRequest('tenant-1'));
+
+    expect($result->status)->toBe(SubmerchantStatus::Pending)
+        ->and($result->gatewayAccountReference)->toBe('fakesm_tenant-1')
+        ->and($result->onboardingUrl)->toContain('fakesm_tenant-1')
+        ->and($result->requirements)->toBe([]);
+});
+
+it('approves a sub-merchant immediately when the scenario is scripted', function (): void {
+    $this->scenarios->scriptSubmerchantCreation(GatewaySubmerchantResult::active('fakesm_tenant-1'));
+
+    $result = $this->gateway->createSubmerchant(submerchantRequest('tenant-1'));
+
+    expect($result->status)->toBe(SubmerchantStatus::Active)
+        ->and($result->gatewayAccountReference)->toBe('fakesm_tenant-1');
+});
+
+it('holds a sub-merchant under review when the scenario is scripted', function (): void {
+    $this->scenarios->scriptSubmerchantCreation(GatewaySubmerchantResult::underReview('fakesm_tenant-1'));
+
+    $result = $this->gateway->createSubmerchant(submerchantRequest('tenant-1'));
+
+    expect($result->status)->toBe(SubmerchantStatus::UnderReview);
+});
+
+it('requires action on a sub-merchant with an outstanding requirements list when the scenario is scripted', function (): void {
+    $this->scenarios->scriptSubmerchantCreation(
+        GatewaySubmerchantResult::actionRequired('fakesm_tenant-1', ['proof_of_address', 'bank_statement']),
+    );
+
+    $result = $this->gateway->createSubmerchant(submerchantRequest('tenant-1'));
+
+    expect($result->status)->toBe(SubmerchantStatus::ActionRequired)
+        ->and($result->requirements)->toBe(['proof_of_address', 'bank_statement']);
+});
+
+it('rejects a sub-merchant when the scenario is scripted, and allows a retry to reset it to pending', function (): void {
+    $this->scenarios->scriptSubmerchantCreation(GatewaySubmerchantResult::rejected('fakesm_tenant-1'));
+
+    $rejected = $this->gateway->createSubmerchant(submerchantRequest('tenant-1'));
+    expect($rejected->status)->toBe(SubmerchantStatus::Rejected);
+
+    $this->scenarios->scriptSubmerchantStatus('fakesm_tenant-1', GatewaySubmerchantResult::pending('fakesm_tenant-1'));
+    $retried = $this->gateway->fetchSubmerchantStatus('fakesm_tenant-1');
+
+    expect($retried->status)->toBe(SubmerchantStatus::Pending);
+});
+
+it('fetches the scripted sub-merchant status, falling back to pending when nothing was scripted', function (): void {
+    expect($this->gateway->fetchSubmerchantStatus('fakesm_unknown')->status)->toBe(SubmerchantStatus::Pending);
+
+    $this->scenarios->scriptSubmerchantStatus('fakesm_tenant-1', GatewaySubmerchantResult::active('fakesm_tenant-1'));
+
+    expect($this->gateway->fetchSubmerchantStatus('fakesm_tenant-1')->status)->toBe(SubmerchantStatus::Active);
+});
+
+it('emits sub-merchant status webhooks the adapter verifies, carrying the requirements list', function (): void {
+    $delivery = $this->gateway->submerchantStatusWebhook('fakesm_tenant-1', SubmerchantStatus::ActionRequired, ['bank_statement']);
+
+    $parsed = $this->gateway->parseWebhook($delivery->body, $delivery->headers);
+
+    expect($parsed->payload['reference'])->toBe('fakesm_tenant-1')
+        ->and($parsed->payload['status'])->toBe('action_required')
+        ->and($parsed->payload['requirements'])->toBe(['bank_statement']);
+});
+
+it('emits duplicate sub-merchant webhooks sharing one gateway event id when scripted', function (): void {
+    $first = $this->gateway->submerchantStatusWebhook('fakesm_tenant-1', SubmerchantStatus::Active, eventId: 'evt_sm_dup');
+    $second = $this->gateway->submerchantStatusWebhook('fakesm_tenant-1', SubmerchantStatus::Active, eventId: 'evt_sm_dup');
+
+    expect($this->gateway->parseWebhook($first->body, $first->headers)->gatewayEventId)
+        ->toBe($this->gateway->parseWebhook($second->body, $second->headers)->gatewayEventId);
+});
+
+it('lists payouts only from the scripted scenario store, optionally filtered since an instant', function (): void {
+    expect($this->gateway->listPayouts())->toBe([]);
+
+    $old = new GatewayPayoutRecord('fake_po_1', Money::of(1000, 'BRL'), PayoutStatus::Paid, CarbonImmutable::parse('2026-01-01T00:00:00Z'));
+    $recent = new GatewayPayoutRecord('fake_po_2', Money::of(2000, 'BRL'), PayoutStatus::Paid, CarbonImmutable::parse('2026-07-01T00:00:00Z'));
+    $this->scenarios->scriptPayouts([$old, $recent]);
+
+    expect($this->gateway->listPayouts())->toBe([$old, $recent])
+        ->and($this->gateway->listPayouts(CarbonImmutable::parse('2026-06-01T00:00:00Z')))->toBe([$recent]);
+});
+
+it('emits a payout executed webhook the adapter verifies', function (): void {
+    $executedAt = CarbonImmutable::parse('2026-07-12T10:00:00Z');
+    $delivery = $this->gateway->payoutStatusWebhook('fake_po_1', PayoutStatus::Paid, $executedAt);
+
+    $parsed = $this->gateway->parseWebhook($delivery->body, $delivery->headers);
+
+    expect($parsed->payload['reference'])->toBe('fake_po_1')
+        ->and($parsed->payload['status'])->toBe('paid')
+        ->and($parsed->payload['executed_at'])->toBe($executedAt->toIso8601String());
+});
+
+it('emits a payout failed webhook the adapter verifies', function (): void {
+    $delivery = $this->gateway->payoutStatusWebhook('fake_po_1', PayoutStatus::Failed);
+
+    $parsed = $this->gateway->parseWebhook($delivery->body, $delivery->headers);
+
+    expect($parsed->payload['reference'])->toBe('fake_po_1')
+        ->and($parsed->payload['status'])->toBe('failed')
+        ->and($parsed->payload['executed_at'])->toBeNull();
+});
+
+it('emits a payout created webhook carrying the amount', function (): void {
+    $delivery = $this->gateway->payoutCreatedWebhook('fake_po_1', Money::of(1500, 'BRL'));
+
+    $parsed = $this->gateway->parseWebhook($delivery->body, $delivery->headers);
+
+    expect($parsed->payload['reference'])->toBe('fake_po_1')
+        ->and($parsed->payload['status'])->toBe('pending')
+        ->and($parsed->payload['amount'])->toBe(['amount' => 1500, 'currency' => 'BRL']);
+});
+
+it('emits duplicate payout webhooks sharing one gateway event id when scripted', function (): void {
+    $first = $this->gateway->payoutStatusWebhook('fake_po_1', PayoutStatus::Paid, eventId: 'evt_po_dup');
+    $second = $this->gateway->payoutStatusWebhook('fake_po_1', PayoutStatus::Paid, eventId: 'evt_po_dup');
+
+    expect($this->gateway->parseWebhook($first->body, $first->headers)->gatewayEventId)
+        ->toBe($this->gateway->parseWebhook($second->body, $second->headers)->gatewayEventId);
 });
