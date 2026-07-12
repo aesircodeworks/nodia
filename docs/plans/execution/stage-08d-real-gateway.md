@@ -194,7 +194,7 @@ Test evidence (apps/api):
 - `./vendor/bin/pint --test` (touched files): clean.
 - `./vendor/bin/phpstan analyse` (touched files, `--memory-limit=1G`): 0 errors.
 
-Commit: (recorded after this journal entry is committed alongside the code)
+Commit: 2396500
 
 ### Review rounds
 
