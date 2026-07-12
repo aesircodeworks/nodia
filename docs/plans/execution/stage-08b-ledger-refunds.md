@@ -204,3 +204,17 @@ Codex review round 3 raised one important finding.
    Test first: added `apps/api/tests/Concurrency/RefundReservationContentionTest.php` "marks exactly the payment-completing refund void-all when parallel partials race to full" - two barrier-synchronised workers each refund half of a 5000 payment; exactly one refund must carry the null (void-all) selection. Verified the test fails on the stale-snapshot logic (voidAllCount 0, expected 1) and passes on the fix.
 
    Verification: `php artisan test --filter=Refund` green (115/115), `composer -d apps/api run lint` passed, `composer -d apps/api run analyse` passed (0 errors).
+
+### CI
+
+Sun Jul 12 02:23:55 -03 2026 (America/Sao_Paulo)
+
+Re-ran the full local gates from the repo root because code fixes landed after the gate entry (commits 12ff909 and 12e8829, review rounds 1 and 3): `composer -d apps/api run lint` (Pint) passed, `composer -d apps/api run analyse` (Larastan) 0 errors, `composer -d apps/api run test` (Pest) 2500/2500 green, `composer -d apps/api run types:generate` then `git status --short packages/api-client/src/generated` clean (no contract drift), `pnpm typecheck` green across all workspaces. Committed the T14 ledger balance invariant harness (c60acb5) and the status-table flip to Done (7855b41), then pushed 7855b41.
+
+CI on branch feat/api-implementation, all green:
+
+- API run 29180975506: success
+- Admin run 29180975503: success
+- Packages run 29180975521: success
+- Storefront run 29180975528: success
+- Checkin run 29180975527: success
