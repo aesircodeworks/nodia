@@ -180,3 +180,15 @@ Three failures surfaced on the first full run and were fixed properly:
 3. 28 concurrency-suite errors: `delete from tenants` hit `ledger_entries_tenant_id_foreign`. Root cause: the stage 8b `ledger_entries` migration gave `tenant_id` a real foreign key, but the table is append-only (a trigger denies DELETE to every role), so any tenant a ledger row references becomes permanently undeletable. The isolation suite's `LedgerEntryFixture` seeds two persistent tenants with ledger rows, and the concurrency suite (which runs right after isolation in the same process) sweeps all non-platform tenants in teardown, wedging on those rows. Fixed by dropping the foreign key and using a plain `uuid('tenant_id')` column, mirroring the deliberate `activity_log` precedent; a financial ledger is meant to outlive the records it describes. Commit scope `payments`.
 
 Commits: `fix(payments): keep ledger_entries append-only without a tenant foreign key`, `fix(identity): grant ledger.view to the Owner and Finance templates`, `test(payments): allowlist stage 8b ledger and refund classes in the preset`.
+
+### Review round 2
+
+2026-07-12 02:01:51 -03
+
+Codex review round 2 raised one important finding.
+
+1. important, `apps/api/app/Payments/Http/routes/admin.php`: the new refund and ledger read endpoints lacked the plan-mandated Isolation-suite coverage; only Feature-level tests existed. Fixed by adding two endpoint-level isolation tests that drive the real handlers through the tenancy.admin group under the downgraded `nodia_isolation` connection, so a RLS regression fails loudly rather than leaking through a BYPASSRLS default:
+   - `apps/api/tests/Isolation/RefundReadEndpointsIsolationTest.php`: a tenant B caller holding `orders.view` gets `refund_not_found` (404) for tenant A's refund id on `GET /v1/refunds/{refund}`, and `GET /v1/refunds` never lists tenant A's refund.
+   - `apps/api/tests/Isolation/LedgerReadEndpointsIsolationTest.php`: a tenant B caller holding the financially privileged `ledger.view` (with a confirmed MFA session) never sees tenant A's row on `GET /v1/ledger-entries`, and a distinctive foreign-tenant entry in an otherwise-unused currency never sums into `GET /v1/ledger-balances`. Balances assert against a probe currency rather than an exact total because ledger rows are append-only and accumulate across the process.
+
+   Verification: `php artisan test --testsuite=Isolation` green (260/260), `composer -d apps/api run lint` passed.
