@@ -3978,6 +3978,69 @@ function documentedResponseExercisers(): array
 
             return test()->postJson('/v1/check-ins', contractCheckInPayload($ticket->id, $event->id, 0, 'wrong-secret'), $headers);
         },
+        // Stage-09 plan, Endpoints "POST /v1/check-in-batches".
+        'post /v1/check-in-batches 200' => function (): TestResponse {
+            $tenant = contractTenant();
+            $headers = ['Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']), 'X-Tenant-Id' => $tenant->id];
+            ['ticket' => $ticket, 'event' => $event] = contractCheckInTicket($tenant);
+            $secret = contractCheckInSecret($tenant, $event->id);
+            $scan = contractCheckInPayload($ticket->id, $event->id, 0, $secret);
+
+            return test()->postJson('/v1/check-in-batches', [
+                'device_id' => 'contract-batch-device',
+                'scans' => [[
+                    'client_scan_id' => $scan['client_scan_id'],
+                    'qr_payload' => $scan['qr_payload'],
+                    'scanned_at' => $scan['scanned_at'],
+                ]],
+            ], $headers);
+        },
+        'post /v1/check-in-batches 401' => function (): TestResponse {
+            $tenant = contractTenant();
+            ['ticket' => $ticket, 'event' => $event] = contractCheckInTicket($tenant);
+            $secret = contractCheckInSecret($tenant, $event->id);
+            $scan = contractCheckInPayload($ticket->id, $event->id, 0, $secret);
+
+            return test()->postJson('/v1/check-in-batches', [
+                'device_id' => 'contract-batch-device',
+                'scans' => [[
+                    'client_scan_id' => $scan['client_scan_id'],
+                    'qr_payload' => $scan['qr_payload'],
+                    'scanned_at' => $scan['scanned_at'],
+                ]],
+            ]);
+        },
+        'post /v1/check-in-batches 403' => function (): TestResponse {
+            $tenant = contractTenant();
+            $otherTenant = contractTenant();
+            $bearer = contractVenueBearer($tenant, ['checkin.manage']);
+
+            return test()->postJson('/v1/check-in-batches', [
+                'device_id' => 'contract-batch-device',
+                'scans' => [],
+            ], [
+                'Authorization' => 'Bearer '.$bearer,
+                'X-Tenant-Id' => $otherTenant->id,
+            ]);
+        },
+        'post /v1/check-in-batches 422' => function (): TestResponse {
+            $tenant = contractTenant();
+            $headers = ['Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']), 'X-Tenant-Id' => $tenant->id];
+            ['ticket' => $ticket, 'event' => $event] = contractCheckInTicket($tenant);
+            $secret = contractCheckInSecret($tenant, $event->id);
+            $scan = contractCheckInPayload($ticket->id, $event->id, 0, $secret);
+
+            $scans = array_fill(0, 501, [
+                'client_scan_id' => (string) Str::uuid7(),
+                'qr_payload' => $scan['qr_payload'],
+                'scanned_at' => $scan['scanned_at'],
+            ]);
+
+            return test()->postJson('/v1/check-in-batches', [
+                'device_id' => 'contract-batch-device',
+                'scans' => $scans,
+            ], $headers);
+        },
     ];
 }
 

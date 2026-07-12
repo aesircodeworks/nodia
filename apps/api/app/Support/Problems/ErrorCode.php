@@ -114,6 +114,7 @@ enum ErrorCode: string
     case CheckInTicketCanceled = 'ticket_canceled';
     case CheckInTicketRefunded = 'ticket_refunded';
     case TicketAlreadyCheckedIn = 'ticket_already_checked_in';
+    case BatchTooLarge = 'batch_too_large';
 
     public function status(): int
     {
@@ -225,6 +226,7 @@ enum ErrorCode: string
             self::CheckInTicketCanceled => 409,
             self::CheckInTicketRefunded => 409,
             self::TicketAlreadyCheckedIn => 409,
+            self::BatchTooLarge => 422,
         };
     }
 
@@ -338,6 +340,7 @@ enum ErrorCode: string
             self::CheckInTicketCanceled => 'Ticket canceled',
             self::CheckInTicketRefunded => 'Ticket refunded',
             self::TicketAlreadyCheckedIn => 'Ticket already checked in',
+            self::BatchTooLarge => 'Batch too large',
         };
     }
 

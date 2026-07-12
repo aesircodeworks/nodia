@@ -3857,6 +3857,66 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/CheckInUnprocessableProblem'
+  /v1/check-in-batches:
+    post:
+      operationId: reconcileCheckInBatch
+      summary: Reconcile a batch of offline scans
+      description: >-
+        Tenant admin surface (stage-09 plan, Endpoints "POST
+        /v1/check-in-batches", Slice 5). Processes up to 500 scans and
+        always answers 200: a per-scan problem (an unassigned event, an
+        invalid signature, a stale rotation counter) yields a rejected
+        outcome for that scan alone rather than failing the whole batch.
+        Idempotent per persisted scan by (device_id, client_scan_id);
+        rejected scans are not persisted, so resubmitting one re-verifies
+        it from scratch. Cross-device duplicates for the same ticket
+        resolve first-scan-wins by scanned_at, tie-broken by the smallest
+        client_scan_id, independent of submission order: a later-
+        arriving scan with an earlier scanned_at swaps in as accepted,
+        demoting the previously accepted scan to duplicate and recording
+        DuplicateScanDetected for it, without re-recording
+        TicketCheckedIn.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReconcileBatchRequest'
+      responses:
+        '200':
+          description: >-
+            Every scan's outcome, whether freshly resolved or replayed
+            from a prior submission.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResult'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: No membership in the asserted tenant, or MFA enforcement unmet.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/StaffCapabilityForbiddenProblem'
+        '422':
+          description: >-
+            The batch names more than 500 scans (code batch_too_large),
+            or the request body fails validation (code
+            request.validation_failed).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/BatchTooLargeProblem'
   /v1/storefront/events:
     get:
       operationId: listStorefrontEvents
@@ -7585,6 +7645,115 @@ components:
                     - qr_key_revoked
                     - ticket_rotation_stale
                     - scanned_at_in_future
+      unevaluatedProperties: false
+    OfflineScan:
+      type: object
+      description: >-
+        One queued scan inside a POST /v1/check-in-batches request
+        (stage-09 plan, Endpoints "POST /v1/check-in-batches").
+      required:
+        - client_scan_id
+        - qr_payload
+        - scanned_at
+      properties:
+        client_scan_id:
+          type: string
+        qr_payload:
+          type: string
+        scanned_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    ReconcileBatchRequest:
+      type: object
+      description: >-
+        POST /v1/check-in-batches request body (stage-09 plan, Endpoints
+        "POST /v1/check-in-batches"). At most 500 scans; a larger array
+        renders 422 batch_too_large.
+      required:
+        - device_id
+        - scans
+      properties:
+        device_id:
+          type: string
+        scans:
+          type: array
+          items:
+            $ref: '#/components/schemas/OfflineScan'
+      additionalProperties: false
+    ScanOutcome:
+      type: object
+      description: >-
+        One entry of POST /v1/check-in-batches' response (stage-09 plan,
+        Endpoints "POST /v1/check-in-batches"). check_in_id is null for a
+        rejected outcome; code is null for an accepted outcome;
+        first_scanned_at and first_device_id are populated only for a
+        duplicate outcome.
+      required:
+        - client_scan_id
+        - outcome
+      properties:
+        client_scan_id:
+          type: string
+        outcome:
+          type: string
+          enum: [accepted, duplicate, rejected]
+        check_in_id:
+          type: string
+          format: uuid
+          nullable: true
+        code:
+          type: string
+          nullable: true
+        first_scanned_at:
+          type: string
+          format: date-time
+          nullable: true
+        first_device_id:
+          type: string
+          nullable: true
+      additionalProperties: false
+    BatchResult:
+      type: object
+      description: >-
+        POST /v1/check-in-batches response body (stage-09 plan,
+        Endpoints "POST /v1/check-in-batches"). Always 200: per-scan
+        problems never fail the batch wholesale.
+      required:
+        - results
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScanOutcome'
+      additionalProperties: false
+    BatchTooLargeProblem:
+      description: >-
+        Problem document for POST /v1/check-in-batches 422 responses
+        (stage-09 plan, Endpoints): the batch names more than 500 scans
+        (code batch_too_large), or the request body fails validation
+        (code request.validation_failed, with the errors map).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - oneOf:
+            - type: object
+              required:
+                - errors
+              properties:
+                code:
+                  type: string
+                  enum: [request.validation_failed]
+                errors:
+                  type: object
+                  additionalProperties:
+                    type: array
+                    items:
+                      type: string
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum: [batch_too_large]
       unevaluatedProperties: false
     CheckPromoCodeRequest:
       type: object

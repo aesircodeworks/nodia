@@ -9,6 +9,7 @@
 // App\Orders\Http\routes\admin.php's own signing-keys GET.
 
 use App\CheckIn\Http\Controllers\CheckInManifestController;
+use App\CheckIn\Http\Controllers\ReconcileOfflineScansController;
 use App\CheckIn\Http\Controllers\RecordScanController;
 use Illuminate\Support\Facades\Route;
 
@@ -20,3 +21,8 @@ Route::get('/events/{event}/check-in-manifest', [CheckInManifestController::clas
 // checkin.scan-plus-assignment (or checkin.manage bypass) authorization
 // itself, mirroring the GET routes' own custom-authorized posture.
 Route::post('/check-ins', [RecordScanController::class, 'store']);
+
+// POST /v1/check-in-batches has the same custom-authorized posture as
+// POST /v1/check-ins, evaluated per scan since each scan's target event
+// is only known once its own QR payload has verified.
+Route::post('/check-in-batches', [ReconcileOfflineScansController::class, 'store']);

@@ -2,6 +2,8 @@
 
 use App\CheckIn\CheckInServiceProvider;
 use App\CheckIn\Enums\CheckInResult;
+use App\CheckIn\Enums\ScanOutcome;
+use App\CheckIn\Exceptions\BatchTooLargeException;
 use App\CheckIn\Exceptions\CheckinNotAssignedException;
 use App\CheckIn\Exceptions\CheckInTicketCanceledException;
 use App\CheckIn\Exceptions\CheckInTicketNotFoundException;
@@ -398,6 +400,7 @@ arch()->preset()->laravel()->ignoring([
     'App\Support\Media\Models',
     MediaNotFoundException::class,
     CheckInResult::class,
+    ScanOutcome::class,
     CheckinNotAssignedException::class,
     ManifestEventNotFoundException::class,
     QrSignatureInvalidException::class,
@@ -407,5 +410,6 @@ arch()->preset()->laravel()->ignoring([
     CheckInTicketNotFoundException::class,
     CheckInTicketCanceledException::class,
     CheckInTicketRefundedException::class,
+    BatchTooLargeException::class,
     'App\CheckIn\Models',
 ]);

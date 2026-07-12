@@ -6,6 +6,9 @@ export type AsyncPaymentPolicyData = {
   slow_methods_enabled: boolean;
   low_inventory_cutoff: number | null;
 };
+export type BatchResultData = {
+  results: ScanOutcomeData[];
+};
 export type BrandingSettingsData = {
   primary_color: string | null;
   logo_url: string | null;
@@ -283,7 +286,8 @@ export type ErrorCode =
   | 'ticket_not_found'
   | 'ticket_canceled'
   | 'ticket_refunded'
-  | 'ticket_already_checked_in';
+  | 'ticket_already_checked_in'
+  | 'batch_too_large';
 export type EventAssignmentData = {
   authorized: boolean;
 };
@@ -478,6 +482,11 @@ export type NextActionData = {
   redirect_url: string | null;
   code: string | null;
 };
+export type OfflineScanData = {
+  client_scan_id: string;
+  qr_payload: string;
+  scanned_at: string;
+};
 export type OrderData = {
   id: string;
   status: string;
@@ -592,6 +601,10 @@ export type QrVerificationResultData = {
   event_id: string | null;
   rotation_counter: number | null;
 };
+export type ReconcileBatchData = {
+  device_id: string;
+  scans: OfflineScanData[];
+};
 export type RecordScanData = {
   qr_payload: string;
   device_id: string;
@@ -637,6 +650,15 @@ export type RoleData = {
 };
 export type RotateSigningKeyData = {
   revoke_previous?: boolean;
+};
+export type ScanOutcome = 'accepted' | 'duplicate' | 'rejected';
+export type ScanOutcomeData = {
+  client_scan_id: string;
+  outcome: ScanOutcome;
+  check_in_id: string | null;
+  code: string | null;
+  first_scanned_at: string | null;
+  first_device_id: string | null;
 };
 export type SeatData = {
   id: string;
