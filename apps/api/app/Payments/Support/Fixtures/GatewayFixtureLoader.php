@@ -19,14 +19,16 @@ final class GatewayFixtureLoader
     public function __construct(private readonly string $fixturesRoot) {}
 
     /**
-     * Fakes the HTTP client for the given gateway slug with every recorded
-     * exchange under its fixture directory.
+     * Fakes the HTTP client for the given gateway slug with the exchanges
+     * recorded for a single scenario. Scoping to one scenario keeps
+     * identical matchers from unrelated scenarios out of the same replay
+     * sequence, so a scenario never receives another scenario's response.
      *
-     * @throws GatewayFixtureNotCoveredException when the slug has no fixture directory
+     * @throws GatewayFixtureNotCoveredException when the slug has no fixtures for the scenario
      */
-    public function fake(string $gateway): void
+    public function fake(string $gateway, string $scenario): void
     {
-        $exchanges = $this->load($gateway);
+        $exchanges = $this->load($gateway, $scenario);
 
         // Per-signature replay cursors: when a fixture set records several
         // exchanges that all match the same request (a poll that returns
@@ -68,7 +70,7 @@ final class GatewayFixtureLoader
     /**
      * @return list<array{request: array<string, mixed>, response: array<string, mixed>}>
      */
-    private function load(string $gateway): array
+    private function load(string $gateway, string $scenario): array
     {
         $directory = rtrim($this->fixturesRoot, '/').'/'.$gateway;
 
@@ -76,9 +78,15 @@ final class GatewayFixtureLoader
             throw GatewayFixtureNotCoveredException::forGateway($gateway);
         }
 
+        $files = GatewayScenarioFixtures::orderedPaths($directory, $scenario);
+
+        if ($files === []) {
+            throw GatewayFixtureNotCoveredException::forGateway($gateway);
+        }
+
         $exchanges = [];
 
-        foreach (glob($directory.'/*.json') ?: [] as $file) {
+        foreach ($files as $file) {
             $contents = file_get_contents($file);
 
             if ($contents === false) {

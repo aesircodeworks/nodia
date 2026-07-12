@@ -11,7 +11,7 @@ function driftDetectorFixturesRoot(): string
 function driftDetectorExampleFixture(): array
 {
     return json_decode(
-        file_get_contents(driftDetectorFixturesRoot().'/examplegw/create-payment.json'),
+        file_get_contents(driftDetectorFixturesRoot().'/examplegw/create-payment-0.json'),
         true,
     );
 }
@@ -85,7 +85,7 @@ it('does not report drift when the live sandbox returns raw credentials the comm
     $root = sys_get_temp_dir().'/gateway-drift-'.uniqid();
     mkdir($root.'/examplegw', 0777, true);
     file_put_contents(
-        $root.'/examplegw/create-payment.json',
+        $root.'/examplegw/create-payment-0.json',
         json_encode([
             'request' => ['method' => 'POST', 'url' => 'https://sandbox.test/v1/payments', 'headers' => ['Authorization' => '[REDACTED]']],
             'response' => ['status' => 201, 'body' => ['id' => 'pay_1']],
@@ -110,6 +110,76 @@ it('does not report drift when the live sandbox returns raw credentials the comm
     array_map('unlink', glob($root.'/examplegw/*.json') ?: []);
     rmdir($root.'/examplegw');
     rmdir($root);
+});
+
+it('compares recorded exchanges in numeric index order past ten exchanges', function (): void {
+    $root = sys_get_temp_dir().'/gateway-drift-'.uniqid();
+    mkdir($root.'/seqgw', 0777, true);
+
+    $exchanges = [];
+    foreach (range(0, 11) as $index) {
+        $exchange = [
+            'request' => ['method' => 'GET', 'url' => 'https://sandbox.test/poll'],
+            'response' => ['status' => 200, 'body' => ['index' => $index]],
+        ];
+        $exchanges[] = $exchange;
+        file_put_contents($root."/seqgw/seq-{$index}.json", json_encode($exchange));
+    }
+
+    $recorder = new class($exchanges) implements GatewayFixtureRecorder
+    {
+        public function __construct(private readonly array $exchanges) {}
+
+        public function record(string $scenario): array
+        {
+            return $this->exchanges;
+        }
+    };
+
+    try {
+        $detector = new GatewayFixtureDriftDetector($root);
+
+        expect($detector->detect('seqgw', 'seq', $recorder))->toBe([]);
+    } finally {
+        array_map('unlink', glob($root.'/seqgw/*.json') ?: []);
+        rmdir($root.'/seqgw');
+        rmdir($root);
+    }
+});
+
+it('does not treat another scenario sharing a name prefix as part of the scenario', function (): void {
+    $root = sys_get_temp_dir().'/gateway-drift-'.uniqid();
+    mkdir($root.'/prefixgw', 0777, true);
+
+    $exchange = [
+        'request' => ['method' => 'GET', 'url' => 'https://sandbox.test/poll'],
+        'response' => ['status' => 200, 'body' => ['id' => 'poll']],
+    ];
+    file_put_contents($root.'/prefixgw/poll-0.json', json_encode($exchange));
+    file_put_contents($root.'/prefixgw/poll-refund-0.json', json_encode([
+        'request' => ['method' => 'GET', 'url' => 'https://sandbox.test/refund'],
+        'response' => ['status' => 200, 'body' => ['id' => 'refund']],
+    ]));
+
+    $recorder = new class($exchange) implements GatewayFixtureRecorder
+    {
+        public function __construct(private readonly array $exchange) {}
+
+        public function record(string $scenario): array
+        {
+            return [$this->exchange];
+        }
+    };
+
+    try {
+        $detector = new GatewayFixtureDriftDetector($root);
+
+        expect($detector->detect('prefixgw', 'poll', $recorder))->toBe([]);
+    } finally {
+        array_map('unlink', glob($root.'/prefixgw/*.json') ?: []);
+        rmdir($root.'/prefixgw');
+        rmdir($root);
+    }
 });
 
 it('reports drift when no fixture exists yet for the scenario being checked', function (): void {

@@ -6,9 +6,10 @@ has no knowledge of any specific gateway; a gateway becomes usable here by
 implementing `GatewayFixtureRecorder` and binding it in
 `config('payments.fixture_recorders')`.
 
-- `GatewayFixtureLoader`: replays recorded fixtures from
-  `tests/Fixtures/gateways/{slug}/*.json` in CI and locally. A request the
-  fixture set does not cover fails loudly instead of hitting the network.
+- `GatewayFixtureLoader`: replays the fixtures recorded for a single
+  scenario from `tests/Fixtures/gateways/{slug}/{scenario}-{index}.json` in
+  CI and locally, in numeric index order. A request the fixture set does
+  not cover fails loudly instead of hitting the network.
 - `GatewayFixtureSanitizer`: scans fixtures for known secret shapes
   (bearer tokens, `sk_/pk_/rk_` keys, AWS access key IDs, PAN-like digit
   runs) and redacts them before a fixture is written. The scan runs

@@ -90,12 +90,9 @@ final class GatewayFixtureDriftDetector
             return [];
         }
 
-        $files = glob($directory.'/'.$scenario.'*.json') ?: [];
-        sort($files);
-
         $exchanges = [];
 
-        foreach ($files as $file) {
+        foreach (GatewayScenarioFixtures::orderedPaths($directory, $scenario) as $file) {
             $contents = file_get_contents($file);
 
             if ($contents === false) {
