@@ -216,3 +216,28 @@ Test evidence (from `apps/api`):
 - `vendor/bin/pint --test` on all touched/new files: passed.
 
 No Data class visible outside the outbox payload boundary changed (`PayoutExecutedPayload` is `#[Hidden]`, an internal outbox payload, not an API contract), so `composer types:generate` was not run. No deviation from the plan's transition matrix, event envelope, or payload fields; the only deviation is the T1 emitter signature widening recorded above, which was necessary to satisfy the plan's own tenant-resolution requirement for payout webhooks and was not yet exercised by any other task.
+
+#### T9: payout read endpoints with cursor pagination (2026-07-12)
+
+Landed:
+
+- `App\Payments\Data\PayoutData` (`#[TypeScript]`): `id`, `gateway`, `gatewayReference`, `amount` (`{amount, currency}`), `status`, `executedAt`, `reconciledAt`, `discrepancy` (nullable `{amount, currency}`, built from the row's `discrepancy_amount` paired with its own `currency`), `created_at` (snake-cased to match the cursor's ordering column, mirroring `LedgerEntryData`'s own precedent).
+- `App\Payments\Exceptions\PayoutNotFoundException`, mapping to the generic `request.not_found` code, mirroring `SubmerchantAccountNotFoundException` exactly (genuinely absent or cross-tenant, RLS makes the two indistinguishable).
+- `App\Payments\Http\Controllers\PayoutController`: `index` cursor-paginates over a fixed newest-first order (`orderByDesc('created_at')->orderByDesc('id')`, no caller-adjustable sort, `allowedFilters(status, gateway)` exact), `show` resolves by id or throws the not-found exception. The plan's "sort=-created_at" allowlist entry is read the same way `RefundController`'s already-shipped fixed descending-id list reads its own undocumented-as-a-query-param sort: a fixed order the response conforms to, not a caller-toggle, matching `RefundController`/`LedgerController`'s existing "no sorts" precedent (`allowedSorts()` called with no arguments).
+- Routes: `GET /v1/payouts` and `GET /v1/payouts/{payout}` added to the existing `payouts.view` route group in `app/Payments/Http/routes/admin.php`, alongside the submerchant-account reads.
+- OpenAPI: `/v1/payouts` and `/v1/payouts/{payout}` paths, `Payout` and `PayoutCursorPage` schemas (the latter mirroring `LedgerEntryCursorPage`'s envelope shape).
+- `tests/Architecture/PresetTest.php`: `PayoutNotFoundException` added to the list of `HasErrorCode` exceptions the Laravel preset should not flag, same precedent as every other Payments exception.
+- `tests/Contract/DocumentedResponseCoverageTest.php`: `contractPayout()` helper (mirrors `contractSubmerchantAccount()`), one exerciser per documented response for both new paths (200/400/401/403 on the list, 200/401/403/404 on the detail), and a `payouts` cleanup line added to the suite's per-tenant `afterEach` teardown (no cascade on `payouts.tenant_id`, same reasoning already applied to `submerchant_accounts`).
+- Tests first: `tests/Feature/Payments/PayoutReadTest.php` (cursor pagination newest-first with `filter[status]`/`filter[gateway]`, the full wire shape including a non-null `discrepancy`, a null `discrepancy` when reconciliation found no divergence, unknown-filter rejection, tenant isolation, capability denial on both endpoints, MFA-enforcement denial on the list, `request.not_found` for unknown and cross-tenant detail ids). Confirmed failing first (`GET /v1/payouts` and `GET /v1/payouts/{payout}` both 404 since no routes existed), then green after the Data/controller/route/OpenAPI landed.
+
+Test evidence (from `apps/api`):
+
+- `php artisan test --filter=PayoutReadTest`: 10 passed, 46 assertions (confirmed failing beforehand: 7 failed, 1 errored, since the routes didn't exist). One rerun hit an unrelated flaky JWT "issued in the future" clock-skew failure on a fresh Passport token in the same run; a second rerun was clean, matching the same class of flake already accepted for auth token minting elsewhere in the suite.
+- `php artisan test --testsuite=Contract`: 390 passed, 2501 assertions (full contract regression, confirms the eight new exercisers pass and nothing else broke).
+- `php artisan test --testsuite=Feature --filter=Payments`: 149 passed, 797 assertions.
+- `php artisan test --testsuite=Architecture`: 40 passed, 97 assertions (confirmed failing first against `PayoutNotFoundException` before the `PresetTest` allowlist edit landed).
+- `php artisan test --testsuite=Unit`: 896 passed, 2176 assertions.
+- `vendor/bin/pint --test` on all touched/new files: passed.
+- `composer types:generate`: ran and committed regenerated output (`PayoutData` gained the `#[TypeScript]` attribute).
+
+No deviation from the plan's endpoint shapes, filters, or error codes. Commit: `628bf83` (`feat(payments): add cursor-paginated payout read endpoints`).
