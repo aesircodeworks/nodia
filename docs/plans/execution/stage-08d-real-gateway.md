@@ -526,3 +526,131 @@ Triggered runs (all green):
 - Storefront: 29201915206 (success)
 - Packages: 29201915214 (success)
 - Admin: 29201915234 (success)
+
+## Run closeout (2026-07-12 14:31 -03)
+
+### Summary
+
+5 of 5 planned ADR-agnostic tasks completed (8d-1 through 8d-5: adapter
+conformance suite, recorded-fixture harness, PendingGatewayAdapter skeleton,
+KYC abstraction hardening, sandbox drift detector). No tasks blocked.
+
+Gate: passing. Larastan caught a real gap (`ProblemRenderer::detailFor` had no
+match arm for `ErrorCode::GatewayNotConfigured`, would have thrown
+`UnhandledMatchError` instead of returning a 409); the full test run caught a
+second real gap (`ErrorCodeTest` registry dataset missing the same code). Both
+fixed (1d79018, ee1a0df). Final sequential run: 2733 passed, 10981 assertions,
+0 failures. `types:generate` clean, no contract drift. `pnpm typecheck`
+skipped (no TypeScript changed).
+
+Review: 3 rounds, all "needs-fixes" verdicts, all actionable findings fixed
+in place before the next round (6 in round 1, 2 in round 2, 2 in round 3;
+0 minor). No findings were declined or left unresolved. Recurring theme
+across all three rounds: the fixture harness (loader replay cursors, scenario
+scoping, drift-detector matching) needed several hardening passes to be
+trustworthy contract-test infrastructure; final round 3 fixes centralized
+scenario file selection in `GatewayScenarioFixtures::orderedPaths()` shared
+by both the loader and the detector.
+
+Ship: passing locally and on CI. Post-gate review-round commits (7aafb63,
+head of the branch after round 3) were pushed; all five CI workflows for
+the branch went green (API 29201915228 including API Contract Drift with no
+drift, Checkin 29201915216, Storefront 29201915206, Packages 29201915214,
+Admin 29201915234). Docs-only CI-record commit 61c0e63 was pushed after that
+and needs no additional CI wait (docs-only).
+
+Blockers: none for the tasks actually in scope this run. The stage as a
+whole remains blocked on the launch gateway ADR, unchanged from before this
+run (see plan Status line "gated on ADR" and Dependencies section).
+
+### Exit criteria walk (docs/plans/stage-08d-real-gateway.md, Exit criteria)
+
+1. "The launch gateway ADR is merged and this plan's pending items are
+   resolved to concrete names." NOT MET. No ADR work occurred in this run;
+   `docs/api-implementation-plan.md` still lists "The launch gateway ADR is
+   still open" and the plan's pending-ADR items (gateway slug, signature
+   scheme, KYC vocabulary) remain unresolved. This criterion gates the
+   remaining ones below.
+2. "The real adapter passes the same conformance suite as FakeGateway..."
+   NOT MET (no real adapter exists yet; only `PendingGatewayAdapter`, a
+   skeleton that throws `GatewayNotConfiguredException`, exists -- task
+   8d-3, commit 2396500). The conformance suite itself was extracted and
+   is real: `tests/Feature/Payments/GatewayAdapterConformanceTest.php`
+   (task 8d-1, commit a05dae2), parameterized to run against any adapter.
+3. "The full purchase loop ... passes over HTTP with the real adapter
+   replayed from fixtures..." NOT MET. No real adapter to replay against.
+   The fixture harness that will carry this once the adapter exists is
+   built and tested (`GatewayFixtureLoader`, `RecordGatewayFixturesCommand`,
+   task 8d-2 commit 8ca0c25, hardened in review rounds 1-3).
+4. "Webhook signature verification passes the positive case and rejects
+   tampered-body, wrong-key, and stale-timestamp cases..." NOT MET. No
+   concrete signature scheme exists yet (pending ADR); only the skeleton
+   verifier seam from 8a is in place.
+5. "Idempotency keys are transmitted on createPayment and refund creation
+   and on every retry, asserted against fixture requests." PARTIALLY
+   EVIDENCED, not fully met. The fixture loader now enforces
+   Idempotency-Key header matching so a request lacking it fails as
+   not-covered (review round 1 finding 4, `GatewayFixtureLoaderTest`), but
+   this proves the harness can assert the header, not that a real adapter
+   transmits it end to end, since no real adapter exists.
+6. "Full and partial refunds execute through the real adapter and the
+   ledger balance invariant holds..." NOT MET. No real adapter.
+7. "A sandbox sub-merchant completes the KYC flow ... every gateway status
+   maps to a normalized state or quarantines as needs_review; no raw
+   gateway status appears on the wire." PARTIALLY MET for the
+   gateway-agnostic half: the data-driven status mapping and
+   `needs_review` quarantine for unmapped statuses is built and tested
+   (task 8d-4, commit 6300b03, `tests/Unit/Payments` and
+   `tests/Feature/Payments` KYC mapping tests), and the 409
+   `gateway_not_configured` onboarding conflict is documented in the
+   OpenAPI contract (review round 2). NOT MET for the sandbox-completion
+   half: no live sandbox sub-merchant exists because there is no real
+   gateway to onboard against.
+8. "Sandbox payouts mirror into payouts and reconcile against ledger
+   balances." NOT MET. No real gateway payouts to mirror; this is 8c
+   machinery (already done in prior stages) waiting on a real adapter.
+9. "An open circuit breaker for the real gateway removes its methods from
+   the checkout offer without degrading other gateways." NOT MET for the
+   real gateway specifically (none exists). The offer-exclusion path for
+   an unconfigured/pending gateway is proven
+   (`PendingGatewayOfferAndInitiationTest`, task 8d-3), which is the
+   closest available evidence, but it is not the circuit-breaker scenario.
+10. "The fixture directory passes the secret-scan guard; record mode is
+    proven inert in CI; the drift detector catches a deliberately mutated
+    fixture; a live-sandbox verification run is green and its trigger is
+    documented." MOSTLY MET for the parts that do not require a real
+    gateway: the secret sanitizer and CI no-network guard exist and are
+    tested (task 8d-2), record mode's CI-inertness is tested, and the
+    drift detector catches a mutated fixture (task 8d-5, commit b5758ed,
+    hardened for redaction and scenario-scoping in review rounds 1-3) with
+    an operational doc for recording fixtures and rotating webhook
+    secrets. NOT MET: no live-sandbox verification run has ever executed,
+    because there is no real gateway sandbox to run it against.
+11. "No new event types were added, or any that were are registered in
+    system-design 9.3 in the same change." MET. No new event types were
+    introduced in this run; `GatewayNotConfigured` is an error code, not a
+    domain event, and the mapping fix (commit 1d79018) only touches
+    `ProblemRenderer`.
+12. "All six suites green, contract conformance and TypeScript drift gates
+    green, Larastan and Pint clean, isolation coverage exists for any new
+    tenant-scoped table (expected: none)." MET for what this run touched:
+    full sequential `php artisan test` run was 2733 passed / 0 failures
+    (gate summary above), `composer analyse` (Larastan) and
+    `composer lint` (Pint) both clean, `types:generate` produced no
+    contract drift, and no new tenant-scoped tables were added (none
+    expected, none created). CI confirms this on the pushed HEAD (five
+    green workflow runs listed under Ship above).
+
+### Overall
+
+10 of 12 exit criteria are not met, and one (5) is only partially
+evidenced, because they require a merged ADR and a concrete real gateway
+adapter that this run correctly did not attempt to build (the plan states
+outright: "Blocked on the launch gateway ADR ... every gateway-specific
+piece is explicitly marked pending ADR"). Everything that could
+legitimately proceed without the ADR -- the conformance suite, the fixture
+harness, the pending-adapter skeleton, the KYC status-mapping
+infrastructure, and the drift detector -- was built, reviewed through three
+rounds to a clean state, and is green locally and on CI. This run completed
+its planned scope (5/5 tasks) but the stage as a whole is not done and
+cannot be until the launch gateway ADR merges.
