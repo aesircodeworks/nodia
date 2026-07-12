@@ -1,0 +1,17 @@
+{
+    "request": {
+        "method": "POST",
+        "url": "https://sandbox.examplegw.test/v1/payments",
+        "body": {
+            "amount": 1000,
+            "currency": "BRL"
+        }
+    },
+    "response": {
+        "status": 201,
+        "body": {
+            "id": "pay_examplegw_001",
+            "status": "pending"
+        }
+    }
+}

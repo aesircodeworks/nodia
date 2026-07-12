@@ -87,4 +87,24 @@ return [
         'cooldown_seconds' => (int) env('PAYMENTS_BREAKER_COOLDOWN_SECONDS', 60),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Recorded-Fixture Harness
+    |--------------------------------------------------------------------------
+    |
+    | `ci` is the guard `php artisan gateway:record-fixtures` checks
+    | before doing anything else (stage-08d plan, Slice 2): recording
+    | against the live sandbox is a manual, documented act and must never
+    | run in CI. `recorders` binds a gateway slug to the class that knows
+    | how to hit that gateway's live sandbox with credentials from the
+    | environment; none are bound until the launch gateway ADR lands.
+    |
+    */
+
+    'ci' => (bool) env('CI', false),
+
+    'fixture_recorders' => [
+        //
+    ],
+
 ];
