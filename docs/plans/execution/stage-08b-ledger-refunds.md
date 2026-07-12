@@ -72,6 +72,14 @@ Deviations: the MFA denial code is the existing mfa_enforcement_required from En
 
 Evidence: CreateRefundTest and CreateRefundActionTest 21/21, RefundReservationContentionTest 3 consecutive passes, Contract suite 348/348, ErrorCodeTest 89/89, Pint clean, api-client tsc clean.
 
+#### T10: Orders MarkTicketsRefunded (2026-07-12 01:35 -03)
+
+Test-first (MarkTicketsRefundedTest, observed failing before the Action existed): selection voiding with one TicketRefunded per ticket, null-selection full void, idempotent second pass affecting zero rows and recording nothing, and void-plus-events rolling back together. Each void is its own issued-to-refunded conditional UPDATE. TicketRefundedPayload gained the additive optional refund_id (the class had no producer yet, so no historical shapes exist); OrdersServiceProvider registers the TicketRefunded type, shipping the first producer exactly as the Stage 7 docblocks anticipated.
+
+#### T11: Orders refund transition Actions (2026-07-12 01:35 -03)
+
+The Stage 7 state-machine table test was extended first and observed failing: four new valid arcs (paid to partially_refunded, paid to refunded, partially_refunded to partially_refunded, partially_refunded to refunded) with the invalid-pair generator re-deriving every other ordered pair. MarkOrderPartiallyRefunded and MarkOrderRefunded are single conditional UPDATEs guarded on the multi-from set, checked by affected-row count. The system-design 7.1 diagram gained the two partially_refunded edges in the same change, and Stage 7's "no transition action targets a refund state" pin was updated to assert the amended set (the pin existed precisely to be consciously flipped here). Evidence: OrderStateMachineTest and MarkTicketsRefundedTest 62/62.
+
 ### Review rounds
 
 ### Decisions and deviations

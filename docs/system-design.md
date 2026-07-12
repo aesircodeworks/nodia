@@ -328,6 +328,8 @@ stateDiagram-v2
     pending --> canceled: buyer abandons
     paid --> partially_refunded: partial refund
     paid --> refunded: full refund
+    partially_refunded --> partially_refunded: further partial refund
+    partially_refunded --> refunded: final partial exhausts the payment
     expired --> [*]
     failed --> [*]
 ```

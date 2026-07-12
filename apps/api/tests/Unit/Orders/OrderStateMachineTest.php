@@ -10,6 +10,8 @@ use App\Orders\Actions\CancelOrder;
 use App\Orders\Actions\MarkOrderAwaitingPayment;
 use App\Orders\Actions\MarkOrderExpired;
 use App\Orders\Actions\MarkOrderFailed;
+use App\Orders\Actions\MarkOrderPartiallyRefunded;
+use App\Orders\Actions\MarkOrderRefunded;
 use App\Orders\Actions\MarkOrderPaid;
 use App\Orders\Enums\OrderStatus;
 use App\Orders\Exceptions\InvalidOrderTransitionException;
@@ -126,6 +128,8 @@ function transitionActions(): array
         'expired' => MarkOrderExpired::class,
         'failed' => MarkOrderFailed::class,
         'canceled' => CancelOrder::class,
+        'partially_refunded' => MarkOrderPartiallyRefunded::class,
+        'refunded' => MarkOrderRefunded::class,
     ];
 }
 
@@ -135,6 +139,10 @@ dataset('valid arcs', [
     'awaiting_payment to paid' => [OrderStatus::AwaitingPayment, 'paid'],
     'awaiting_payment to expired' => [OrderStatus::AwaitingPayment, 'expired'],
     'awaiting_payment to failed' => [OrderStatus::AwaitingPayment, 'failed'],
+    'paid to partially_refunded' => [OrderStatus::Paid, 'partially_refunded'],
+    'paid to refunded' => [OrderStatus::Paid, 'refunded'],
+    'partially_refunded to partially_refunded' => [OrderStatus::PartiallyRefunded, 'partially_refunded'],
+    'partially_refunded to refunded' => [OrderStatus::PartiallyRefunded, 'refunded'],
 ]);
 
 dataset('invalid arcs', function (): Generator {
@@ -155,6 +163,10 @@ dataset('invalid arcs', function (): Generator {
         'awaiting_payment>paid',
         'awaiting_payment>expired',
         'awaiting_payment>failed',
+        'paid>partially_refunded',
+        'paid>refunded',
+        'partially_refunded>partially_refunded',
+        'partially_refunded>refunded',
     ];
 
     foreach ($states as $from) {
@@ -207,12 +219,16 @@ test('a transition on an unknown order raises order_not_found', function () {
     ))->toThrow(OrderNotFoundException::class);
 });
 
-test('no transition action targets a refund state', function () {
+test('the transition actions cover exactly the amended 7.1 state set', function () {
+    // Stage 7 pinned the absence of refund transitions; stage 8b
+    // activates them (system-design 7.1 as amended by the 8b plan).
     expect(array_keys(transitionActions()))->toBe([
         'awaiting_payment',
         'paid',
         'expired',
         'failed',
         'canceled',
+        'partially_refunded',
+        'refunded',
     ]);
 });
