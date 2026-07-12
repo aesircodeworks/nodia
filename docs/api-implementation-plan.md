@@ -22,7 +22,7 @@ Update this table when a stage starts and when it merges.
 | Stage 6: Inventory and Reserved Seating | Done |
 | Stage 7: Orders, Tickets, Promo Codes | Done |
 | Stage 8a: Payments and Webhooks | Done |
-| Stage 8b: Ledger and Refunds | Not started |
+| Stage 8b: Ledger and Refunds | In progress |
 | Stage 8c: Payouts and Sub-merchant Onboarding | Not started |
 | Stage 8d: Real Gateway Adapter (gated on ADR) | Blocked on ADR |
 | Stage 9: Check-in and Offline Reconciliation | Not started |
