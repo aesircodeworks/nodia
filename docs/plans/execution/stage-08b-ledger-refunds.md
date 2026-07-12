@@ -58,6 +58,10 @@ Test-first: three failing tests appended to OrderedConsumptionTest through a new
 
 Slice 4 test-first: LedgerProjectionTest written and observed failing before the consumer existed. Covers the payment_id ordering key, duplicate delivery producing exactly one four-leg set from row facts (10000/300/250/9450), deferral inside the stability window, the HTTP purchase through FakeGateway ending with four balanced entries after the sweeper re-enqueues the deferred sync delivery (the projection is the first ordered production consumer, so the sync-queue test path exercises defer plus sweep exactly as production would), and a replay rebuild equal row for row on the natural key after truncating the incremental ledger. ProjectLedgerEntries registered in PaymentsServiceProvider for PaymentConfirmed; RefundCompleted joins in T12. Evidence: LedgerProjectionTest 5/5; Payments, Outbox, and Orders filters 467/467.
 
+#### T7: refunds table and payments reservation columns (2026-07-12 00:20 -03)
+
+Test-first: RefundsIsolationTest with RefundFixture written and observed failing before the migration existed (standard two-tenant probes plus platform read). New refunds migration with the (tenant_id, idempotency_key) replay anchor, amount > 0 and commission >= 0 checks, and RLS in the same migration; additive payments migration adds refunded_amount and refunded_commission_amount with bounds CHECKs as defense behind the conditional-UPDATE reservation guard arriving in T8. RefundStatus enum, Refund model, RefundFactory. Evidence: RefundsIsolationTest 5/5, PaymentStateMachineTest and LedgerProjectionTest 14/14.
+
 ### Review rounds
 
 ### Decisions and deviations

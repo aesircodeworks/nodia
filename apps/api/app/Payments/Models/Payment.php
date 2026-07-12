@@ -33,6 +33,8 @@ use Illuminate\Support\Carbon;
  * @property string $currency
  * @property int $fee_amount
  * @property int $commission_amount
+ * @property int $refunded_amount
+ * @property int $refunded_commission_amount
  * @property PaymentStatus $status
  * @property string|null $failure_code
  * @property array<string, mixed>|null $next_action
