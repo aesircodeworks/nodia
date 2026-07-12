@@ -188,6 +188,7 @@ class ProblemRenderer
             ErrorCode::PaymentMethodNotAvailable => 'This payment method is not currently offered for this order.',
             ErrorCode::PaymentDeclined => 'The gateway declined this payment; the order and its hold remain intact for a retry.',
             ErrorCode::GatewayUnavailable => 'The payment gateway is temporarily unavailable; retry after the interval in the Retry-After header.',
+            ErrorCode::GatewayNotConfigured => 'This gateway has no credentials configured for the resolved tenant.',
             ErrorCode::WebhookSignatureInvalid => 'The webhook signature failed verification.',
             ErrorCode::WebhookUnparseable => 'The webhook body could not be parsed into a gateway event.',
             ErrorCode::RefundPaymentNotFound => 'No payment has this id for the resolved tenant.',
