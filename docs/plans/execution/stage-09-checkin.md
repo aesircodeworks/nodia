@@ -18,7 +18,7 @@ Nothing from this stage has landed: there is no `app/CheckIn` bounded context, n
 - [x] T3 `check_in_assignments` table with RLS, model, factory, isolation tests (checkin)
 - [x] T4 `event_signing_keys` table with RLS, model, enum, encrypted cast, factory, isolation tests (orders)
 - [x] T5 Key rotation and get-or-create Actions, provider swap behind `TicketSigningKeyProvider`, deployment-transition and rotation concurrency tests (orders)
-- [ ] T6 Check-in policy layer and `CheckEventAssignment` Action (checkin)
+- [x] T6 Check-in policy layer and `CheckEventAssignment` Action (checkin)
 - [ ] T7 Signing-key endpoints with contract fragments and authorization matrix (orders)
 - [ ] T8 Orders read Actions for CheckIn: per-event ticket listing and QR verification with typed failures (orders)
 - [ ] T9 Manifest endpoint: `BuildManifest`, cursor pagination, overlay, `filter[updated_since]`, scoping matrix, isolation (checkin)
@@ -99,3 +99,19 @@ A second, mechanical deviation: swapping the provider binding meant every `Ticke
 Test evidence: `php artisan test tests/Unit/Orders/GetOrCreateActiveSigningKeyTest.php tests/Unit/Orders/RotateSigningKeyTest.php tests/Feature/Orders/SigningKeyProviderSwapTest.php tests/Concurrency/SigningKeyRotationContentionTest.php` (10 passed, 39 assertions); `php artisan test tests/Unit/Orders tests/Feature/Orders tests/Concurrency/SigningKeyRotationContentionTest.php` (159 passed, 521 assertions); `php artisan test --testsuite=Architecture` (40 passed, 97 assertions); `php artisan test --testsuite=Isolation` (294 passed, 578 assertions); `php artisan test --testsuite=Contract` (390 passed, 2501 assertions, after the teardown fixes above); `./vendor/bin/pint --dirty` clean. No Data class changed, so `composer types:generate` was not run.
 
 Commit: `9d24ce3` feat(orders): rotate signing keys and swap TicketSigningKeyProvider to event_signing_keys.
+
+No deviations from the plan.
+
+#### T6: 2026-07-12
+
+Added `App\CheckIn\Policies\CheckInAssignmentPolicy` (a pure, DB-free static evaluator: `allows(capabilities, assigned): bool`, mirroring `App\Identity\Support\MfaEnforcementPolicy`'s precedent of separating the pure decision from whoever resolves the inputs) and the `CheckEventAssignment` Action (Data in and out, per the plan's Authorization semantics paragraph): `CheckEventAssignmentData` (`userId`, `eventId`, `capabilities`) in, `EventAssignmentData` (`authorized`) out. The Action short-circuits on `checkin.manage` before touching `check_in_assignments` at all, since a manage-holding caller is authorized regardless of any assignment row; otherwise it queries `check_in_assignments` for the (`event_id`, `user_id`) pair and hands the result to the policy. This is the sanctioned path the plan requires for Orders' signing-key endpoints (Task 7) to authorize without importing `App\CheckIn\Models` or querying `check_in_assignments` directly — `tests/Architecture/ContextBoundariesTest.php`'s existing "only the CheckIn context uses its own Models" rule already forbids the alternative.
+
+Also added `ErrorCode::CheckinNotAssigned` (`checkin_not_assigned`, 403) to the shared registry, since the plan's Slice 2/3 authorization matrices name it explicitly (`checkin.scan` without assignment 403 `checkin_not_assigned`); no exception class consumes it yet; Tasks 7, 9, 10, and 12 wire it into their endpoints' denial paths.
+
+TDD: `tests/Unit/CheckIn/CheckInAssignmentPolicyTest.php` (the pure evaluation matrix: scan+assigned ok, scan unassigned denied, manage unassigned ok regardless of assignment, no capability denied) and `tests/Unit/CheckIn/CheckEventAssignmentTest.php` (the same matrix through the Action against a real `check_in_assignments` row, plus scan+manage together) written first, confirmed failing (`Class "App\CheckIn\Policies\CheckInAssignmentPolicy" not found` / `Target class [App\CheckIn\Actions\CheckEventAssignment] does not exist`) before the policy, Data classes, and Action landed. `tests/Unit/Problems/ErrorCodeTest.php`'s registry and matrix datasets extended first for `checkin_not_assigned`, confirmed failing (registry array mismatch) before the enum case landed.
+
+Test evidence: `php artisan test tests/Unit/CheckIn/CheckInAssignmentPolicyTest.php tests/Unit/CheckIn/CheckEventAssignmentTest.php tests/Unit/Problems/ErrorCodeTest.php` (104 passed, 389 assertions); `php artisan test --testsuite=Architecture` (40 passed, 97 assertions); `php artisan test --testsuite=Isolation` (294 passed, 578 assertions); `php artisan test --testsuite=Contract` (390 passed, 2501 assertions); `./vendor/bin/pint --dirty --test` clean. Two new Data classes were added (`CheckEventAssignmentData`, `EventAssignmentData`), so `composer types:generate` was run and the regenerated `packages/api-client/src/generated/{index.ts,typescript-transformer-manifest.json}` are committed alongside.
+
+Commit: `9bf802e` feat(checkin): add CheckInAssignmentPolicy and CheckEventAssignment Action.
+
+No deviations from the plan.
