@@ -9,7 +9,7 @@
 ### Task checklist
 
 - [x] T1 payments: extend GatewayAdapter with sub-merchant and payout operations, wire split-support flag, FakeGateway scenarios and webhook emitters (slice 1)
-- [ ] T2 payments: submerchant_accounts migration with RLS, SubmerchantAccount model, SubmerchantStatus enum, factory, isolation tests (slice 2)
+- [x] T2 payments: submerchant_accounts migration with RLS, SubmerchantAccount model, SubmerchantStatus enum, factory, isolation tests (slice 2)
 - [ ] T3 identity: register payouts.manage capability, financially privileged, template role wiring
 - [ ] T4 payments: StartSubmerchantOnboarding action, POST/list/detail endpoints, Data objects, OpenAPI, error codes, duplicate-start concurrency test (slice 2)
 - [ ] T5 payments: sub-merchant webhook normalization, transition Action, refresh endpoint, concurrency and duplicate-delivery tests (slice 3)
@@ -50,3 +50,22 @@ Test evidence (from `apps/api`):
 No Data class changed, so `composer types:generate` was not run for this slice.
 
 Deviation from the strict outside-in TDD order: this is a pure Payments-internal slice with no endpoint, no contract, and no isolation/concurrency table per the plan's own Slice 1 description ("No endpoints; pure Payments-internal surface"), so the double loop collapses to unit tests plus one architecture test, as the task instructions specified.
+
+#### T2: submerchant_accounts table, model, isolation tests (2026-07-12)
+
+Landed:
+
+- Migration `database/migrations/2026_07_12_000047_create_submerchant_accounts_table.php`: `submerchant_accounts` table, unique `(tenant_id, gateway)`, partial unique index `submerchant_accounts_gateway_reference_idx` on `(gateway, gateway_account_reference)` where not null, index `(tenant_id, status)`, RLS policy applied via `Rls::applyTenantPolicies` in the same migration.
+- `App\Payments\Models\SubmerchantAccount` (`HasUuids`, `HasFactory`), casting `status` to `SubmerchantStatus`, `requirements` to array, `activated_at` to datetime.
+- `App\Payments\Enums\SubmerchantStatus` already existed from T1 (same six members the plan specifies); added the missing `#[TypeScript]` attribute here since this is the task that makes it a wire-facing status column, matching `PaymentStatus`/`RefundStatus` convention. Ran `composer types:generate` and committed the regenerated `packages/api-client/src/generated` output.
+- `Database\Factories\Payments\Models\SubmerchantAccountFactory`, no default `tenant_id` (mirrors `PaymentFactory`/`RefundFactory`: callers pass a real id).
+- Failing-first isolation tests: `tests/Isolation/SubmerchantAccountsIsolationTest.php` plus `tests/Isolation/Support/SubmerchantAccountFixture.php` (built directly on `TenantFixture`, no payment/order dependency), covering tenant-scoped SELECT, cross-tenant UPDATE/DELETE returning zero rows, cross-tenant insert rejection, and platform-role cross-tenant read, mirroring `RefundsIsolationTest`.
+
+Test evidence (from `apps/api`):
+
+- `php artisan test --filter=SubmerchantAccountsIsolationTest`: 5 passed, 6 assertions.
+- `php artisan test --testsuite=Isolation`: 265 passed, 533 assertions (full isolation regression, confirms no other table's policy broke).
+- `vendor/bin/pint` on all touched/new files: passed.
+- `composer types:generate`: ran and committed regenerated output (SubmerchantStatus gained the `#[TypeScript]` attribute).
+
+No deviation from the plan's data model; the enum-creation timing deviation was already recorded under T1.

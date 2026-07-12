@@ -500,6 +500,7 @@ export type PaymentMethodOfferData = {
   confirmation_window_minutes: number | null;
 };
 export type PaymentStatus = 'initiated' | 'confirmed' | 'failed' | 'expired';
+export type PayoutStatus = 'pending' | 'in_transit' | 'paid' | 'failed' | 'canceled';
 export type ProblemData = {
   type: string;
   title: string;
@@ -638,6 +639,8 @@ export type StorefrontTicketTypeData = {
   sales_start: string | null;
   sales_end: string | null;
 };
+export type SubmerchantStatus =
+  'pending' | 'under_review' | 'action_required' | 'active' | 'rejected' | 'disabled';
 export type TenantData = {
   id: string;
   name: string;
