@@ -5,7 +5,7 @@ export const meta = {
   phases: [
     { title: 'Prepare', detail: 'read the stage plan, open the journal, mark the stage In progress, derive the remaining task list' },
     { title: 'Implement', detail: 'one agent per task, full TDD loop, commit per green slice', model: 'sonnet' },
-    { title: 'Gate', detail: 'full quality gates locally; after the review loop, one push and CI verification', model: 'opus' },
+    { title: 'Gate', detail: 'full quality gates locally, overlapped with review round 1; after the review loop, one push and CI verification', model: 'sonnet' },
     { title: 'Review', detail: 'codex code review of the local stage diff, up to 3 rounds' },
     { title: 'Fix', detail: 'apply blocking and important review findings locally', model: 'opus' },
     { title: 'Finalize', detail: 'journal close-out and status table update' },
@@ -186,30 +186,37 @@ let ship = null
 let reviewRounds = []
 let reviewClean = false
 
+const reviewAgent = (round, resolvedSoFar) => agent(
+  'Have Codex code-review the Nodia API stage ' + stageKey + ' implementation (repo root is the working directory).\n' +
+  'The changes under review: `git log --oneline ' + prep.baseCommit + '..HEAD` and `git diff ' + prep.baseCommit + '..HEAD`.\n' +
+  'The stage plan defining what this work must satisfy is ' + planPath + '; the binding conventions are docs/api-conventions.md, docs/data-conventions.md, docs/event-conventions.md and the repo CLAUDE.md.\n' +
+  'Review focus: correctness bugs; convention violations; missing tests the plan mandates (isolation coverage for new tables, concurrency coverage for guarded transitions, duplicate-delivery coverage for consumers); RLS gaps; money handling (integer minor units only); state transitions written as read-then-write instead of conditional UPDATEs checked by affected-row count; contract drift between Data classes and the OpenAPI document.\n' +
+  'Report only real findings, each with file and line. Severity: blocking (must fix), important (fix before the stage is called done), minor (journal note only). No style nits.\n' +
+  'This is review round ' + round + ' of at most ' + MAX_REVIEW_ROUNDS + '.' +
+  (resolvedSoFar.length ? ' Findings already addressed in earlier rounds, do not re-report them: ' + JSON.stringify(resolvedSoFar) : ''),
+  { label: 'codex-review:round-' + round, phase: 'Review', agentType: 'codex:codex-rescue', schema: REVIEW_SCHEMA }
+)
+
 if (completed.length > 0) {
   phase('Gate')
-  gate = await agent(
-    'Run the full quality gates for the Nodia API after stage ' + stageKey + ' implementation work (repo root is the working directory):\n' +
-    '`composer -d apps/api run lint`, `composer -d apps/api run analyse`, `composer -d apps/api run test`, then `composer -d apps/api run types:generate` followed by `git status --short packages/api-client/src/generated` to confirm no contract drift. Run `pnpm typecheck` if any TypeScript changed.\n' +
-    'If anything fails, fix it properly (respect the TDD method and repo conventions, never suppress or skip tests), commit fixes with the correct Conventional Commit scope, and re-run until green.\n' +
-    'Do NOT push and do not touch CI; the push and CI verification happen once after the review loop.\n' +
-    'Append a "Gate" entry to ' + journalPath + ' with a timestamp (`date`) and the local results, and commit it as docs.\n' +
-    'Return passing false only if you could not reach green locally, with what still fails.',
-    { label: 'gate:stage-' + stageKey, phase: 'Gate', schema: GATE_SCHEMA, model: 'opus' }
-  )
+  let firstReview = null
+  ;[gate, firstReview] = await parallel([
+    () => agent(
+      'Run the full quality gates for the Nodia API after stage ' + stageKey + ' implementation work (repo root is the working directory):\n' +
+      '`composer -d apps/api run lint`, `composer -d apps/api run analyse`, `php artisan test --parallel` from apps/api (if failures look parallelism-induced, e.g. tests clashing over shared database state, fall back to `composer -d apps/api run test` and note that in the journal), then `composer -d apps/api run types:generate` followed by `git status --short packages/api-client/src/generated` to confirm no contract drift. Run `pnpm typecheck` if any TypeScript changed.\n' +
+      'If anything fails, fix it properly (respect the TDD method and repo conventions, never suppress or skip tests), commit fixes with the correct Conventional Commit scope, and re-run until green.\n' +
+      'Do NOT push and do not touch CI; the push and CI verification happen once after the review loop.\n' +
+      'A code review of the same diff is running concurrently, so keep fixes minimal and scoped to gate failures.\n' +
+      'Append a "Gate" entry to ' + journalPath + ' with a timestamp (`date`) and the local results, and commit it as docs.\n' +
+      'Return passing false only if you could not reach green locally, with what still fails.',
+      { label: 'gate:stage-' + stageKey, phase: 'Gate', schema: GATE_SCHEMA, model: 'sonnet' }
+    ),
+    () => reviewAgent(1, []),
+  ])
 
   const resolvedSoFar = []
   for (let round = 1; round <= MAX_REVIEW_ROUNDS; round++) {
-    const review = await agent(
-      'Have Codex code-review the Nodia API stage ' + stageKey + ' implementation (repo root is the working directory).\n' +
-      'The changes under review: `git log --oneline ' + prep.baseCommit + '..HEAD` and `git diff ' + prep.baseCommit + '..HEAD`.\n' +
-      'The stage plan defining what this work must satisfy is ' + planPath + '; the binding conventions are docs/api-conventions.md, docs/data-conventions.md, docs/event-conventions.md and the repo CLAUDE.md.\n' +
-      'Review focus: correctness bugs; convention violations; missing tests the plan mandates (isolation coverage for new tables, concurrency coverage for guarded transitions, duplicate-delivery coverage for consumers); RLS gaps; money handling (integer minor units only); state transitions written as read-then-write instead of conditional UPDATEs checked by affected-row count; contract drift between Data classes and the OpenAPI document.\n' +
-      'Report only real findings, each with file and line. Severity: blocking (must fix), important (fix before the stage is called done), minor (journal note only). No style nits.\n' +
-      'This is review round ' + round + ' of at most ' + MAX_REVIEW_ROUNDS + '.' +
-      (resolvedSoFar.length ? ' Findings already addressed in earlier rounds, do not re-report them: ' + JSON.stringify(resolvedSoFar) : ''),
-      { label: 'codex-review:round-' + round, phase: 'Review', agentType: 'codex:codex-rescue', schema: REVIEW_SCHEMA }
-    )
+    const review = round === 1 ? firstReview : await reviewAgent(round, resolvedSoFar)
     if (!review) {
       log('Codex review round ' + round + ' returned no result; stopping the review loop.')
       break
@@ -251,7 +258,7 @@ if (completed.length > 0) {
   if (gate && gate.passing) {
     ship = await agent(
       'Ship the Nodia API stage ' + stageKey + ' branch (repo root is the working directory). Local gates already passed once; review fixes may have landed since, verified only with scoped test runs.\n' +
-      'If any commits landed after the gate entry in ' + journalPath + ', re-run the full local gates first: `composer -d apps/api run lint`, `composer -d apps/api run analyse`, `composer -d apps/api run test`, then `composer -d apps/api run types:generate` followed by `git status --short packages/api-client/src/generated` to confirm no contract drift. Run `pnpm typecheck` if any TypeScript changed. Fix any failure properly (never suppress or skip tests) and commit with the correct Conventional Commit scope.\n' +
+      'Do NOT re-run the full local test suite. If any commits landed after the gate entry in ' + journalPath + ', run only `composer -d apps/api run lint`, the scoped tests covering those commits (`php artisan test --filter=...` or the touched suites from apps/api), and, if any Data class changed, `composer -d apps/api run types:generate` followed by `git status --short packages/api-client/src/generated` to confirm no contract drift. CI is the full verification. Fix any failure properly (never suppress or skip tests) and commit with the correct Conventional Commit scope.\n' +
       'Then push the branch to origin (`git push origin HEAD`) and verify CI: list the triggered runs with `gh run list --branch <branch>` and watch them with `gh run watch <id> --exit-status`. If any workflow fails, read the failed job logs (`gh run view <id> --log-failed`), fix the root cause properly (never weaken a gate to pass it), commit, push again, and re-watch until every workflow is green. CI can fail for reasons local runs cannot catch (missing service containers, lint rules on regenerated output), so treat a red run as a real stage defect, not noise.\n' +
       'Append a "CI" entry to ' + journalPath + ' with a timestamp (`date`), the run IDs and conclusions, and commit it as docs (that commit can ride the final push).\n' +
       'Return passing false only if you could not reach green locally and on CI, with what still fails.',
@@ -279,7 +286,7 @@ const final = await agent(
   '2. Update the status table in docs/api-implementation-plan.md: mark the stage "Done" only if every exit criterion is verifiably met, the gates are green locally and on CI for the current HEAD, and the review ended with no unaddressed blocking or important findings. Otherwise set an honest partial status (for example "In progress (blocked on X)") and say why in the journal.\n' +
   '3. Commit as `docs: close stage ' + stageKey + ' execution journal` and push (`git push origin HEAD`). If any code commits landed after the last green CI run, confirm the newly triggered runs are green before returning; a docs-only push needs no wait.\n' +
   'Return the final stage status and a one-paragraph summary. Be strictly truthful: report the run as it actually went.',
-  { label: 'finalize:stage-' + stageKey, phase: 'Finalize', schema: FINAL_SCHEMA }
+  { label: 'finalize:stage-' + stageKey, phase: 'Finalize', schema: FINAL_SCHEMA, model: 'sonnet' }
 )
 
 return {
