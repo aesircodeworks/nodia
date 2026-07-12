@@ -74,6 +74,7 @@ use App\Inventory\Exceptions\TicketTypeNotInEventException;
 use App\Inventory\InventoryServiceProvider;
 use App\Orders\Enums\OrderStatus;
 use App\Orders\Enums\PromoCodeDiscountType;
+use App\Orders\Enums\SigningKeyStatus;
 use App\Orders\Enums\TicketStatus;
 use App\Orders\Exceptions\HoldAlreadyConvertedException;
 use App\Orders\Exceptions\HoldExpiredException as OrderHoldExpiredException;
@@ -230,6 +231,7 @@ arch()->preset()->laravel()->ignoring([
     OrderStatus::class,
     TicketStatus::class,
     PromoCodeDiscountType::class,
+    SigningKeyStatus::class,
     PaymentStatus::class,
     PaymentMethodConfirmation::class,
     GatewayWebhookStatus::class,
