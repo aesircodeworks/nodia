@@ -8,9 +8,13 @@
 // CheckEventAssignment can evaluate, mirroring
 // App\Orders\Http\routes\admin.php's own signing-keys GET.
 
+use App\CheckIn\Http\Controllers\CheckInAssignmentController;
 use App\CheckIn\Http\Controllers\CheckInManifestController;
 use App\CheckIn\Http\Controllers\ReconcileOfflineScansController;
 use App\CheckIn\Http\Controllers\RecordScanController;
+use App\Http\Middleware\RecordActivityAudit;
+use App\Http\Middleware\RequireCapability;
+use App\Identity\Capability;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/events/{event}/check-in-manifest', [CheckInManifestController::class, 'index']);
@@ -26,3 +30,17 @@ Route::post('/check-ins', [RecordScanController::class, 'store']);
 // POST /v1/check-ins, evaluated per scan since each scan's target event
 // is only known once its own QR payload has verified.
 Route::post('/check-in-batches', [ReconcileOfflineScansController::class, 'store']);
+
+// Check-in assignments (stage-09 plan, Endpoints "Check-in assignments"
+// and Slice 6): entirely behind checkin.manage, mutations audited,
+// mirroring memberships.php's own capability-gated CRUD shape. DELETE
+// is a top-level resource (api-conventions, URLs) so it is not nested
+// under /events/{event}.
+Route::middleware(RequireCapability::class.':'.Capability::CheckinManage->value)->group(function (): void {
+    Route::get('/events/{event}/check-in-assignments', [CheckInAssignmentController::class, 'index']);
+
+    Route::middleware(RecordActivityAudit::class)->group(function (): void {
+        Route::post('/events/{event}/check-in-assignments', [CheckInAssignmentController::class, 'store']);
+        Route::delete('/check-in-assignments/{assignment}', [CheckInAssignmentController::class, 'destroy'])->whereUuid('assignment');
+    });
+});

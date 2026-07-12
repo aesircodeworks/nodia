@@ -115,6 +115,9 @@ enum ErrorCode: string
     case CheckInTicketRefunded = 'ticket_refunded';
     case TicketAlreadyCheckedIn = 'ticket_already_checked_in';
     case BatchTooLarge = 'batch_too_large';
+    case UserNotMember = 'user_not_member';
+    case AlreadyAssigned = 'already_assigned';
+    case AssignmentNotFound = 'assignment_not_found';
 
     public function status(): int
     {
@@ -227,6 +230,9 @@ enum ErrorCode: string
             self::CheckInTicketRefunded => 409,
             self::TicketAlreadyCheckedIn => 409,
             self::BatchTooLarge => 422,
+            self::UserNotMember => 422,
+            self::AlreadyAssigned => 409,
+            self::AssignmentNotFound => 404,
         };
     }
 
@@ -341,6 +347,9 @@ enum ErrorCode: string
             self::CheckInTicketRefunded => 'Ticket refunded',
             self::TicketAlreadyCheckedIn => 'Ticket already checked in',
             self::BatchTooLarge => 'Batch too large',
+            self::UserNotMember => 'User not a member',
+            self::AlreadyAssigned => 'Already assigned',
+            self::AssignmentNotFound => 'Assignment not found',
         };
     }
 

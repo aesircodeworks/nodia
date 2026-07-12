@@ -111,6 +111,10 @@ test('the registry holds exactly the known codes', function () {
         'ticket_canceled',
         'ticket_refunded',
         'ticket_already_checked_in',
+        'batch_too_large',
+        'user_not_member',
+        'already_assigned',
+        'assignment_not_found',
     ]);
 });
 
@@ -220,6 +224,10 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'ticket_canceled' => [ErrorCode::CheckInTicketCanceled, 409, 'Ticket canceled', '/problems/ticket-canceled'],
     'ticket_refunded' => [ErrorCode::CheckInTicketRefunded, 409, 'Ticket refunded', '/problems/ticket-refunded'],
     'ticket_already_checked_in' => [ErrorCode::TicketAlreadyCheckedIn, 409, 'Ticket already checked in', '/problems/ticket-already-checked-in'],
+    'batch_too_large' => [ErrorCode::BatchTooLarge, 422, 'Batch too large', '/problems/batch-too-large'],
+    'user_not_member' => [ErrorCode::UserNotMember, 422, 'User not a member', '/problems/user-not-member'],
+    'already_assigned' => [ErrorCode::AlreadyAssigned, 409, 'Already assigned', '/problems/already-assigned'],
+    'assignment_not_found' => [ErrorCode::AssignmentNotFound, 404, 'Assignment not found', '/problems/assignment-not-found'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

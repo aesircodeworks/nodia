@@ -2,6 +2,9 @@ export type AcceptInvitationData = {
   token: string;
   password: string;
 };
+export type AssignCheckInUserData = {
+  user_id: string;
+};
 export type AsyncPaymentPolicyData = {
   slow_methods_enabled: boolean;
   low_inventory_cutoff: number | null;
@@ -46,6 +49,12 @@ export type CheckEventAssignmentData = {
   user_id: string;
   event_id: string;
   capabilities: string[];
+};
+export type CheckInAssignmentData = {
+  id: string;
+  event_id: string;
+  user_id: string;
+  created_at: string;
 };
 export type CheckInResult = 'accepted' | 'duplicate';
 export type CheckInResultData = {
@@ -287,7 +296,10 @@ export type ErrorCode =
   | 'ticket_canceled'
   | 'ticket_refunded'
   | 'ticket_already_checked_in'
-  | 'batch_too_large';
+  | 'batch_too_large'
+  | 'user_not_member'
+  | 'already_assigned'
+  | 'assignment_not_found';
 export type EventAssignmentData = {
   authorized: boolean;
 };

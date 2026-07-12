@@ -126,6 +126,12 @@ afterEach(function (): void {
             // write orders, order_items, and tickets referencing customers,
             // events, ticket_types, and holds with no cascade, so they go
             // first.
+            // The check-in-assignment exercisers (stage-09 plan, Endpoints
+            // "Check-in assignments") write check_in_assignments
+            // referencing events with no cascade, so they go ahead of
+            // events below.
+            DB::table('check_in_assignments')->where('tenant_id', $tenantId)->delete();
+
             // The check-ins exercisers (stage-09 plan, Endpoints "POST
             // /v1/check-ins") write check_ins referencing tickets with no
             // cascade, so they go first.
@@ -671,6 +677,17 @@ function contractMembership(Tenant $tenant, array $attributes = []): Membership
             ...$attributes,
         ]),
     );
+}
+
+/**
+ * A user with a plain (no-capability) membership in $tenant, for the
+ * check-in assignment exercisers: POST /v1/events/{event}/check-in-assignments
+ * requires the target user_id to already be a member (stage-09 plan,
+ * Endpoints "Check-in assignments").
+ */
+function contractCheckInAssignmentMember(Tenant $tenant): string
+{
+    return contractMembership($tenant)->user_id;
 }
 
 function contractStaffUser(): User
@@ -4040,6 +4057,111 @@ function documentedResponseExercisers(): array
                 'device_id' => 'contract-batch-device',
                 'scans' => $scans,
             ], $headers);
+        },
+        // Stage-09 plan, Endpoints "Check-in assignments".
+        'get /v1/events/{event}/check-in-assignments 200' => function (): TestResponse {
+            $tenant = contractTenant();
+            $event = contractEvent($tenant);
+            $headers = ['Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']), 'X-Tenant-Id' => $tenant->id];
+            $memberId = contractCheckInAssignmentMember($tenant);
+
+            test()->postJson('/v1/events/'.$event->id.'/check-in-assignments', ['user_id' => $memberId], $headers);
+
+            return test()->getJson('/v1/events/'.$event->id.'/check-in-assignments', $headers);
+        },
+        'get /v1/events/{event}/check-in-assignments 401' => function (): TestResponse {
+            $tenant = contractTenant();
+            $event = contractEvent($tenant);
+
+            return test()->getJson('/v1/events/'.$event->id.'/check-in-assignments');
+        },
+        'get /v1/events/{event}/check-in-assignments 403' => function (): TestResponse {
+            $tenant = contractTenant();
+            $event = contractEvent($tenant);
+
+            return test()->getJson('/v1/events/'.$event->id.'/check-in-assignments', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.scan']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/events/{event}/check-in-assignments 404' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->getJson('/v1/events/'.Str::uuid7().'/check-in-assignments', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/events/{event}/check-in-assignments 201' => function (): TestResponse {
+            $tenant = contractTenant();
+            $event = contractEvent($tenant);
+            $headers = ['Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']), 'X-Tenant-Id' => $tenant->id];
+            $memberId = contractCheckInAssignmentMember($tenant);
+
+            return test()->postJson('/v1/events/'.$event->id.'/check-in-assignments', ['user_id' => $memberId], $headers);
+        },
+        'post /v1/events/{event}/check-in-assignments 401' => function (): TestResponse {
+            $tenant = contractTenant();
+            $event = contractEvent($tenant);
+            $memberId = contractCheckInAssignmentMember($tenant);
+
+            return test()->postJson('/v1/events/'.$event->id.'/check-in-assignments', ['user_id' => $memberId]);
+        },
+        'post /v1/events/{event}/check-in-assignments 403' => function (): TestResponse {
+            $tenant = contractTenant();
+            $event = contractEvent($tenant);
+            $memberId = contractCheckInAssignmentMember($tenant);
+
+            return test()->postJson('/v1/events/'.$event->id.'/check-in-assignments', ['user_id' => $memberId], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.scan']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/events/{event}/check-in-assignments 404' => function (): TestResponse {
+            $tenant = contractTenant();
+            $memberId = contractCheckInAssignmentMember($tenant);
+
+            return test()->postJson('/v1/events/'.Str::uuid7().'/check-in-assignments', ['user_id' => $memberId], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/events/{event}/check-in-assignments 409' => function (): TestResponse {
+            $tenant = contractTenant();
+            $event = contractEvent($tenant);
+            $headers = ['Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']), 'X-Tenant-Id' => $tenant->id];
+            $memberId = contractCheckInAssignmentMember($tenant);
+
+            test()->postJson('/v1/events/'.$event->id.'/check-in-assignments', ['user_id' => $memberId], $headers);
+
+            return test()->postJson('/v1/events/'.$event->id.'/check-in-assignments', ['user_id' => $memberId], $headers);
+        },
+        'post /v1/events/{event}/check-in-assignments 422' => function (): TestResponse {
+            $tenant = contractTenant();
+            $event = contractEvent($tenant);
+            $headers = ['Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']), 'X-Tenant-Id' => $tenant->id];
+            $outsider = app(TenantTransaction::class)->asPlatform(fn () => User::factory()->create());
+
+            return test()->postJson('/v1/events/'.$event->id.'/check-in-assignments', ['user_id' => $outsider->id], $headers);
+        },
+        'delete /v1/check-in-assignments/{assignment} 401' => function (): TestResponse {
+            return test()->deleteJson('/v1/check-in-assignments/'.Str::uuid7());
+        },
+        'delete /v1/check-in-assignments/{assignment} 403' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->deleteJson('/v1/check-in-assignments/'.Str::uuid7(), [], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.scan']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'delete /v1/check-in-assignments/{assignment} 404' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->deleteJson('/v1/check-in-assignments/'.Str::uuid7(), [], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
         },
     ];
 }

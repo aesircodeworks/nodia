@@ -3764,6 +3764,167 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ManifestEventNotFoundProblem'
+  /v1/events/{event}/check-in-assignments:
+    parameters:
+      - name: event
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: listCheckInAssignments
+      summary: List an event's check-in assignments
+      description: >-
+        Tenant admin surface behind checkin.manage (stage-09 plan,
+        Endpoints "Check-in assignments" and Slice 6). A bounded
+        per-event collection, page-paginated, ordered by created_at.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: One page of the event's check-in assignments.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckInAssignmentPage'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing
+            checkin.manage, or unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/StaffCapabilityForbiddenProblem'
+        '404':
+          description: No event is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/CheckInAssignmentEventNotFoundProblem'
+    post:
+      operationId: createCheckInAssignment
+      summary: Assign a user to check in an event
+      description: >-
+        Tenant admin surface behind checkin.manage, audited (stage-09
+        plan, Endpoints "Check-in assignments" and Slice 6). The target
+        user must already hold a membership in the acting tenant (422
+        user_not_member); a duplicate (event, user) pair is caught from
+        the unique (tenant_id, event_id, user_id) index rather than a
+        prior read (409 already_assigned).
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignCheckInUserRequest'
+      responses:
+        '201':
+          description: The created check-in assignment.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckInAssignment'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing
+            checkin.manage, or unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/StaffCapabilityForbiddenProblem'
+        '404':
+          description: No event is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/CheckInAssignmentEventNotFoundProblem'
+        '409':
+          description: >-
+            The target user already has an assignment for this event
+            (code already_assigned).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/AlreadyAssignedProblem'
+        '422':
+          description: >-
+            Request validation failed, or the target user has no
+            membership in the acting tenant (code user_not_member).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/CheckInAssignmentUnprocessableProblem'
+  /v1/check-in-assignments/{assignment}:
+    parameters:
+      - name: assignment
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: deleteCheckInAssignment
+      summary: Remove a check-in assignment
+      description: >-
+        Tenant admin surface behind checkin.manage, audited (stage-09
+        plan, Endpoints "Check-in assignments" and Slice 6). Top-level
+        resource to keep nesting at one level (api-conventions, URLs).
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: The assignment was removed.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing
+            checkin.manage, or unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/StaffCapabilityForbiddenProblem'
+        '404':
+          description: No check-in assignment is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/AssignmentNotFoundProblem'
   /v1/check-ins:
     post:
       operationId: recordCheckInScan
@@ -7504,6 +7665,140 @@ components:
             code:
               type: string
               enum: [event_not_found]
+      unevaluatedProperties: false
+    CheckInAssignment:
+      type: object
+      description: >-
+        GET/POST /v1/events/{event}/check-in-assignments response shape
+        (stage-09 plan, Endpoints "Check-in assignments").
+      required:
+        - id
+        - event_id
+        - user_id
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    CheckInAssignmentPage:
+      type: object
+      description: >-
+        Laravel standard paginator envelope (data, links, meta) per
+        docs/api-conventions.md.
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CheckInAssignment'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageLink'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      additionalProperties: false
+    AssignCheckInUserRequest:
+      type: object
+      description: >-
+        POST /v1/events/{event}/check-in-assignments request body
+        (stage-09 plan, Endpoints "Check-in assignments").
+      required:
+        - user_id
+      properties:
+        user_id:
+          type: string
+          format: uuid
+      additionalProperties: false
+    CheckInAssignmentEventNotFoundProblem:
+      description: >-
+        Problem document for GET/POST /v1/events/{event}/check-in-assignments
+        when the given event id resolves to no visible row for the
+        acting tenant (stage-09 plan, Endpoints "Check-in assignments",
+        code event_not_found).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [404]
+            code:
+              type: string
+              enum: [event_not_found]
+      unevaluatedProperties: false
+    AlreadyAssignedProblem:
+      description: >-
+        Problem document for a duplicate (event, user) check-in
+        assignment (stage-09 plan, Endpoints "Check-in assignments").
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [already_assigned]
+      unevaluatedProperties: false
+    CheckInAssignmentUnprocessableProblem:
+      description: >-
+        Problem document for POST /v1/events/{event}/check-in-assignments
+        that cannot be processed: request validation failed (with the
+        errors map) or the target user has no membership in the acting
+        tenant (stage-09 plan, Endpoints "Check-in assignments").
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - oneOf:
+            - type: object
+              required:
+                - errors
+              properties:
+                code:
+                  type: string
+                  enum: [request.validation_failed]
+                errors:
+                  type: object
+                  additionalProperties:
+                    type: array
+                    items:
+                      type: string
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum: [user_not_member]
+      unevaluatedProperties: false
+    AssignmentNotFoundProblem:
+      description: >-
+        Problem document for DELETE /v1/check-in-assignments/{assignment}
+        when the given id resolves to no visible row for the acting
+        tenant (stage-09 plan, Endpoints "Check-in assignments", code
+        assignment_not_found).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [404]
+            code:
+              type: string
+              enum: [assignment_not_found]
       unevaluatedProperties: false
     RecordScanRequest:
       type: object
