@@ -170,3 +170,22 @@ Test evidence (from `apps/api`):
 - `composer types:generate`: ran and committed regenerated output (`ErrorCode::SubmerchantNotActive`).
 
 Deviation: the plan's error-code text says "409 gateway_not_enabled semantics extended by a distinct code submerchant_not_active" — read as "the same conflict-response shape as the existing 409 gateway conflicts, under a new code," not as reusing `GatewayNotEnabled` itself; `GatewayNotEnabled` guards a different invariant (the gateway identifier isn't in `enabled_gateways` at all, checked at onboarding time) and conflating the two would blur two distinct failure causes behind one code. No other deviation from the plan's gating description or endpoint shapes. Commit: `f010e75` (`feat(payments): gate checkout offer and initiation on active sub-merchant`).
+
+#### T7: payouts table, model, enum, isolation tests (2026-07-12)
+
+Landed:
+
+- `App\Payments\Enums\PayoutStatus` already existed from T1's `GatewayAdapter` extension work (committed in `23d7781`), with the exact five cases the stage plan's Data model section specifies (`pending`, `in_transit`, `paid`, `failed`, `canceled`); no change needed there.
+- `database/migrations/2026_07_12_000048_create_payouts_table.php`: `payouts` table per the Data model section exactly — `amount`/`currency` bare pair (data-conventions Money exception for a row that is itself a single monetary fact), unique `(gateway, gateway_reference)` as the webhook/poller idempotence anchor, indexes on `(tenant_id, status)` and `(tenant_id, created_at)`, `Rls::applyTenantPolicies('payouts')` in the same migration (data-conventions, ADR 003). No `discrepancy_amount` currency column needed since it shares the row's own `currency`.
+- `App\Payments\Models\Payout`: UUIDv7 PK via `HasUuids`, `money` virtual attribute cast through `MoneyCast::class.':amount'` mirroring `Payment`'s single-monetary-fact pattern, `status` cast to `PayoutStatus`, `executed_at`/`reconciled_at` datetime casts, `Fillable` list matching the schema.
+- `database/factories/Payments/Models/PayoutFactory`: `gateway` defaults `fake`, `gateway_reference` a random UUIDv7, `money` a `5000 USD` default, `status` `Pending`; `tenant_id` left for callers to pass explicitly, mirroring `PaymentFactory` and `SubmerchantAccountFactory`.
+- Tests first: `tests/Isolation/Support/PayoutFixture.php` (two-tenant fixture, one pending payout each, mirroring `SubmerchantAccountFixture`'s shape exactly) and `tests/Isolation/PayoutsIsolationTest.php` (tenant sees only its own payout, cross-tenant update and delete affect zero rows, an insert claiming another tenant's id is rejected by the RLS policy, the platform role reads across tenants). Confirmed failing first against the pre-model state (`Class "App\Payments\Models\Payout" not found`), then green after the migration, model, and factory landed.
+
+Test evidence (from `apps/api`):
+
+- `php artisan test --filter=PayoutsIsolationTest`: 5 passed, 6 assertions (confirmed failing beforehand with the model missing).
+- `php artisan test --testsuite=Isolation`: 270 passed, 539 assertions (full isolation regression).
+- `php artisan test --testsuite=Architecture`: 40 passed, 97 assertions.
+- `vendor/bin/pint --test` on all new files: passed.
+
+No Data class changed in this slice (no request/response objects, no endpoints — those are later Slice 5 tasks), so `composer types:generate` was not run. No deviation from the plan's `payouts` schema, indexes, or constraints.
