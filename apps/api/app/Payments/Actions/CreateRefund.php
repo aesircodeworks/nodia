@@ -76,12 +76,16 @@ final class CreateRefund
             throw PaymentNotRefundableException::forPayment($paymentId);
         }
 
+        $config = ($this->commissionConfig)((string) $this->tenantContext->tenantId());
+        $policy = $config['refund_commission_policy'];
+
         $amount = $this->resolveAmount($payment, $data);
-        $ticketIds = $this->resolveTicketSelection($order->issuedTicketIds, $data->ticketIds, $order->id);
-        $commission = $this->returnedCommission($payment, $amount);
+        $isFullRefund = $payment->refunded_amount + $amount->amount === $payment->amount;
+        $ticketIds = $this->resolveTicketSelection($order->issuedTicketIds, $data->ticketIds, $order->id, $isFullRefund);
+        $commission = $this->returnedCommission($payment, $amount, $policy);
 
         try {
-            $refund = DB::transaction(function () use ($payment, $order, $amount, $commission, $ticketIds, $data, $idempotencyKey, $requestHash): Refund {
+            $refund = DB::transaction(function () use ($payment, $order, $amount, $commission, $ticketIds, $policy, $data, $idempotencyKey, $requestHash): Refund {
                 $this->reserve($payment, $amount, $commission);
 
                 $refund = Refund::query()->create([
@@ -92,6 +96,7 @@ final class CreateRefund
                     'reason' => $data->reason,
                     'ticket_ids' => $ticketIds,
                     'commission_amount' => $commission->amount,
+                    'commission_policy' => $policy,
                     'idempotency_key' => $idempotencyKey,
                     'request_hash' => $requestHash,
                 ]);
@@ -129,32 +134,36 @@ final class CreateRefund
     }
 
     /**
+     * A full refund voids every issued ticket regardless of the request
+     * (stage-08b plan, Endpoints). A partial refund voids only the
+     * explicitly requested tickets, so an absent selection persists an
+     * empty list (void none), never null (which the completion path reads
+     * as the full-refund void-all marker).
+     *
      * @param  list<string>  $issuedTicketIds
      * @param  list<string>|null  $requested
      * @return list<string>|null
      */
-    private function resolveTicketSelection(array $issuedTicketIds, ?array $requested, string $orderId): ?array
+    private function resolveTicketSelection(array $issuedTicketIds, ?array $requested, string $orderId, bool $isFullRefund): ?array
     {
-        if ($requested === null) {
-            return null;
-        }
-
-        if (array_diff($requested, $issuedTicketIds) !== []) {
+        if ($requested !== null && array_diff($requested, $issuedTicketIds) !== []) {
             throw RefundTicketsNotInOrderException::forOrder($orderId);
         }
 
-        return $requested;
+        if ($isFullRefund) {
+            return null;
+        }
+
+        return $requested ?? [];
     }
 
     /**
      * Proportional to the refunded share of gross, round half up, capped
      * by the un-returned remainder; zero under the retained policy.
      */
-    private function returnedCommission(Payment $payment, Money $amount): Money
+    private function returnedCommission(Payment $payment, Money $amount, RefundCommissionPolicy $policy): Money
     {
-        $config = ($this->commissionConfig)((string) $this->tenantContext->tenantId());
-
-        if ($config['refund_commission_policy'] === RefundCommissionPolicy::Retained) {
+        if ($policy === RefundCommissionPolicy::Retained) {
             return Money::of(0, $payment->currency);
         }
 

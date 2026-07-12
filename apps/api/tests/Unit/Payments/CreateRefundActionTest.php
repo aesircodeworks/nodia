@@ -7,6 +7,7 @@ use App\Orders\Models\Order;
 use App\Payments\Actions\CreateRefund;
 use App\Payments\Data\CreateRefundData;
 use App\Payments\Enums\PaymentStatus;
+use App\Payments\Enums\RefundCommissionPolicy;
 use App\Payments\Exceptions\RefundAmountExceedsRefundableException;
 use App\Payments\Models\Payment;
 use App\Payments\Models\Refund;
@@ -145,4 +146,25 @@ it('defaults a null amount to the full remaining refundable amount', function ()
 
     expect($rest->amount)->toBe(600)
         ->and($rest->commission_amount)->toBe(60);
+});
+
+it('persists an empty ticket selection for a partial refund without an explicit selection', function (): void {
+    $partial = createRefund($this->tenantId, $this->paymentId, ['amount' => 400, 'currency' => 'USD']);
+
+    // Empty means void no tickets; only a full refund's null selection voids them all.
+    expect($partial->ticket_ids)->toBe([]);
+});
+
+it('persists a null ticket selection for a full refund so every issued ticket is voided', function (): void {
+    $full = createRefund($this->tenantId, $this->paymentId, ['amount' => 1_000, 'currency' => 'USD']);
+
+    expect($full->ticket_ids)->toBeNull();
+});
+
+it('records the returned commission policy as a row fact even when the returned commission is zero', function (): void {
+    // returned policy tenant, but the refunded share rounds the commission to zero.
+    $refund = createRefund($this->tenantId, $this->paymentId, ['amount' => 1, 'currency' => 'USD']);
+
+    expect($refund->commission_amount)->toBe(0)
+        ->and($refund->commission_policy)->toBe(RefundCommissionPolicy::Returned);
 });

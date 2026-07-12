@@ -225,6 +225,10 @@ describe('GET /v1/ledger-entries', function (): void {
     it('cursor-paginates deterministically with the allowed filters', function (): void {
         $older = seededLedgerEntry($this->tenantId, ['account' => 'gateway_receivable', 'direction' => 'debit', 'created_at' => now()->subMinute()]);
         $newer = seededLedgerEntry($this->tenantId, ['account' => 'tenant_net']);
+        // Seeded last so it carries the largest UUIDv7 id, but its
+        // timestamp is the earliest: only a (created_at, id) order returns
+        // it first, an id-only order would bury it last.
+        $earliest = seededLedgerEntry($this->tenantId, ['account' => 'platform_commission', 'direction' => 'debit', 'created_at' => now()->subMinutes(2)]);
         seededLedgerEntry($this->otherTenantId);
 
         $headers = readHeaders($this->tenantId, Capability::LedgerView);
@@ -233,11 +237,11 @@ describe('GET /v1/ledger-entries', function (): void {
         $page->assertOk()->assertConformsToOpenApi();
 
         expect($page->json('data'))->toHaveCount(1)
-            ->and($page->json('data.0.id'))->toBe($older)
+            ->and($page->json('data.0.id'))->toBe($earliest)
             ->and($page->json('meta.next_cursor'))->not->toBeNull();
 
-        $rest = $this->getJson('/v1/ledger-entries?per_page=1&cursor='.$page->json('meta.next_cursor'), $headers);
-        expect($rest->json('data.0.id'))->toBe($newer);
+        $rest = $this->getJson('/v1/ledger-entries?per_page=2&cursor='.$page->json('meta.next_cursor'), $headers);
+        expect(array_column($rest->json('data'), 'id'))->toBe([$older, $newer]);
 
         $byAccount = $this->getJson('/v1/ledger-entries?filter[account]=tenant_net', $headers);
         expect(array_column($byAccount->json('data'), 'id'))->toBe([$newer]);

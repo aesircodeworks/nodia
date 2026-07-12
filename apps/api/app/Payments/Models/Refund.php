@@ -2,6 +2,7 @@
 
 namespace App\Payments\Models;
 
+use App\Payments\Enums\RefundCommissionPolicy;
 use App\Payments\Enums\RefundStatus;
 use App\Support\Money\Money;
 use App\Support\Money\MoneyCast;
@@ -31,6 +32,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $reason
  * @property list<string>|null $ticket_ids
  * @property int $commission_amount
+ * @property RefundCommissionPolicy $commission_policy
  * @property string $idempotency_key
  * @property string $request_hash
  * @property string|null $gateway_reference
@@ -46,6 +48,7 @@ use Illuminate\Support\Carbon;
     'reason',
     'ticket_ids',
     'commission_amount',
+    'commission_policy',
     'idempotency_key',
     'request_hash',
     'gateway_reference',
@@ -63,6 +66,7 @@ class Refund extends Model
     {
         return [
             'status' => RefundStatus::class,
+            'commission_policy' => RefundCommissionPolicy::class,
             'money' => MoneyCast::class.':amount',
             'ticket_ids' => 'array',
         ];

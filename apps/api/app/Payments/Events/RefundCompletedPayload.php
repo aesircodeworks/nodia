@@ -48,7 +48,7 @@ class RefundCompletedPayload extends Data
             $refund->ticket_ids,
             $refund->reason,
             $refund->gateway_reference,
-            $refund->commission_amount > 0 ? RefundCommissionPolicy::Returned : RefundCommissionPolicy::Retained,
+            $refund->commission_policy,
         );
     }
 }

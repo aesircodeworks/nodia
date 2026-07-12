@@ -2,7 +2,6 @@
 
 namespace App\Payments\Consumers;
 
-use App\Payments\Enums\RefundCommissionPolicy;
 use App\Payments\Models\LedgerEntry;
 use App\Payments\Models\Payment;
 use App\Payments\Models\Refund;
@@ -64,7 +63,7 @@ final readonly class ProjectLedgerEntries implements KeyedOrderedOutboxSubscribe
         $legs = $this->builder->refundLegs(
             $refund->money,
             Money::of($refund->commission_amount, $refund->currency),
-            $refund->commission_amount > 0 ? RefundCommissionPolicy::Returned : RefundCommissionPolicy::Retained,
+            $refund->commission_policy,
         );
 
         $this->insert($event, $legs, 'refund', $refund->id);

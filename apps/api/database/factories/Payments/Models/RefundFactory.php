@@ -2,6 +2,7 @@
 
 namespace Database\Factories\Payments\Models;
 
+use App\Payments\Enums\RefundCommissionPolicy;
 use App\Payments\Enums\RefundStatus;
 use App\Payments\Models\Refund;
 use App\Support\Money\Money;
@@ -29,6 +30,7 @@ class RefundFactory extends Factory
             'reason' => null,
             'ticket_ids' => null,
             'commission_amount' => 0,
+            'commission_policy' => RefundCommissionPolicy::Retained,
             'idempotency_key' => Str::uuid7()->toString(),
             'request_hash' => hash('sha256', Str::uuid7()->toString()),
             'gateway_reference' => null,

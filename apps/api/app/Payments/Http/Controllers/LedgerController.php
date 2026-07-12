@@ -17,9 +17,10 @@ use Spatie\QueryBuilder\QueryBuilder;
 /**
  * The raw finance reads (stage-08b plan, Endpoints): ledger entries are
  * high-volume, so the list cursor-paginates (api-conventions names
- * them explicitly) over ascending id, which for UUIDv7 keys is the
- * plan's deterministic (created_at, id) chronology in one cursor
- * column. Balances are a bounded per-currency, per-account summary
+ * them explicitly) over the plan's deterministic (created_at, id)
+ * ordering: created_at is the caller-supplied chronology and id breaks
+ * ties, so a composite cursor never skips or reorders entries that share
+ * a timestamp. Balances are a bounded per-currency, per-account summary
  * computed in SQL from the same table.
  */
 class LedgerController
@@ -35,6 +36,7 @@ class LedgerController
                 AllowedFilter::callback('created_at_to', fn (Builder $query, mixed $value) => $query->where('created_at', '<=', (string) $value)),
             )
             ->allowedSorts()
+            ->orderBy('created_at')
             ->orderBy('id')
             ->cursorPaginate(min($request->integer('per_page', 15), 100))
             ->appends($request->query());

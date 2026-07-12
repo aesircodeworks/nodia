@@ -27,7 +27,9 @@ class LedgerEntryData extends Data
         public Money $amount,
         public string $referenceType,
         public string $referenceId,
-        public string $createdAt,
+        // Snake-cased to match the (created_at, id) cursor columns: the
+        // transformed paginator reads the ordering column off this DTO.
+        public string $created_at,
     ) {}
 
     public static function fromModel(LedgerEntry $entry): self
