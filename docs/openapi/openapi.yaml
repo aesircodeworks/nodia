@@ -3764,6 +3764,99 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ManifestEventNotFoundProblem'
+  /v1/check-ins:
+    post:
+      operationId: recordCheckInScan
+      summary: Record an online ticket scan
+      description: >-
+        Tenant admin surface (stage-09 plan, Endpoints "POST
+        /v1/check-ins", Slice 4). Verifies the QR payload through
+        Orders' VerifyCheckInQr Action, then authorizes through
+        checkin.scan plus an assignment row for the event named inside
+        the verified payload, or checkin.manage as a bypass, evaluated
+        by the CheckIn context's own CheckEventAssignment Action.
+        First-scan-wins is structural: the accepted insert is guarded by
+        a partial unique index, never a read-then-write check. A losing
+        scan still persists as a duplicate row with its own
+        DuplicateScanDetected event; the 409 response is a UI signal, not
+        a refusal to record. A replay of the same (device_id,
+        client_scan_id) pair returns 200 with the originally recorded
+        result and records nothing new.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordScanRequest'
+      responses:
+        '200':
+          description: Replay of a previously recorded (device_id, client_scan_id) pair.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckInResult'
+        '201':
+          description: A fresh scan was recorded.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckInResult'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller holds neither checkin.scan nor checkin.manage, or
+            holds checkin.scan with no check-in assignment for the event
+            named inside the verified QR payload (code
+            checkin_not_assigned in both cases).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/CheckinNotAssignedProblem'
+        '404':
+          description: >-
+            The verified QR payload names a ticket that does not exist
+            for the acting tenant (code ticket_not_found).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/CheckInTicketNotFoundProblem'
+        '409':
+          description: >-
+            The ticket already has an accepted check-in (code
+            ticket_already_checked_in, extension members
+            first_scanned_at and first_device_id; the duplicate scan is
+            still persisted), or the scanned ticket's status is canceled
+            (code ticket_canceled) or refunded (code ticket_refunded).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/CheckInConflictProblem'
+        '422':
+          description: >-
+            No non-revoked signing key verifies the payload's signature
+            (code qr_signature_invalid), the payload verifies only
+            against a revoked key (code qr_key_revoked), the embedded
+            rotation counter is stale (code ticket_rotation_stale),
+            scanned_at is beyond the tolerated clock skew (code
+            scanned_at_in_future), or the request body fails validation
+            (code request.validation_failed).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/CheckInUnprocessableProblem'
   /v1/storefront/events:
     get:
       operationId: listStorefrontEvents
@@ -7351,6 +7444,147 @@ components:
             code:
               type: string
               enum: [event_not_found]
+      unevaluatedProperties: false
+    RecordScanRequest:
+      type: object
+      description: >-
+        POST /v1/check-ins request body (stage-09 plan, Endpoints "POST
+        /v1/check-ins"). scanned_at is the client-attested scan instant
+        (the device clock), never the server's.
+      required:
+        - qr_payload
+        - device_id
+        - client_scan_id
+        - scanned_at
+      properties:
+        qr_payload:
+          type: string
+        device_id:
+          type: string
+        client_scan_id:
+          type: string
+        scanned_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    CheckInResult:
+      type: object
+      description: >-
+        POST /v1/check-ins response body (stage-09 plan, Endpoints "POST
+        /v1/check-ins"): 201 for a fresh scan, 200 for a replay of the
+        same (device_id, client_scan_id) pair returning the original
+        result.
+      required:
+        - check_in_id
+        - ticket_id
+        - event_id
+        - result
+        - scanned_at
+        - synced_at
+      properties:
+        check_in_id:
+          type: string
+          format: uuid
+        ticket_id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        result:
+          type: string
+          enum: [accepted, duplicate]
+        scanned_at:
+          type: string
+          format: date-time
+        synced_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    CheckInTicketNotFoundProblem:
+      description: >-
+        Problem document for POST /v1/check-ins when the verified QR
+        payload names a ticket that does not exist for the acting tenant
+        (stage-09 plan, Endpoints, code ticket_not_found).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [404]
+            code:
+              type: string
+              enum: [ticket_not_found]
+      unevaluatedProperties: false
+    CheckInConflictProblem:
+      description: >-
+        Problem document for POST /v1/check-ins 409 responses (stage-09
+        plan, Endpoints): the ticket already has an accepted check-in
+        (code ticket_already_checked_in, extension members
+        first_scanned_at and first_device_id; the duplicate scan and its
+        DuplicateScanDetected event have already been persisted by the
+        time this renders), or the scanned ticket's status is canceled
+        (code ticket_canceled) or refunded (code ticket_refunded).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - oneOf:
+            - type: object
+              required:
+                - first_scanned_at
+                - first_device_id
+              properties:
+                code:
+                  type: string
+                  enum: [ticket_already_checked_in]
+                first_scanned_at:
+                  type: string
+                  format: date-time
+                first_device_id:
+                  type: string
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - ticket_canceled
+                    - ticket_refunded
+      unevaluatedProperties: false
+    CheckInUnprocessableProblem:
+      description: >-
+        Problem document for POST /v1/check-ins 422 responses (stage-09
+        plan, Endpoints): no non-revoked signing key verifies the
+        payload's signature (code qr_signature_invalid), the payload
+        verifies only against a revoked key (code qr_key_revoked), the
+        embedded rotation counter is stale (code ticket_rotation_stale),
+        scanned_at is beyond the tolerated clock skew (code
+        scanned_at_in_future), or the request body fails validation
+        (code request.validation_failed, with the errors map).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - oneOf:
+            - type: object
+              required:
+                - errors
+              properties:
+                code:
+                  type: string
+                  enum: [request.validation_failed]
+                errors:
+                  type: object
+                  additionalProperties:
+                    type: array
+                    items:
+                      type: string
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - qr_signature_invalid
+                    - qr_key_revoked
+                    - ticket_rotation_stale
+                    - scanned_at_in_future
       unevaluatedProperties: false
     CheckPromoCodeRequest:
       type: object

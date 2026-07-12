@@ -45,6 +45,14 @@ export type CheckEventAssignmentData = {
   capabilities: string[];
 };
 export type CheckInResult = 'accepted' | 'duplicate';
+export type CheckInResultData = {
+  check_in_id: string;
+  ticket_id: string;
+  event_id: string;
+  result: CheckInResult;
+  scanned_at: string;
+  synced_at: string;
+};
 export type CheckPromoCodeData = {
   code: string;
   hold_id: string;
@@ -267,7 +275,15 @@ export type ErrorCode =
   | 'gateway_not_configured'
   | 'submerchant_already_onboarded'
   | 'submerchant_not_active'
-  | 'checkin_not_assigned';
+  | 'checkin_not_assigned'
+  | 'qr_signature_invalid'
+  | 'qr_key_revoked'
+  | 'ticket_rotation_stale'
+  | 'scanned_at_in_future'
+  | 'ticket_not_found'
+  | 'ticket_canceled'
+  | 'ticket_refunded'
+  | 'ticket_already_checked_in';
 export type EventAssignmentData = {
   authorized: boolean;
 };
@@ -575,6 +591,12 @@ export type QrVerificationResultData = {
   ticket_id: string | null;
   event_id: string | null;
   rotation_counter: number | null;
+};
+export type RecordScanData = {
+  qr_payload: string;
+  device_id: string;
+  client_scan_id: string;
+  scanned_at: string;
 };
 export type RefreshTokenRequestData = {
   refresh_token: string;

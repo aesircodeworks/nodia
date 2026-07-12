@@ -18,7 +18,10 @@ use App\Inventory\Models\TicketTypeInventory;
 use App\Models\User;
 use App\Orders\Actions\MarkOrderAwaitingPayment;
 use App\Orders\Actions\MarkOrderPaid;
+use App\Orders\Models\EventSigningKey;
+use App\Orders\Models\Order;
 use App\Orders\Models\PromoCode;
+use App\Orders\Models\Ticket;
 use App\Payments\Gateways\FakeGateway;
 use App\Payments\Gateways\FakeGatewayScenarios;
 use App\Payments\Models\Payout;
@@ -123,6 +126,10 @@ afterEach(function (): void {
             // write orders, order_items, and tickets referencing customers,
             // events, ticket_types, and holds with no cascade, so they go
             // first.
+            // The check-ins exercisers (stage-09 plan, Endpoints "POST
+            // /v1/check-ins") write check_ins referencing tickets with no
+            // cascade, so they go first.
+            DB::table('check_ins')->where('tenant_id', $tenantId)->delete();
             DB::table('event_signing_keys')->where('tenant_id', $tenantId)->delete();
             DB::table('tickets')->where('tenant_id', $tenantId)->delete();
             DB::table('order_items')->where('tenant_id', $tenantId)->delete();
@@ -3911,6 +3918,66 @@ function documentedResponseExercisers(): array
                 'X-Tenant-Id' => $tenant->id,
             ]);
         },
+        // Stage-09 plan, Endpoints "POST /v1/check-ins".
+        'post /v1/check-ins 201' => function (): TestResponse {
+            $tenant = contractTenant();
+            $headers = ['Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']), 'X-Tenant-Id' => $tenant->id];
+            ['ticket' => $ticket, 'event' => $event] = contractCheckInTicket($tenant);
+            $secret = contractCheckInSecret($tenant, $event->id);
+
+            return test()->postJson('/v1/check-ins', contractCheckInPayload($ticket->id, $event->id, 0, $secret), $headers);
+        },
+        'post /v1/check-ins 200' => function (): TestResponse {
+            $tenant = contractTenant();
+            $headers = ['Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']), 'X-Tenant-Id' => $tenant->id];
+            ['ticket' => $ticket, 'event' => $event] = contractCheckInTicket($tenant);
+            $secret = contractCheckInSecret($tenant, $event->id);
+            $payload = contractCheckInPayload($ticket->id, $event->id, 0, $secret);
+
+            test()->postJson('/v1/check-ins', $payload, $headers);
+
+            return test()->postJson('/v1/check-ins', $payload, $headers);
+        },
+        'post /v1/check-ins 401' => function (): TestResponse {
+            $tenant = contractTenant();
+            ['ticket' => $ticket, 'event' => $event] = contractCheckInTicket($tenant);
+            $secret = contractCheckInSecret($tenant, $event->id);
+
+            return test()->postJson('/v1/check-ins', contractCheckInPayload($ticket->id, $event->id, 0, $secret));
+        },
+        'post /v1/check-ins 403' => function (): TestResponse {
+            $tenant = contractTenant();
+            $headers = ['Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']), 'X-Tenant-Id' => $tenant->id];
+            ['ticket' => $ticket, 'event' => $event] = contractCheckInTicket($tenant);
+            $secret = contractCheckInSecret($tenant, $event->id);
+
+            return test()->postJson('/v1/check-ins', contractCheckInPayload($ticket->id, $event->id, 0, $secret), $headers);
+        },
+        'post /v1/check-ins 404' => function (): TestResponse {
+            $tenant = contractTenant();
+            $headers = ['Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']), 'X-Tenant-Id' => $tenant->id];
+            $event = contractEvent($tenant);
+            $secret = contractCheckInSecret($tenant, $event->id);
+
+            return test()->postJson('/v1/check-ins', contractCheckInPayload((string) Str::uuid7(), $event->id, 0, $secret), $headers);
+        },
+        'post /v1/check-ins 409' => function (): TestResponse {
+            $tenant = contractTenant();
+            $headers = ['Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']), 'X-Tenant-Id' => $tenant->id];
+            ['ticket' => $ticket, 'event' => $event] = contractCheckInTicket($tenant);
+            $secret = contractCheckInSecret($tenant, $event->id);
+
+            test()->postJson('/v1/check-ins', contractCheckInPayload($ticket->id, $event->id, 0, $secret, 'device-a'), $headers);
+
+            return test()->postJson('/v1/check-ins', contractCheckInPayload($ticket->id, $event->id, 0, $secret, 'device-b'), $headers);
+        },
+        'post /v1/check-ins 422' => function (): TestResponse {
+            $tenant = contractTenant();
+            $headers = ['Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']), 'X-Tenant-Id' => $tenant->id];
+            ['ticket' => $ticket, 'event' => $event] = contractCheckInTicket($tenant);
+
+            return test()->postJson('/v1/check-ins', contractCheckInPayload($ticket->id, $event->id, 0, 'wrong-secret'), $headers);
+        },
     ];
 }
 
@@ -4203,6 +4270,71 @@ function contractOrderCustomerBearer(Tenant $tenant, string $host): string
         'email' => 'contract-order-buyer@example.com',
         'password' => 'password',
     ])->json('access_token');
+}
+
+/**
+ * @return array{event: Event, ticket: Ticket}
+ */
+function contractCheckInTicket(Tenant $tenant): array
+{
+    return app(TenantTransaction::class)->asTenant($tenant->id, function () use ($tenant): array {
+        $event = Event::factory()->create(['tenant_id' => $tenant->id, 'status' => EventStatus::Published]);
+        $ticketType = TicketType::factory()->create(['tenant_id' => $tenant->id, 'event_id' => $event->id]);
+        $customer = Customer::factory()->create(['tenant_id' => $tenant->id, 'email' => Str::uuid7()->toString().'@example.com']);
+        $order = Order::factory()->create([
+            'tenant_id' => $tenant->id,
+            'customer_id' => $customer->id,
+            'event_id' => $event->id,
+            'hold_id' => Str::uuid7()->toString(),
+        ]);
+        $ticket = Ticket::factory()->create([
+            'tenant_id' => $tenant->id,
+            'order_id' => $order->id,
+            'ticket_type_id' => $ticketType->id,
+            'event_id' => $event->id,
+        ]);
+
+        return ['event' => $event, 'ticket' => $ticket];
+    });
+}
+
+function contractCheckInSecret(Tenant $tenant, string $eventId): string
+{
+    $secret = 'contract-secret-'.$eventId;
+
+    app(TenantTransaction::class)->asTenant(
+        $tenant->id,
+        fn () => EventSigningKey::factory()->create([
+            'tenant_id' => $tenant->id,
+            'event_id' => $eventId,
+            'key_version' => 1,
+            'secret' => $secret,
+        ]),
+    );
+
+    return $secret;
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function contractCheckInPayload(string $ticketId, string $eventId, int $rotation, string $secret, string $deviceId = 'contract-device'): array
+{
+    $signature = hash_hmac('sha256', $ticketId.'|'.$eventId.'|'.$rotation, $secret);
+
+    $qrPayload = rtrim(strtr(base64_encode((string) json_encode([
+        'ticket_id' => $ticketId,
+        'event_id' => $eventId,
+        'rotation' => $rotation,
+        'signature' => $signature,
+    ])), '+/', '-_'), '=');
+
+    return [
+        'qr_payload' => $qrPayload,
+        'device_id' => $deviceId,
+        'client_scan_id' => (string) Str::uuid7(),
+        'scanned_at' => now()->toIso8601String(),
+    ];
 }
 
 function contractOrderHold(string $host, string $eventId, string $ticketTypeId): string

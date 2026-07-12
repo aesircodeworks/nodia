@@ -3,7 +3,14 @@
 use App\CheckIn\CheckInServiceProvider;
 use App\CheckIn\Enums\CheckInResult;
 use App\CheckIn\Exceptions\CheckinNotAssignedException;
+use App\CheckIn\Exceptions\CheckInTicketCanceledException;
+use App\CheckIn\Exceptions\CheckInTicketNotFoundException;
+use App\CheckIn\Exceptions\CheckInTicketRefundedException;
 use App\CheckIn\Exceptions\ManifestEventNotFoundException;
+use App\CheckIn\Exceptions\QrKeyRevokedException;
+use App\CheckIn\Exceptions\QrSignatureInvalidException;
+use App\CheckIn\Exceptions\ScannedAtInFutureException;
+use App\CheckIn\Exceptions\TicketRotationStaleException;
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\EventCatalogServiceProvider;
 use App\EventCatalog\Exceptions\CurrencyMismatchException as TicketTypeCurrencyMismatchException;
@@ -393,5 +400,12 @@ arch()->preset()->laravel()->ignoring([
     CheckInResult::class,
     CheckinNotAssignedException::class,
     ManifestEventNotFoundException::class,
+    QrSignatureInvalidException::class,
+    QrKeyRevokedException::class,
+    TicketRotationStaleException::class,
+    ScannedAtInFutureException::class,
+    CheckInTicketNotFoundException::class,
+    CheckInTicketCanceledException::class,
+    CheckInTicketRefundedException::class,
     'App\CheckIn\Models',
 ]);

@@ -9,6 +9,14 @@
 // App\Orders\Http\routes\admin.php's own signing-keys GET.
 
 use App\CheckIn\Http\Controllers\CheckInManifestController;
+use App\CheckIn\Http\Controllers\RecordScanController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/events/{event}/check-in-manifest', [CheckInManifestController::class, 'index']);
+
+// POST /v1/check-ins has no {event} route param and no single-capability
+// gate either: the target event is only known once App\CheckIn\Actions\
+// RecordScan has verified the QR payload, so that Action performs the
+// checkin.scan-plus-assignment (or checkin.manage bypass) authorization
+// itself, mirroring the GET routes' own custom-authorized posture.
+Route::post('/check-ins', [RecordScanController::class, 'store']);

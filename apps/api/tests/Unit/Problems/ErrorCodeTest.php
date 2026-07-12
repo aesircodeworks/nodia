@@ -103,6 +103,14 @@ test('the registry holds exactly the known codes', function () {
         'submerchant_already_onboarded',
         'submerchant_not_active',
         'checkin_not_assigned',
+        'qr_signature_invalid',
+        'qr_key_revoked',
+        'ticket_rotation_stale',
+        'scanned_at_in_future',
+        'ticket_not_found',
+        'ticket_canceled',
+        'ticket_refunded',
+        'ticket_already_checked_in',
     ]);
 });
 
@@ -204,6 +212,14 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'submerchant_already_onboarded' => [ErrorCode::SubmerchantAlreadyOnboarded, 409, 'Submerchant already onboarded', '/problems/submerchant-already-onboarded'],
     'submerchant_not_active' => [ErrorCode::SubmerchantNotActive, 409, 'Submerchant not active', '/problems/submerchant-not-active'],
     'checkin_not_assigned' => [ErrorCode::CheckinNotAssigned, 403, 'Not assigned to event', '/problems/checkin-not-assigned'],
+    'qr_signature_invalid' => [ErrorCode::QrSignatureInvalid, 422, 'QR signature invalid', '/problems/qr-signature-invalid'],
+    'qr_key_revoked' => [ErrorCode::QrKeyRevoked, 422, 'QR key revoked', '/problems/qr-key-revoked'],
+    'ticket_rotation_stale' => [ErrorCode::TicketRotationStale, 422, 'Ticket rotation stale', '/problems/ticket-rotation-stale'],
+    'scanned_at_in_future' => [ErrorCode::ScannedAtInFuture, 422, 'Scanned at in future', '/problems/scanned-at-in-future'],
+    'ticket_not_found' => [ErrorCode::CheckInTicketNotFound, 404, 'Ticket not found', '/problems/ticket-not-found'],
+    'ticket_canceled' => [ErrorCode::CheckInTicketCanceled, 409, 'Ticket canceled', '/problems/ticket-canceled'],
+    'ticket_refunded' => [ErrorCode::CheckInTicketRefunded, 409, 'Ticket refunded', '/problems/ticket-refunded'],
+    'ticket_already_checked_in' => [ErrorCode::TicketAlreadyCheckedIn, 409, 'Ticket already checked in', '/problems/ticket-already-checked-in'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

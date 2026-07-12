@@ -106,6 +106,14 @@ enum ErrorCode: string
     case SubmerchantAlreadyOnboarded = 'submerchant_already_onboarded';
     case SubmerchantNotActive = 'submerchant_not_active';
     case CheckinNotAssigned = 'checkin_not_assigned';
+    case QrSignatureInvalid = 'qr_signature_invalid';
+    case QrKeyRevoked = 'qr_key_revoked';
+    case TicketRotationStale = 'ticket_rotation_stale';
+    case ScannedAtInFuture = 'scanned_at_in_future';
+    case CheckInTicketNotFound = 'ticket_not_found';
+    case CheckInTicketCanceled = 'ticket_canceled';
+    case CheckInTicketRefunded = 'ticket_refunded';
+    case TicketAlreadyCheckedIn = 'ticket_already_checked_in';
 
     public function status(): int
     {
@@ -209,6 +217,14 @@ enum ErrorCode: string
             self::SubmerchantAlreadyOnboarded => 409,
             self::SubmerchantNotActive => 409,
             self::CheckinNotAssigned => 403,
+            self::QrSignatureInvalid => 422,
+            self::QrKeyRevoked => 422,
+            self::TicketRotationStale => 422,
+            self::ScannedAtInFuture => 422,
+            self::CheckInTicketNotFound => 404,
+            self::CheckInTicketCanceled => 409,
+            self::CheckInTicketRefunded => 409,
+            self::TicketAlreadyCheckedIn => 409,
         };
     }
 
@@ -314,6 +330,14 @@ enum ErrorCode: string
             self::SubmerchantAlreadyOnboarded => 'Submerchant already onboarded',
             self::SubmerchantNotActive => 'Submerchant not active',
             self::CheckinNotAssigned => 'Not assigned to event',
+            self::QrSignatureInvalid => 'QR signature invalid',
+            self::QrKeyRevoked => 'QR key revoked',
+            self::TicketRotationStale => 'Ticket rotation stale',
+            self::ScannedAtInFuture => 'Scanned at in future',
+            self::CheckInTicketNotFound => 'Ticket not found',
+            self::CheckInTicketCanceled => 'Ticket canceled',
+            self::CheckInTicketRefunded => 'Ticket refunded',
+            self::TicketAlreadyCheckedIn => 'Ticket already checked in',
         };
     }
 
