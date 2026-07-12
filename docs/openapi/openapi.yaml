@@ -4313,11 +4313,13 @@ paths:
           description: >-
             Request validation failed (code request.validation_failed, with
             the errors map), an item's ticket_type_id does not belong to
-            the given event (code ticket_type_not_in_event), or the
-            seat_ids do not match the requested items: a requires_seat
-            item is missing seats, the seat count does not match its
-            quantity, or seats were given for a GA item (code
-            seat_selection_invalid).
+            the given event (code ticket_type_not_in_event), the seat_ids
+            do not match the requested items: a requires_seat item is
+            missing seats, the seat count does not match its quantity, or
+            seats were given for a GA item (code seat_selection_invalid),
+            or an item's ticket type carries a per-customer purchase limit
+            and no customer is authenticated (code customer_required,
+            stage-10 plan).
           content:
             application/problem+json:
               schema:
@@ -4327,10 +4329,13 @@ paths:
             An item's ticket type is outside its sales window (code
             sales_window_closed), the requested quantity exceeds
             availability (code insufficient_inventory, with the failing
-            ticket_type_id in the errors map), or one or more requested
-            seats are held, sold, blocked, or belong to the wrong zone or
-            event (code seat_unavailable, with the offending seat_ids in
-            the errors map).
+            ticket_type_id in the errors map), one or more requested seats
+            are held, sold, blocked, or belong to the wrong zone or event
+            (code seat_unavailable, with the offending seat_ids in the
+            errors map), or the authenticated customer has reached an
+            item's ticket type max_per_customer (code
+            purchase_limit_exceeded, with ticket_type_id and limit,
+            stage-10 plan).
           content:
             application/problem+json:
               schema:
@@ -10062,9 +10067,11 @@ components:
         Problem document for POST /v1/storefront/holds that cannot be
         processed: either request validation failed (with the errors map,
         code request.validation_failed), an item's ticket_type_id does
-        not belong to the given event (code ticket_type_not_in_event), or
+        not belong to the given event (code ticket_type_not_in_event),
         the seat_ids do not match the requested items (code
-        seat_selection_invalid).
+        seat_selection_invalid), or an item's ticket type carries a
+        per-customer purchase limit and no customer is authenticated
+        (code customer_required, stage-10 plan).
       allOf:
         - $ref: '#/components/schemas/Problem'
         - oneOf:
@@ -10091,6 +10098,11 @@ components:
                 code:
                   type: string
                   enum: [seat_selection_invalid]
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum: [customer_required]
       unevaluatedProperties: false
     HoldCreateConflictProblem:
       description: >-
@@ -10098,9 +10110,12 @@ components:
         current state: an item's ticket type is outside its sales window
         (code sales_window_closed), the requested quantity exceeds
         availability (code insufficient_inventory, with the failing
-        ticket_type_id in the errors map), or one or more requested seats
+        ticket_type_id in the errors map), one or more requested seats
         are unavailable (code seat_unavailable, with the offending
-        seat_ids in the errors map).
+        seat_ids in the errors map), or the authenticated customer has
+        reached an item's ticket type max_per_customer (code
+        purchase_limit_exceeded, with ticket_type_id and limit, stage-10
+        plan).
       allOf:
         - $ref: '#/components/schemas/Problem'
         - oneOf:
@@ -10135,6 +10150,20 @@ components:
                     type: array
                     items:
                       type: string
+            - type: object
+              required:
+                - ticket_type_id
+                - limit
+              properties:
+                code:
+                  type: string
+                  enum: [purchase_limit_exceeded]
+                ticket_type_id:
+                  type: string
+                  format: uuid
+                limit:
+                  type: integer
+                  minimum: 1
       unevaluatedProperties: false
     RoleNameTakenProblem:
       description: >-

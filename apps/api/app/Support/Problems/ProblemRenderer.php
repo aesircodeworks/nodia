@@ -214,6 +214,8 @@ class ProblemRenderer
             ErrorCode::UserNotMember => 'The target user does not have a membership in this tenant.',
             ErrorCode::AlreadyAssigned => 'This user is already assigned to check in this event.',
             ErrorCode::AssignmentNotFound => 'No check-in assignment has this id for the resolved tenant.',
+            ErrorCode::CustomerRequired => 'This hold includes a ticket type with a per-customer purchase limit, which requires an authenticated customer.',
+            ErrorCode::PurchaseLimitExceeded => 'This customer has reached the per-customer purchase limit for this ticket type.',
         };
     }
 }

@@ -8,6 +8,7 @@ use App\Inventory\Models\EventSeat;
 use App\Inventory\Models\Hold;
 use App\Inventory\Models\HoldItem;
 use App\Inventory\Models\TicketTypeInventory;
+use App\Inventory\Support\PurchaseCounters;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 
@@ -25,6 +26,13 @@ use Illuminate\Support\Facades\DB;
  * conditional guards: hold_id already scopes every row to the single
  * winner of that conditional UPDATE, so no other process can contend for
  * the same rows.
+ *
+ * The same posture extends to the stage-10 purchase counter: each item's
+ * recorded counted_quantity (0 for a ticket type with no limit at hold
+ * time) is reversed through App\Inventory\Support\PurchaseCounters::
+ * decrement, which consults only that recorded amount, never the ticket
+ * type's current max_per_customer (stage-10 plan, Data model
+ * "purchase_counters").
  */
 trait ReleasesHoldInventory
 {
@@ -35,6 +43,7 @@ trait ReleasesHoldInventory
     {
         foreach ($hold->items as $item) {
             $this->releaseHeldQuantity($item);
+            $this->releasePurchaseCounter($hold, $item);
         }
 
         return $this->releaseHeldSeats($hold);
@@ -99,6 +108,37 @@ trait ReleasesHoldInventory
         // HoldExpired here would leave inventory permanently inconsistent.
         if ($affected === 0) {
             throw HoldInventoryReleaseFailedException::forTicketType($item->ticket_type_id, $item->quantity);
+        }
+    }
+
+    /**
+     * The purchase-counter decrement (stage-10 plan, Data model
+     * "purchase_counters"): a no-op for a zero counted_quantity (the item's
+     * ticket type carried no max_per_customer at hold time, mirroring
+     * App\Inventory\Support\PurchaseCounters::increment's own null-limit
+     * skip). A nonzero counted_quantity always came from a successful
+     * increment at hold creation, which requires a customer id
+     * (App\Inventory\Exceptions\CustomerRequiredException), so the hold's
+     * customer_id is guaranteed non-null here too; both branches surface
+     * as the same broken-invariant exception as releaseHeldQuantity's own
+     * zero-affected-rows case, rolling back the release or expiry
+     * transaction rather than recording it against an inconsistent
+     * counter.
+     */
+    private function releasePurchaseCounter(Hold $hold, HoldItem $item): void
+    {
+        if ($item->counted_quantity === 0) {
+            return;
+        }
+
+        if ($hold->customer_id === null) {
+            throw HoldInventoryReleaseFailedException::forPurchaseCounter($item->ticket_type_id, $item->counted_quantity);
+        }
+
+        $affected = PurchaseCounters::decrement($hold->customer_id, $item->ticket_type_id, $item->counted_quantity);
+
+        if ($affected === 0) {
+            throw HoldInventoryReleaseFailedException::forPurchaseCounter($item->ticket_type_id, $item->counted_quantity);
         }
     }
 }

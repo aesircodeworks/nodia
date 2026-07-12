@@ -11,8 +11,10 @@ use App\Inventory\Data\HoldItemInputData;
 use App\Inventory\Enums\EventSeatStatus;
 use App\Inventory\Enums\HoldStatus;
 use App\Inventory\Events\HoldCreated;
+use App\Inventory\Exceptions\CustomerRequiredException;
 use App\Inventory\Exceptions\HoldEventNotFoundException;
 use App\Inventory\Exceptions\InsufficientHoldInventoryException;
+use App\Inventory\Exceptions\PurchaseLimitExceededException;
 use App\Inventory\Exceptions\SalesWindowClosedException;
 use App\Inventory\Exceptions\SeatSelectionInvalidException;
 use App\Inventory\Exceptions\SeatUnavailableException;
@@ -21,6 +23,7 @@ use App\Inventory\Models\EventSeat;
 use App\Inventory\Models\Hold;
 use App\Inventory\Models\HoldItem;
 use App\Inventory\Models\TicketTypeInventory;
+use App\Inventory\Support\PurchaseCounters;
 use App\Support\Outbox\OutboxRecorder;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonInterface;
@@ -53,6 +56,19 @@ use Spatie\LaravelData\Optional;
  * zoning onward (stage-06 plan, event_seats section: "A seated hold
  * therefore performs both the counter UPDATE and the seat UPDATEs ...
  * and both must succeed or the transaction rolls back").
+ *
+ * Purchase limits (stage-10 plan, Data model "purchase_counters";
+ * Endpoints "POST /v1/storefront/holds"): an item whose ticket type
+ * carries max_per_customer requires an authenticated customer
+ * (customer_required, checked in assertHoldable alongside the existing
+ * sales-window and membership checks, before any inventory statement
+ * runs) and increments App\Inventory\Support\PurchaseCounters inside this
+ * same transaction, right after the item's held-increment guard. Zero
+ * affected rows there means the limit is exceeded (purchase_limit_exceeded)
+ * and rolls the whole hold back. The quantity actually counted is
+ * persisted on the hold item as counted_quantity, zero for an unlimited
+ * ticket type, so release and expiry can reverse exactly what this
+ * transaction recorded regardless of any later policy change.
  */
 final class CreateHold
 {
@@ -73,7 +89,7 @@ final class CreateHold
         $now = Date::now();
 
         foreach ($data->items as $item) {
-            $this->assertHoldable($event, $item, $now);
+            $this->assertHoldable($event, $item, $now, $customerId);
         }
 
         $seatIds = $data->seatIds instanceof Optional ? [] : $data->seatIds;
@@ -90,11 +106,14 @@ final class CreateHold
         foreach ($data->items as $item) {
             $this->claim($item->ticketTypeId, $item->quantity);
 
+            $countedQuantity = $this->claimPurchaseLimit($tenantId, $event, $item, $customerId);
+
             HoldItem::create([
                 'tenant_id' => $tenantId,
                 'hold_id' => $hold->id,
                 'ticket_type_id' => $item->ticketTypeId,
                 'quantity' => $item->quantity,
+                'counted_quantity' => $countedQuantity,
             ]);
 
             if (isset($seatSlices[$item->ticketTypeId])) {
@@ -193,10 +212,14 @@ final class CreateHold
         throw SeatUnavailableException::forSeats(array_values(array_diff($seatIds, $claimed)));
     }
 
-    private function assertHoldable(HoldableEventData $event, HoldItemInputData $item, CarbonInterface $now): void
+    private function assertHoldable(HoldableEventData $event, HoldItemInputData $item, CarbonInterface $now, ?string $customerId): void
     {
         $ticketType = $this->findTicketType($event, $item->ticketTypeId)
             ?? throw TicketTypeNotInEventException::forId($item->ticketTypeId);
+
+        if ($ticketType->maxPerCustomer !== null && $customerId === null) {
+            throw CustomerRequiredException::forTicketType($item->ticketTypeId);
+        }
 
         if ($ticketType->salesStart !== null && $now->lt($ticketType->salesStart)) {
             throw SalesWindowClosedException::forTicketType($item->ticketTypeId);
@@ -239,5 +262,54 @@ final class CreateHold
         if ($affected === 0) {
             throw InsufficientHoldInventoryException::forTicketType($ticketTypeId);
         }
+    }
+
+    /**
+     * The purchase-counter guard (stage-10 plan, Data model
+     * "purchase_counters"): a no-op for a ticket type with no
+     * max_per_customer, matching App\Inventory\Support\PurchaseCounters::
+     * increment's own null-limit skip. assertHoldable already requires a
+     * customer id for every limited item before this runs
+     * (CustomerRequiredException), so $customerId is guaranteed non-null
+     * here whenever $ticketType->maxPerCustomer is set; the null check
+     * below is defense in depth, never the primary guard.
+     *
+     * The item's own quantity is checked against the limit before the
+     * upsert runs (stage-10 plan, Data model "purchase_counters": "The
+     * insert path is guarded by request validation (:n <= :limit,
+     * deterministic, no race)"): Postgres only applies an `ON CONFLICT DO
+     * UPDATE ... WHERE` guard to the update branch, so a customer's first
+     * ever counter row for this ticket type would otherwise insert
+     * unconditionally regardless of how far past the limit the request's
+     * own quantity is. This check is exactly the n <= limit case (the
+     * counter starts at zero), so combined with the upsert's own WHERE on
+     * every later conflict, both branches enforce the same invariant.
+     *
+     * @return int the item's counted_quantity: the item's own quantity
+     *             when the ticket type is limited, zero otherwise
+     */
+    private function claimPurchaseLimit(string $tenantId, HoldableEventData $event, HoldItemInputData $item, ?string $customerId): int
+    {
+        $ticketType = $this->findTicketType($event, $item->ticketTypeId);
+
+        if ($ticketType === null || $ticketType->maxPerCustomer === null) {
+            return 0;
+        }
+
+        if ($customerId === null) {
+            throw CustomerRequiredException::forTicketType($item->ticketTypeId);
+        }
+
+        if ($item->quantity > $ticketType->maxPerCustomer) {
+            throw PurchaseLimitExceededException::forTicketType($item->ticketTypeId, $ticketType->maxPerCustomer);
+        }
+
+        $ok = PurchaseCounters::increment($tenantId, $customerId, $item->ticketTypeId, $item->quantity, $ticketType->maxPerCustomer);
+
+        if (! $ok) {
+            throw PurchaseLimitExceededException::forTicketType($item->ticketTypeId, $ticketType->maxPerCustomer);
+        }
+
+        return $item->quantity;
     }
 }

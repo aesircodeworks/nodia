@@ -37,6 +37,23 @@ final class HoldInventoryReleaseFailedException extends RuntimeException impleme
         ));
     }
 
+    /**
+     * Mirrors forTicketType for the stage-10 purchase counter
+     * (App\Inventory\Support\PurchaseCounters::decrement, stage-10 plan
+     * Data model "purchase_counters"): a nonzero counted_quantity always
+     * came from a successful increment at hold creation, so a zero-row
+     * decrement means the counter row is missing or already below the
+     * recorded amount, a broken invariant rather than a user error.
+     */
+    public static function forPurchaseCounter(string $ticketTypeId, int $counted): self
+    {
+        return new self(sprintf(
+            'Could not release %d counted units for ticket type "%s": counter missing or below the counted quantity.',
+            $counted,
+            $ticketTypeId,
+        ));
+    }
+
     public function errorCode(): ErrorCode
     {
         return ErrorCode::ServerInternalError;

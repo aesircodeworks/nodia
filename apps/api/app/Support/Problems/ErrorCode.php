@@ -118,6 +118,8 @@ enum ErrorCode: string
     case UserNotMember = 'user_not_member';
     case AlreadyAssigned = 'already_assigned';
     case AssignmentNotFound = 'assignment_not_found';
+    case CustomerRequired = 'customer_required';
+    case PurchaseLimitExceeded = 'purchase_limit_exceeded';
 
     public function status(): int
     {
@@ -233,6 +235,8 @@ enum ErrorCode: string
             self::UserNotMember => 422,
             self::AlreadyAssigned => 409,
             self::AssignmentNotFound => 404,
+            self::CustomerRequired => 422,
+            self::PurchaseLimitExceeded => 409,
         };
     }
 
@@ -350,6 +354,8 @@ enum ErrorCode: string
             self::UserNotMember => 'User not a member',
             self::AlreadyAssigned => 'Already assigned',
             self::AssignmentNotFound => 'Assignment not found',
+            self::CustomerRequired => 'Customer required',
+            self::PurchaseLimitExceeded => 'Purchase limit exceeded',
         };
     }
 

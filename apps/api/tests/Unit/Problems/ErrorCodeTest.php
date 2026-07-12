@@ -115,6 +115,8 @@ test('the registry holds exactly the known codes', function () {
         'user_not_member',
         'already_assigned',
         'assignment_not_found',
+        'customer_required',
+        'purchase_limit_exceeded',
     ]);
 });
 
@@ -228,6 +230,8 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'user_not_member' => [ErrorCode::UserNotMember, 422, 'User not a member', '/problems/user-not-member'],
     'already_assigned' => [ErrorCode::AlreadyAssigned, 409, 'Already assigned', '/problems/already-assigned'],
     'assignment_not_found' => [ErrorCode::AssignmentNotFound, 404, 'Assignment not found', '/problems/assignment-not-found'],
+    'customer_required' => [ErrorCode::CustomerRequired, 422, 'Customer required', '/problems/customer-required'],
+    'purchase_limit_exceeded' => [ErrorCode::PurchaseLimitExceeded, 409, 'Purchase limit exceeded', '/problems/purchase-limit-exceeded'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

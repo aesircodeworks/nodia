@@ -301,7 +301,9 @@ export type ErrorCode =
   | 'batch_too_large'
   | 'user_not_member'
   | 'already_assigned'
-  | 'assignment_not_found';
+  | 'assignment_not_found'
+  | 'customer_required'
+  | 'purchase_limit_exceeded';
 export type EventAssignmentData = {
   authorized: boolean;
 };

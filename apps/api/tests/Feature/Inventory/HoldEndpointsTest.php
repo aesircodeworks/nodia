@@ -7,10 +7,13 @@ use App\EventCatalog\Models\SeatMap;
 use App\EventCatalog\Models\TicketType;
 use App\EventCatalog\Models\Venue;
 use App\Identity\Models\Customer;
+use App\Inventory\Actions\CommitHold;
 use App\Inventory\Actions\ReleaseExpiredHolds;
+use App\Inventory\Data\CommitHoldData;
 use App\Inventory\Enums\EventSeatStatus;
 use App\Inventory\Models\EventSeat;
 use App\Inventory\Models\Hold;
+use App\Inventory\Models\PurchaseCounter;
 use App\Inventory\Models\TicketTypeInventory;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
@@ -46,6 +49,7 @@ afterEach(function (): void {
             DB::table('hold_items')->where('tenant_id', $tenantId)->delete();
             DB::table('event_seats')->where('tenant_id', $tenantId)->delete();
             DB::table('holds')->where('tenant_id', $tenantId)->delete();
+            DB::table('purchase_counters')->where('tenant_id', $tenantId)->delete();
             DB::table('customers')->where('tenant_id', $tenantId)->delete();
             DB::table('ticket_type_inventory')->where('tenant_id', $tenantId)->delete();
             DB::table('ticket_types')->where('tenant_id', $tenantId)->delete();
@@ -449,6 +453,223 @@ describe('POST /v1/storefront/holds', function (): void {
             ->assertConformsToOpenApi()
             ->assertJsonPath('code', 'seat_unavailable')
             ->assertJsonPath('errors.seat_ids.0', $seatIds[0]);
+    });
+});
+
+function holdPurchaseCounterQuantity(string $tenantId, string $customerId, string $ticketTypeId): ?int
+{
+    return app(TenantTransaction::class)->asTenant(
+        $tenantId,
+        fn () => PurchaseCounter::query()
+            ->where('customer_id', $customerId)
+            ->where('ticket_type_id', $ticketTypeId)
+            ->value('quantity'),
+    );
+}
+
+/*
+ * Stage-10 plan, TDD sequencing Slice 3 (Feature, first), task breakdown
+ * item 6: purchase-limit enforcement wired into CreateHold, ReleaseHold,
+ * CommitHold, and the expiry sweeper.
+ */
+describe('POST /v1/storefront/holds purchase limits', function (): void {
+    it('returns purchase_limit_exceeded with the offending ticket_type_id and limit when the hold exceeds max_per_customer', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10, ['max_per_customer' => 2]);
+        $pair = holdCustomerBearer($tenant->id, $host);
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 3]],
+        ], ['Authorization' => 'Bearer '.$pair['access_token']])
+            ->assertStatus(409)
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'purchase_limit_exceeded')
+            ->assertJsonPath('ticket_type_id', $ticketType->id)
+            ->assertJsonPath('limit', 2);
+    });
+
+    it('returns customer_required for a limited ticket type without an authenticated customer', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10, ['max_per_customer' => 2]);
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+        ])
+            ->assertStatus(422)
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'customer_required');
+    });
+
+    it('allows a hold exactly at the limit and records the counted quantity', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10, ['max_per_customer' => 2]);
+        $pair = holdCustomerBearer($tenant->id, $host);
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 2]],
+        ], ['Authorization' => 'Bearer '.$pair['access_token']])
+            ->assertStatus(201)
+            ->assertConformsToOpenApi();
+
+        $customerId = app(TenantTransaction::class)->asTenant(
+            $tenant->id,
+            fn () => Customer::query()->where('tenant_id', $tenant->id)->where('email', 'buyer@example.com')->firstOrFail()->id,
+        );
+
+        expect(holdPurchaseCounterQuantity($tenant->id, $customerId, $ticketType->id))->toBe(2);
+    });
+
+    it('restores headroom exactly when the hold is released', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10, ['max_per_customer' => 2]);
+        $pair = holdCustomerBearer($tenant->id, $host);
+        $headers = ['Authorization' => 'Bearer '.$pair['access_token']];
+
+        $created = $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 2]],
+        ], $headers)->assertStatus(201)->json();
+
+        $this->deleteJson('http://'.$host.'/v1/storefront/holds/'.$created['id'], [], $headers)
+            ->assertStatus(204);
+
+        $customerId = app(TenantTransaction::class)->asTenant(
+            $tenant->id,
+            fn () => Customer::query()->where('tenant_id', $tenant->id)->where('email', 'buyer@example.com')->firstOrFail()->id,
+        );
+
+        expect(holdPurchaseCounterQuantity($tenant->id, $customerId, $ticketType->id))->toBe(0);
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 2]],
+        ], $headers)->assertStatus(201);
+    });
+
+    it('restores headroom exactly when the hold expires', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10, ['max_per_customer' => 2]);
+        $pair = holdCustomerBearer($tenant->id, $host);
+        $headers = ['Authorization' => 'Bearer '.$pair['access_token']];
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 2]],
+        ], $headers)->assertStatus(201);
+
+        $customerId = app(TenantTransaction::class)->asTenant(
+            $tenant->id,
+            fn () => Customer::query()->where('tenant_id', $tenant->id)->where('email', 'buyer@example.com')->firstOrFail()->id,
+        );
+
+        $this->travelTo(now()->addMinutes(11));
+
+        app(ReleaseExpiredHolds::class)();
+
+        expect(holdPurchaseCounterQuantity($tenant->id, $customerId, $ticketType->id))->toBe(0);
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 2]],
+        ], $headers)->assertStatus(201);
+    });
+
+    it('keeps a committed hold consuming the limit on the next attempt', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10, ['max_per_customer' => 2]);
+        $pair = holdCustomerBearer($tenant->id, $host);
+        $headers = ['Authorization' => 'Bearer '.$pair['access_token']];
+
+        $created = $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 2]],
+        ], $headers)->assertStatus(201)->json();
+
+        app(TenantTransaction::class)->asTenant(
+            $tenant->id,
+            fn () => app(CommitHold::class)(CommitHoldData::from(['holdId' => $created['id']])),
+        );
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+        ], $headers)
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'purchase_limit_exceeded');
+    });
+
+    it('releases a hold created before the limit existed without decrementing the counter', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10);
+        $pair = holdCustomerBearer($tenant->id, $host);
+        $headers = ['Authorization' => 'Bearer '.$pair['access_token']];
+
+        $created = $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 2]],
+        ], $headers)->assertStatus(201)->json();
+
+        $countedQuantity = app(TenantTransaction::class)->asTenant(
+            $tenant->id,
+            fn () => DB::table('hold_items')->where('hold_id', $created['id'])->value('counted_quantity'),
+        );
+
+        expect($countedQuantity)->toBe(0);
+
+        app(TenantTransaction::class)->asTenant(
+            $tenant->id,
+            fn () => TicketType::query()->whereKey($ticketType->id)->update(['max_per_customer' => 2]),
+        );
+
+        $this->deleteJson('http://'.$host.'/v1/storefront/holds/'.$created['id'], [], $headers)
+            ->assertStatus(204);
+
+        $customerId = app(TenantTransaction::class)->asTenant(
+            $tenant->id,
+            fn () => Customer::query()->where('tenant_id', $tenant->id)->where('email', 'buyer@example.com')->firstOrFail()->id,
+        );
+
+        expect(holdPurchaseCounterQuantity($tenant->id, $customerId, $ticketType->id))->toBeNull();
+    });
+
+    it('still decrements the recorded counted quantity on release after max_per_customer is cleared', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10, ['max_per_customer' => 2]);
+        $pair = holdCustomerBearer($tenant->id, $host);
+        $headers = ['Authorization' => 'Bearer '.$pair['access_token']];
+
+        $created = $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 2]],
+        ], $headers)->assertStatus(201)->json();
+
+        $customerId = app(TenantTransaction::class)->asTenant(
+            $tenant->id,
+            fn () => Customer::query()->where('tenant_id', $tenant->id)->where('email', 'buyer@example.com')->firstOrFail()->id,
+        );
+
+        expect(holdPurchaseCounterQuantity($tenant->id, $customerId, $ticketType->id))->toBe(2);
+
+        app(TenantTransaction::class)->asTenant(
+            $tenant->id,
+            fn () => TicketType::query()->whereKey($ticketType->id)->update(['max_per_customer' => null]),
+        );
+
+        $this->deleteJson('http://'.$host.'/v1/storefront/holds/'.$created['id'], [], $headers)
+            ->assertStatus(204);
+
+        expect(holdPurchaseCounterQuantity($tenant->id, $customerId, $ticketType->id))->toBe(0);
     });
 });
 
