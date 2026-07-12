@@ -368,6 +368,38 @@ gateway ADR.
 
 Commit: b5758ed
 
+### Gate
+
+Run at Sun Jul 12 13:44:51 -03 2026, full local quality gates after stage
+8d implementation work:
+
+- `composer -d apps/api run lint` (Pint): passed on the first pass.
+- `composer -d apps/api run analyse` (Larastan): 1 error found
+  (`ProblemRenderer::detailFor` had no match arm for the
+  `GatewayNotConfigured` error code introduced in task 8d-3, so an
+  UnhandledMatchError would fire instead of the intended 409 problem
+  response). Fixed by adding the missing arm; commit `1d79018`,
+  `fix(payments): map GatewayNotConfigured error code to a problem
+  detail`. Re-run: 0 errors.
+- `php artisan test --parallel`: failed with widespread `SQLSTATE[42P01]:
+  Undefined table: migrations` errors across unrelated feature tests,
+  consistent with parallel workers racing over shared database
+  migration state rather than a real regression; one genuine failure
+  surfaced underneath the noise (`ErrorCodeTest::the registry holds
+  exactly the known codes`, missing the new `gateway_not_configured`
+  code and its status/title/type dataset row). Fell back to a
+  non-parallel run per the parallelism-induced-failure exception.
+  Fixed the test's expected registry list and status/title dataset;
+  commit `1d79018` also carries this fix (bundled with the analyse fix
+  since both touch the same `GatewayNotConfigured` gap).
+  `composer -d apps/api run test` hit the default 300s composer
+  process timeout on the full suite; re-ran with `php artisan test`
+  directly (no composer wrapper) to remove that ceiling. Final result:
+  2733 passed, 10981 assertions, 0 failures.
+- `composer -d apps/api run types:generate`: ran clean; `git status
+  --short packages/api-client/src/generated` empty, no contract drift.
+- `pnpm typecheck`: skipped, no TypeScript changed in this diff.
+
 ### Review rounds
 
 ### Decisions and deviations
