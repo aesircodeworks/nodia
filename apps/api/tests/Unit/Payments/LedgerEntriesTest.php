@@ -180,6 +180,7 @@ describe('entry-set builder', function (): void {
         'payment' => fn () => (new LedgerEntrySetBuilder)->paymentLegs(Money::of(9_999, 'BRL'), Money::of(287, 'BRL'), Money::of(13, 'BRL')),
         'refund returned' => fn () => (new LedgerEntrySetBuilder)->refundLegs(Money::of(3_333, 'BRL'), Money::of(83, 'BRL'), RefundCommissionPolicy::Returned),
         'refund retained' => fn () => (new LedgerEntrySetBuilder)->refundLegs(Money::of(3_333, 'BRL'), Money::of(0, 'BRL'), RefundCommissionPolicy::Retained),
+        'payout' => fn () => (new LedgerEntrySetBuilder)->payoutLegs(Money::of(4_444, 'BRL')),
     ]);
 
     it('rejects an unbalanced payment set where fee and commission exceed gross', function (): void {
@@ -205,6 +206,18 @@ describe('entry-set builder', function (): void {
             Money::of(10, 'USD'),
         );
     })->throws(CurrencyMismatchException::class);
+
+    it('produces the balanced payout pair debiting tenant net and crediting gateway receivable', function (): void {
+        $legs = (new LedgerEntrySetBuilder)->payoutLegs(Money::of(9_450, 'USD'));
+
+        $byAccount = collect($legs)->keyBy(fn (LedgerLeg $leg) => $leg->account->value);
+
+        expect($legs)->toHaveCount(2)
+            ->and($byAccount['tenant_net']->direction)->toBe(LedgerDirection::Debit)
+            ->and($byAccount['tenant_net']->amount->amount)->toBe(9_450)
+            ->and($byAccount['gateway_receivable']->direction)->toBe(LedgerDirection::Credit)
+            ->and($byAccount['gateway_receivable']->amount->amount)->toBe(9_450);
+    });
 });
 
 it('persists through the LedgerEntry model with enum casts', function (): void {

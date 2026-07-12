@@ -66,6 +66,22 @@ final class LedgerEntrySetBuilder
     }
 
     /**
+     * Debit tenant_net N; credit gateway_receivable N (system-design 7.3,
+     * stage-08c plan Slice 6): the gateway's holding decreases by exactly
+     * what it pays the tenant, so the pair always balances and never
+     * needs the zero-leg omission the payment and refund sets do.
+     *
+     * @return list<LedgerLeg>
+     */
+    public function payoutLegs(Money $amount): array
+    {
+        return [
+            new LedgerLeg(LedgerAccount::TenantNet, LedgerDirection::Debit, $amount),
+            new LedgerLeg(LedgerAccount::GatewayReceivable, LedgerDirection::Credit, $amount),
+        ];
+    }
+
+    /**
      * @param  list<LedgerLeg>  $legs
      * @return list<LedgerLeg>
      */

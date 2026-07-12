@@ -44,7 +44,7 @@ class PaymentsServiceProvider extends ServiceProvider
 
         $subscribers->register(
             ProjectLedgerEntries::NAME,
-            ['PaymentConfirmed', 'RefundCompleted'],
+            ['PaymentConfirmed', 'RefundCompleted', 'PayoutExecuted'],
             $this->app->make(ProjectLedgerEntries::class),
         );
 

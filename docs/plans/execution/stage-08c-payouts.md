@@ -14,10 +14,10 @@
 - [x] T4 payments: StartSubmerchantOnboarding action, POST/list/detail endpoints, Data objects, OpenAPI, error codes, duplicate-start concurrency test (slice 2)
 - [x] T5 payments: sub-merchant webhook normalization, transition Action, refresh endpoint, concurrency and duplicate-delivery tests (slice 3)
 - [x] T6 payments: checkout offer and initiation gating on active sub-merchant, submerchant_not_active code (slice 4)
-- [ ] T7 payments: payouts migration with RLS, Payout model, PayoutStatus enum, factory, isolation tests (slice 5)
+- [x] T7 payments: payouts migration with RLS, Payout model, PayoutStatus enum, factory, isolation tests (slice 5)
 - [x] T8 payments: RecordGatewayPayout action, payout webhook normalization, PayoutExecuted event, outbox recording, concurrency test (slice 5)
-- [ ] T9 payments: payout read endpoints with cursor pagination, Data objects, OpenAPI (slice 5)
-- [ ] T10 payments: ProjectLedgerEntries subscription to PayoutExecuted, balanced entry pair, replay rebuild test (slice 6)
+- [x] T9 payments: payout read endpoints with cursor pagination, Data objects, OpenAPI (slice 5)
+- [x] T10 payments: ProjectLedgerEntries subscription to PayoutExecuted, balanced entry pair, replay rebuild test (slice 6)
 - [ ] T11 payments: ReconcilePayouts scheduled command, missed-payout creation, discrepancy flagging, activity log (slice 6)
 - [ ] T12 payments: stage exit end-to-end loop test across scripted failure modes; flip status table to Done (slice 7)
 
@@ -241,3 +241,21 @@ Test evidence (from `apps/api`):
 - `composer types:generate`: ran and committed regenerated output (`PayoutData` gained the `#[TypeScript]` attribute).
 
 No deviation from the plan's endpoint shapes, filters, or error codes. Commit: `628bf83` (`feat(payments): add cursor-paginated payout read endpoints`).
+
+#### T10: ProjectLedgerEntries subscription to PayoutExecuted (2026-07-12)
+
+Landed:
+
+- `App\Payments\Support\LedgerEntrySetBuilder::payoutLegs(Money $amount)`: the balanced two-leg pair of stage-08c plan Slice 6 (debit `tenant_net`, credit `gateway_receivable`), reusing the four-account taxonomy Stage 8b already established; no enum extension needed.
+- `App\Payments\Consumers\ProjectLedgerEntries`: added a `PayoutExecuted` branch (`applyPayoutExecuted`) that loads the `Payout` row by the payload's `payout_id` and inserts the pair with `reference_type` `payout`, `reference_id` the payout id, reusing the existing `insert()` idempotency path (`insertOrIgnore` keyed on `(source_event_id, account)`). `orderingKeyPayloadPath()` stays `payment_id`; `PayoutExecuted`'s payload has no such field, so `OrderedConsumption` falls back to envelope-aggregate ordering (aggregate type `payout`, the payout id), which is sufficient since a payout never shares an aggregate with a payment or refund.
+- `App\Payments\PaymentsServiceProvider`: `ProjectLedgerEntries` now subscribes to `PayoutExecuted` alongside `PaymentConfirmed` and `RefundCompleted`.
+- Tests first: `tests/Unit/Payments/LedgerEntriesTest.php` gained a `payoutLegs` case (balanced pair, correct direction/amount per account) and a `payout` case in the cross-set balance data provider; both confirmed failing (`payoutLegs` did not exist) before the builder method landed. `tests/Feature/Payments/PayoutLedgerProjectionTest.php` (new) covers: duplicate delivery producing exactly one balanced pair, a same-payout-aggregate successor deferred while its predecessor delivery is pending (recorded directly through `OutboxRecorder` since production never emits two `PayoutExecuted` events for one payout, to exercise the ordering fallback path), and outbox replay rebuilding identical payout ledger rows. All three confirmed failing first (`PayoutExecuted` unhandled by the projection, `match` default no-op leaving zero rows) before the consumer and provider wiring landed.
+
+Test evidence (from `apps/api`):
+
+- `php artisan test --filter="LedgerEntriesTest|PayoutLedgerProjectionTest"`: 20 passed, 56 assertions.
+- `php artisan test --filter="LedgerProjectionTest|LedgerInvariantHarnessTest|RecordGatewayPayoutTest|PayoutWebhookTest|OrderedConsumptionTest|PayoutReadTest"`: 43 passed, 225 assertions.
+- `php artisan test --testsuite=Feature --filter=Payments`: 152 passed, 811 assertions (full Payments feature regression).
+- `vendor/bin/pint --test` on all touched/new files: passed.
+
+No Data class changed (payout ledger legs flow through the existing internal `LedgerLeg`/`LedgerEntry` types, not a laravel-data object), so `composer types:generate` was not run. Also corrected two stale checklist boxes above (T7 and T9 were already landed in prior commits `b9f2163` and `628bf83` but left unchecked). No deviation from the plan's account pair, idempotency mechanism, or ordering fallback.
