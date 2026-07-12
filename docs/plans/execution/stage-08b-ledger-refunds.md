@@ -192,3 +192,15 @@ Codex review round 2 raised one important finding.
    - `apps/api/tests/Isolation/LedgerReadEndpointsIsolationTest.php`: a tenant B caller holding the financially privileged `ledger.view` (with a confirmed MFA session) never sees tenant A's row on `GET /v1/ledger-entries`, and a distinctive foreign-tenant entry in an otherwise-unused currency never sums into `GET /v1/ledger-balances`. Balances assert against a probe currency rather than an exact total because ledger rows are append-only and accumulate across the process.
 
    Verification: `php artisan test --testsuite=Isolation` green (260/260), `composer -d apps/api run lint` passed.
+
+### Review round 3
+
+2026-07-12 05:11:00 -03
+
+Codex review round 3 raised one important finding.
+
+1. important, `apps/api/app/Payments/Actions/CreateRefund.php`: full-refund detection computed `$isFullRefund` from the pre-reservation Payment snapshot loaded at the top of the request. Under concurrent partial refunds both requests read the same stale snapshot (refunded_amount before either reserved), so the request that actually reserves the final refundable amount still saw a partial and persisted `ticket_ids: []` instead of `null`, leaving the completing refund unable to void all issued tickets. Fixed by folding the full-refund decision into the guarded transaction: `reserve()` now returns the resulting `refunded_amount`, and full-refund status is `reservedTotal === payment->amount` from that reservation's own outcome. Requested-ticket validation stays outside the transaction (`assertTicketsInOrder`), but the void-all vs empty-list selection is decided inside, from the reserved state.
+
+   Test first: added `apps/api/tests/Concurrency/RefundReservationContentionTest.php` "marks exactly the payment-completing refund void-all when parallel partials race to full" - two barrier-synchronised workers each refund half of a 5000 payment; exactly one refund must carry the null (void-all) selection. Verified the test fails on the stale-snapshot logic (voidAllCount 0, expected 1) and passes on the fix.
+
+   Verification: `php artisan test --filter=Refund` green (115/115), `composer -d apps/api run lint` passed, `composer -d apps/api run analyse` passed (0 errors).
