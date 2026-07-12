@@ -9,6 +9,7 @@ use App\Orders\Enums\SigningKeyStatus;
 use App\Orders\Models\EventSigningKey;
 use App\Orders\Support\TicketCheckInStatusMapper;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Verifies a scanned QR payload against an event's stored signing keys
@@ -108,6 +109,13 @@ final class VerifyCheckInQr
         $signature = $decoded['signature'] ?? null;
 
         if (! is_string($ticketId) || ! is_string($eventId) || ! is_int($rotation) || ! is_string($signature)) {
+            return null;
+        }
+
+        // ticket_id and event_id are compared against uuid columns; a
+        // non-uuid value would raise a Postgres cast error rather than
+        // classifying, so a malformed id is treated as an invalid payload.
+        if (! Str::isUuid($ticketId) || ! Str::isUuid($eventId)) {
             return null;
         }
 

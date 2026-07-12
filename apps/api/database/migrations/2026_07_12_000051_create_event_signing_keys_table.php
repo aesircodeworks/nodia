@@ -23,7 +23,7 @@ return new class extends Migration
         Schema::create('event_signing_keys', function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->foreignUuid('tenant_id')->constrained();
-            $table->uuid('event_id');
+            $table->foreignUuid('event_id')->constrained();
             $table->integer('key_version');
             $table->text('secret');
             $table->string('status');

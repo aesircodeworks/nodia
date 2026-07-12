@@ -169,6 +169,40 @@ it('classifies a payload that cannot be decoded as qr_signature_invalid', functi
     expect($result->outcome)->toBe(QrVerificationOutcome::SignatureInvalid);
 });
 
+it('classifies a payload carrying a non-uuid event_id as qr_signature_invalid instead of erroring', function (): void {
+    [$eventId, $ticket] = verifyQrTicket($this->tenantId);
+    verifyQrKey($this->tenantId, $eventId, 1, SigningKeyStatus::Active, 'active-secret');
+
+    $body = json_encode([
+        'ticket_id' => $ticket->id,
+        'event_id' => 'not-a-uuid',
+        'rotation' => 0,
+        'signature' => hash_hmac('sha256', $ticket->id.'|not-a-uuid|0', 'active-secret'),
+    ]);
+    $payload = rtrim(strtr(base64_encode((string) $body), '+/', '-_'), '=');
+
+    $result = app(TenantTransaction::class)->asTenant($this->tenantId, fn () => verifyQr($payload));
+
+    expect($result->outcome)->toBe(QrVerificationOutcome::SignatureInvalid);
+});
+
+it('classifies a payload carrying a non-uuid ticket_id as qr_signature_invalid instead of erroring', function (): void {
+    [$eventId, $ticket] = verifyQrTicket($this->tenantId);
+    verifyQrKey($this->tenantId, $eventId, 1, SigningKeyStatus::Active, 'active-secret');
+
+    $body = json_encode([
+        'ticket_id' => 'not-a-uuid',
+        'event_id' => $eventId,
+        'rotation' => 0,
+        'signature' => hash_hmac('sha256', 'not-a-uuid|'.$eventId.'|0', 'active-secret'),
+    ]);
+    $payload = rtrim(strtr(base64_encode((string) $body), '+/', '-_'), '=');
+
+    $result = app(TenantTransaction::class)->asTenant($this->tenantId, fn () => verifyQr($payload));
+
+    expect($result->outcome)->toBe(QrVerificationOutcome::SignatureInvalid);
+});
+
 it('classifies a verified payload for an unknown ticket as ticket_not_found', function (): void {
     [$eventId, $ticket] = verifyQrTicket($this->tenantId);
     verifyQrKey($this->tenantId, $eventId, 1, SigningKeyStatus::Active, 'active-secret');

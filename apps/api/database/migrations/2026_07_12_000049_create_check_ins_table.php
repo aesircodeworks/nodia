@@ -25,7 +25,7 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->foreignUuid('tenant_id')->constrained();
             $table->foreignUuid('ticket_id')->constrained();
-            $table->uuid('event_id');
+            $table->foreignUuid('event_id')->constrained();
             $table->foreignUuid('user_id')->constrained();
             $table->string('device_id');
             $table->uuid('client_scan_id');

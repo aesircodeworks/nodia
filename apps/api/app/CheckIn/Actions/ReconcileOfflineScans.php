@@ -236,9 +236,24 @@ final class ReconcileOfflineScans
                 return $accepted;
             });
         } catch (UniqueConstraintViolationException) {
-            // Fall through: an accepted row already exists for this
-            // ticket. Re-fetched below under the same transaction so the
-            // swap decision is made against current data.
+            // Fall through: either an accepted row already exists for this
+            // ticket (a genuine cross-device swap, resolved below), or a
+            // concurrent delivery of this very (device_id, client_scan_id)
+            // won the idempotency race. Check the latter first: without it
+            // the swap path would keep re-inserting the same idempotency
+            // key, hit the (tenant_id, device_id, client_scan_id) unique
+            // index on every retry, and exhaust all attempts with a 500
+            // instead of returning the winner's persisted outcome.
+        }
+
+        $replay = CheckIn::query()
+            ->where('tenant_id', $tenantId)
+            ->where('device_id', $deviceId)
+            ->where('client_scan_id', $clientScanId)
+            ->first();
+
+        if ($replay !== null) {
+            return $replay;
         }
 
         // Everything from here on (the existing-row lock, the demote, and

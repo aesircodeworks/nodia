@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Pagination\Cursor;
 use Illuminate\Pagination\CursorPaginator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Validator;
 use Spatie\LaravelData\CursorPaginatedDataCollection;
 use Spatie\QueryBuilder\Exceptions\InvalidFilterQuery;
 
@@ -57,6 +58,13 @@ class CheckInManifestController
         }
 
         $updatedSince = $filters['updated_since'] ?? null;
+
+        if ($updatedSince !== null) {
+            Validator::make(
+                ['updated_since' => $updatedSince],
+                ['updated_since' => 'date'],
+            )->validate();
+        }
 
         $entries = ($this->buildManifest)($eventId, $updatedSince === null ? null : (string) $updatedSince);
 

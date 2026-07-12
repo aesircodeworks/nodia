@@ -175,6 +175,40 @@ it('resolves overlapping parallel batches to exactly one earliest-timestamp acce
         ->and($totalRows)->toBe(BATCH_WORKERS);
 });
 
+it('resolves concurrent delivery of the same (device_id, client_scan_id) idempotently without exhausting retries', function (): void {
+    $tenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);
+
+    ['eventId' => $eventId, 'ticketId' => $ticketId, 'userId' => $userId, 'secret' => $secret] = batchContentionFixture($tenantId);
+    $payload = batchContentionPayload($ticketId, $eventId, $secret);
+
+    $deviceId = 'retrying-device';
+    $clientScanId = (string) Str::uuid7();
+    $scannedAt = now()->subHour()->toIso8601String();
+
+    $task = function () use ($tenantId, $userId, $payload, $deviceId, $clientScanId, $scannedAt): string {
+        return app(TenantTransaction::class)->asTenant($tenantId, function () use ($userId, $payload, $deviceId, $clientScanId, $scannedAt): string {
+            $data = new ReconcileBatchData($deviceId, [
+                new OfflineScanData($clientScanId, $payload, $scannedAt),
+            ]);
+
+            $result = (app(ReconcileOfflineScans::class))($data, $userId);
+
+            return $result->results[0]->outcome->value;
+        });
+    };
+
+    $results = ParallelRunner::runEach($task, $task, $task, $task);
+
+    expect($results)->each->toBe('accepted');
+
+    [$rows, $checkedInEvents] = app(TenantTransaction::class)->asTenant($tenantId, fn () => [
+        CheckIn::query()->where('ticket_id', $ticketId)->count(),
+        OutboxEvent::query()->where('tenant_id', $tenantId)->where('type', 'TicketCheckedIn')->count(),
+    ]);
+
+    expect($rows)->toBe(1)->and($checkedInEvents)->toBe(1);
+});
+
 it('resolves a batch swap racing an online scan to the same first-scan-wins invariant', function (): void {
     $tenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);
 

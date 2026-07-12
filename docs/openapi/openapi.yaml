@@ -7818,6 +7818,7 @@ components:
           type: string
         client_scan_id:
           type: string
+          format: uuid
         scanned_at:
           type: string
           format: date-time
@@ -7953,6 +7954,7 @@ components:
       properties:
         client_scan_id:
           type: string
+          format: uuid
         qr_payload:
           type: string
         scanned_at:

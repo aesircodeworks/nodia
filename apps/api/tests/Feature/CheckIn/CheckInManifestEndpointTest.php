@@ -210,6 +210,23 @@ it('rejects an unknown filter with 400 invalid_query_parameter', function (): vo
     $response->assertJsonPath('code', 'invalid_query_parameter');
 });
 
+it('rejects an invalid filter[updated_since] timestamp with a validation problem', function (): void {
+    $fixture = manifestFixture($this->tenantId, 1);
+
+    $headers = [
+        'Authorization' => 'Bearer '.TenantStaff::token($this->tenantId, Capability::CheckinManage),
+        'X-Tenant-Id' => $this->tenantId,
+    ];
+
+    $response = test()->getJson(
+        '/v1/events/'.$fixture['event_id'].'/check-in-manifest?filter[updated_since]=not-a-date',
+        $headers,
+    );
+
+    $response->assertStatus(422);
+    $response->assertJsonPath('code', 'request.validation_failed');
+});
+
 it('renders event_not_found for an unknown event id', function (): void {
     $headers = [
         'Authorization' => 'Bearer '.TenantStaff::token($this->tenantId, Capability::CheckinManage),
