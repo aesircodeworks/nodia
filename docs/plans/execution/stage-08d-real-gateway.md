@@ -511,3 +511,18 @@ Verification: `php artisan test --filter=GatewayFixture` (23 passed);
 `composer -d apps/api run lint` passed.
 
 ### Decisions and deviations
+
+### CI
+
+CI run 2026-07-12 14:30 -03, branch `feat/api-implementation`, commit 7aafb63.
+Pre-push local gates on post-gate commits: `composer -d apps/api run lint` passed;
+scoped `php artisan test --filter="GatewayFixture|GatewayAdapterConformance|ErrorCode|RecordGatewayFixtures|PendingGatewayOfferAndInitiation|SubmerchantOnboarding"`
+(161 passed); no Data class changed, so no contract regeneration required.
+
+Triggered runs (all green):
+
+- API: 29201915228 (success), includes API Contract Drift job (no drift)
+- Checkin: 29201915216 (success)
+- Storefront: 29201915206 (success)
+- Packages: 29201915214 (success)
+- Admin: 29201915234 (success)
