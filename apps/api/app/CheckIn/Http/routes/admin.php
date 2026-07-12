@@ -17,7 +17,7 @@ use App\Http\Middleware\RequireCapability;
 use App\Identity\Capability;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/events/{event}/check-in-manifest', [CheckInManifestController::class, 'index']);
+Route::get('/events/{event}/check-in-manifest', [CheckInManifestController::class, 'index'])->whereUuid('event');
 
 // POST /v1/check-ins has no {event} route param and no single-capability
 // gate either: the target event is only known once App\CheckIn\Actions\
@@ -37,10 +37,10 @@ Route::post('/check-in-batches', [ReconcileOfflineScansController::class, 'store
 // is a top-level resource (api-conventions, URLs) so it is not nested
 // under /events/{event}.
 Route::middleware(RequireCapability::class.':'.Capability::CheckinManage->value)->group(function (): void {
-    Route::get('/events/{event}/check-in-assignments', [CheckInAssignmentController::class, 'index']);
+    Route::get('/events/{event}/check-in-assignments', [CheckInAssignmentController::class, 'index'])->whereUuid('event');
 
     Route::middleware(RecordActivityAudit::class)->group(function (): void {
-        Route::post('/events/{event}/check-in-assignments', [CheckInAssignmentController::class, 'store']);
+        Route::post('/events/{event}/check-in-assignments', [CheckInAssignmentController::class, 'store'])->whereUuid('event');
         Route::delete('/check-in-assignments/{assignment}', [CheckInAssignmentController::class, 'destroy'])->whereUuid('assignment');
     });
 });

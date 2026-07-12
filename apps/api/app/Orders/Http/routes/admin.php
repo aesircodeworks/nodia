@@ -27,10 +27,10 @@ Route::middleware([RequireCapability::class.':'.Capability::OrdersResendTickets-
 // which only App\Orders\Http\Controllers\SigningKeyController's own
 // call to CheckEventAssignment can evaluate (stage-09 plan, Endpoints
 // "GET /v1/events/{event}/signing-keys").
-Route::get('/events/{event}/signing-keys', [SigningKeyController::class, 'index']);
+Route::get('/events/{event}/signing-keys', [SigningKeyController::class, 'index'])->whereUuid('event');
 
 Route::middleware([RequireCapability::class.':'.Capability::CheckinManage->value, RecordActivityAudit::class])->group(function (): void {
-    Route::post('/events/{event}/signing-keys', [SigningKeyController::class, 'store']);
+    Route::post('/events/{event}/signing-keys', [SigningKeyController::class, 'store'])->whereUuid('event');
 });
 
 Route::middleware(RequireCapability::class.':'.Capability::PromoCodesManage->value)->group(function (): void {

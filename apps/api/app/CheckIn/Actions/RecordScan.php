@@ -48,8 +48,9 @@ use RuntimeException;
  * always commit even though the call still raises 409 to the caller
  * (system-design 11, "flag, never drop"; stage-09 plan, Open questions
  * "ticket_already_checked_in as 409-with-side-effect"). A replay of the
- * same (device_id, client_scan_id) short-circuits before verification,
- * returning the original persisted result and recording nothing new.
+ * same (device_id, client_scan_id) short-circuits only after the QR is
+ * verified and the caller is authorized for the verified event, returning
+ * the original persisted result and recording nothing new.
  */
 final class RecordScan
 {
@@ -71,16 +72,6 @@ final class RecordScan
     {
         $tenantId = $this->tenantContext->tenantId();
 
-        $replay = CheckIn::query()
-            ->where('tenant_id', $tenantId)
-            ->where('device_id', $data->deviceId)
-            ->where('client_scan_id', $data->clientScanId)
-            ->first();
-
-        if ($replay !== null) {
-            return new RecordScanOutcome(CheckInResultData::fromModel($replay), wasReplay: true);
-        }
-
         $scannedAt = CarbonImmutable::parse($data->scannedAt);
 
         if ($scannedAt->greaterThan(CarbonImmutable::instance(Date::now())->addMinutes(self::FUTURE_TOLERANCE_MINUTES))) {
@@ -97,6 +88,19 @@ final class RecordScan
         $eventId = $verification->eventId;
 
         $this->assertAuthorized($userId, $eventId);
+
+        // Replay short-circuit only after the QR is verified and the caller
+        // is authorized for the verified event, so a replay never leaks a
+        // stored result to an unauthorized or unassigned caller.
+        $replay = CheckIn::query()
+            ->where('tenant_id', $tenantId)
+            ->where('device_id', $data->deviceId)
+            ->where('client_scan_id', $data->clientScanId)
+            ->first();
+
+        if ($replay !== null) {
+            return new RecordScanOutcome(CheckInResultData::fromModel($replay), wasReplay: true);
+        }
 
         [$result, $checkIn, $problem, $wasReplay] = DB::transaction(function () use ($tenantId, $ticketId, $eventId, $userId, $data, $scannedAt): array {
             $checkInId = (string) Str::uuid7();

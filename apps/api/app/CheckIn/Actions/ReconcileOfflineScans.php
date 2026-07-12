@@ -104,16 +104,6 @@ final class ReconcileOfflineScans
      */
     private function resolveOne(string $tenantId, string $deviceId, string $userId, array $capabilities, OfflineScanData $scan): ScanOutcomeData
     {
-        $replay = CheckIn::query()
-            ->where('tenant_id', $tenantId)
-            ->where('device_id', $deviceId)
-            ->where('client_scan_id', $scan->clientScanId)
-            ->first();
-
-        if ($replay !== null) {
-            return $this->outcomeFromRow($scan->clientScanId, $replay);
-        }
-
         $scannedAt = CarbonImmutable::parse($scan->scannedAt);
 
         if ($scannedAt->greaterThan(CarbonImmutable::instance(Date::now())->addMinutes(self::FUTURE_TOLERANCE_MINUTES))) {
@@ -140,6 +130,19 @@ final class ReconcileOfflineScans
 
         if (! $assignment->authorized) {
             return $this->rejected($scan->clientScanId, ErrorCode::CheckinNotAssigned);
+        }
+
+        // Replay lookup only after the QR is verified and the caller is
+        // assigned to the verified event, so a scanner assigned to event B
+        // can never replay a stored scan from event A.
+        $replay = CheckIn::query()
+            ->where('tenant_id', $tenantId)
+            ->where('device_id', $deviceId)
+            ->where('client_scan_id', $scan->clientScanId)
+            ->first();
+
+        if ($replay !== null) {
+            return $this->outcomeFromRow($scan->clientScanId, $replay);
         }
 
         return $this->resolveAgainstExisting($tenantId, $ticketId, $eventId, $userId, $deviceId, $scan->clientScanId, $scannedAt);

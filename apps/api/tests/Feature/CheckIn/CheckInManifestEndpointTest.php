@@ -238,6 +238,16 @@ it('renders event_not_found for an unknown event id', function (): void {
     $response->assertJsonPath('code', 'event_not_found');
 });
 
+it('returns 404 for a malformed non-uuid event id via the route constraint', function (): void {
+    $headers = [
+        'Authorization' => 'Bearer '.TenantStaff::token($this->tenantId, Capability::CheckinManage),
+        'X-Tenant-Id' => $this->tenantId,
+    ];
+
+    $response = test()->getJson('/v1/events/not-a-uuid/check-in-manifest', $headers);
+    $response->assertStatus(404);
+});
+
 describe('scoping matrix', function (): void {
     it('allows a checkin.scan caller assigned to event A but rejects them on event B', function (): void {
         $eventA = manifestFixture($this->tenantId, 1)['event_id'];

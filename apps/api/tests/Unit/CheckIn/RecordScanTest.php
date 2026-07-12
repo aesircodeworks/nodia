@@ -171,6 +171,26 @@ it('authorizes a checkin.manage caller with no assignment row', function (): voi
         ->and($result->data->result->value)->toBe('accepted');
 });
 
+it('denies an unauthorized caller replaying a stored scan instead of leaking the stored result', function (): void {
+    ['eventId' => $eventId, 'ticketId' => $ticketId] = unitScanFixture($this->tenantId);
+    $manager = unitScanManager($this->tenantId);
+    $payload = unitScanPayload($ticketId, $eventId);
+    $deviceId = 'device-1';
+    $clientScanId = (string) Str::uuid7();
+
+    app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => (app(RecordScan::class))(new RecordScanData($payload, $deviceId, $clientScanId, now()->toIso8601String()), $manager),
+    );
+
+    $intruder = User::factory()->create();
+
+    app(TenantTransaction::class)->asTenant($this->tenantId, function () use ($payload, $deviceId, $clientScanId, $intruder): void {
+        expect(fn () => (app(RecordScan::class))(new RecordScanData($payload, $deviceId, $clientScanId, now()->toIso8601String()), $intruder->id))
+            ->toThrow(CheckinNotAssignedException::class);
+    });
+});
+
 it('denies a caller with no checkin capability at all', function (): void {
     ['eventId' => $eventId, 'ticketId' => $ticketId] = unitScanFixture($this->tenantId);
     $user = User::factory()->create();

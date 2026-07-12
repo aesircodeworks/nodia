@@ -132,6 +132,47 @@ function unitBatchManager(string $tenantId): string
     return $user->id;
 }
 
+function unitBatchScanner(string $tenantId): string
+{
+    $user = User::factory()->create();
+
+    app(TenantTransaction::class)->asTenant($tenantId, function () use ($user, $tenantId): void {
+        Membership::factory()->create([
+            'user_id' => $user->id,
+            'tenant_id' => $tenantId,
+            'role_id' => Role::factory()->create([
+                'tenant_id' => $tenantId,
+                'capabilities' => [Capability::CheckinScan->value],
+            ])->id,
+            'scope' => MembershipScope::Tenant,
+        ]);
+    });
+
+    return $user->id;
+}
+
+it('rejects an unassigned scanner replaying a stored scan instead of leaking the stored outcome', function (): void {
+    ['eventId' => $eventId, 'ticketId' => $ticketId] = unitBatchFixture($this->tenantId);
+    $manager = unitBatchManager($this->tenantId);
+    $scanner = unitBatchScanner($this->tenantId);
+    $payload = unitBatchPayload($ticketId, $eventId);
+    $deviceId = 'device-shared';
+    $clientScanId = (string) Str::uuid7();
+
+    $result = app(TenantTransaction::class)->asTenant($this->tenantId, function () use ($payload, $manager, $scanner, $deviceId, $clientScanId): BatchResultData {
+        (app(ReconcileOfflineScans::class))(new ReconcileBatchData($deviceId, [
+            new OfflineScanData($clientScanId, $payload, now()->subMinutes(5)->toIso8601String()),
+        ]), $manager);
+
+        return (app(ReconcileOfflineScans::class))(new ReconcileBatchData($deviceId, [
+            new OfflineScanData($clientScanId, $payload, now()->subMinutes(5)->toIso8601String()),
+        ]), $scanner);
+    });
+
+    expect($result->results[0]->outcome)->toBe(ScanOutcome::Rejected)
+        ->and($result->results[0]->code)->toBe('checkin_not_assigned');
+});
+
 it('demotes the currently accepted row and swaps in an earlier-timestamped scan', function (): void {
     ['eventId' => $eventId, 'ticketId' => $ticketId] = unitBatchFixture($this->tenantId);
     $userId = unitBatchManager($this->tenantId);
