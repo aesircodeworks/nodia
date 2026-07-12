@@ -555,6 +555,21 @@ export type PromoCodeData = {
   created_at: string;
 };
 export type PromoCodeDiscountType = 'percentage' | 'fixed_amount';
+export type QrVerificationOutcome =
+  | 'valid'
+  | 'qr_signature_invalid'
+  | 'qr_key_revoked'
+  | 'ticket_rotation_stale'
+  | 'ticket_not_found'
+  | 'ticket_canceled'
+  | 'ticket_refunded'
+  | 'ticket_status_unknown';
+export type QrVerificationResultData = {
+  outcome: QrVerificationOutcome;
+  ticket_id: string | null;
+  event_id: string | null;
+  rotation_counter: number | null;
+};
 export type RefreshTokenRequestData = {
   refresh_token: string;
 };
@@ -738,6 +753,12 @@ export type TicketData = {
   issued_at: string;
   qr_payload: string;
 };
+export type TicketManifestEntryData = {
+  ticket_id: string;
+  status: string;
+  rotation_counter: number;
+  updated_at: string;
+};
 export type TicketStatus = 'issued' | 'canceled' | 'refunded';
 export type TicketTypeAvailabilityData = {
   ticket_type_id: string;
@@ -852,5 +873,8 @@ export type VenueData = {
   capacity: number;
   created_at: string;
   updated_at: string;
+};
+export type VerifyCheckInQrData = {
+  qr_payload: string;
 };
 export type WebhookKind = 'confirmed' | 'failed' | 'refund_completed' | 'refund_failed';

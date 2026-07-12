@@ -75,6 +75,7 @@ use App\Inventory\Exceptions\TicketTypeNotInEventException;
 use App\Inventory\InventoryServiceProvider;
 use App\Orders\Enums\OrderStatus;
 use App\Orders\Enums\PromoCodeDiscountType;
+use App\Orders\Enums\QrVerificationOutcome;
 use App\Orders\Enums\SigningKeyStatus;
 use App\Orders\Enums\TicketStatus;
 use App\Orders\Exceptions\HoldAlreadyConvertedException;
@@ -221,6 +222,9 @@ arch()->preset()->security();
 // OrderStatus, TicketStatus, and PromoCodeDiscountType (stage-07 task-01)
 // are Orders' own status registries and live with their bounded context
 // like HoldStatus and EventStatus, not App\Enums.
+// QrVerificationOutcome (stage-09 task-08) is VerifyCheckInQr's typed
+// result registry and lives with Orders like SigningKeyStatus, not
+// App\Enums.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -234,6 +238,7 @@ arch()->preset()->laravel()->ignoring([
     TicketStatus::class,
     PromoCodeDiscountType::class,
     SigningKeyStatus::class,
+    QrVerificationOutcome::class,
     PaymentStatus::class,
     PaymentMethodConfirmation::class,
     GatewayWebhookStatus::class,
