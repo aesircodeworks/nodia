@@ -402,4 +402,50 @@ Run at Sun Jul 12 13:44:51 -03 2026, full local quality gates after stage
 
 ### Review rounds
 
+#### Review round 1 (2026-07-12 13:51 -03, Codex)
+
+Six findings (1 blocking, 5 important):
+
+1. (blocking) `tests/Unit/Problems/ErrorCodeTest.php` -- registry test missing
+   `gateway_not_configured`. No change needed: already fixed and committed in
+   `ee1a0df` / `1d79018` before this round; the registry list (line 102) and the
+   status/title/type dataset row (line 202) are both present and the test passes
+   on a clean checkout. The finding described an earlier unstaged-worktree state.
+2. (important) `app/Payments/Actions/InitiatePayment.php` `offeredMethod()` --
+   any enabled empty-capability (skeleton) adapter forced `gateway_not_configured`
+   even when a genuinely configured gateway was also enabled but did not serve the
+   requested method. Fixed: `gateway_not_configured` now fires only when *every*
+   enabled gateway is an unconfigured skeleton; if any configured gateway is
+   present the method is genuinely off-offer and the generic 422
+   `payment_method_not_available` is returned. Added a feature test asserting a
+   `['fake','pending']` tenant requesting `sepa` gets 422, not 409.
+3. (important) `tests/Support/Payments/conformance.php` -- idempotency test only
+   compared references, never verified the gateway idempotency key was
+   transmitted. Fixed: added an `assertIdempotencyKeyTransmitted` closure to the
+   conformance context, called from the suite; the FakeGateway binding asserts the
+   server-generated key (payment id) reached the gateway via the derived
+   reference. An HTTP-backed adapter supplies the same closure asserting the
+   Idempotency-Key header on the recorded outbound request.
+4. (important) `app/Payments/Support/Fixtures/GatewayFixtureLoader.php` -- fixture
+   matching ignored request headers, so the harness could not assert
+   Idempotency-Key (or other required header) transmission. Fixed: added header
+   matching to `matches()` (every fixture-declared header must be present with a
+   matching value); added an `Idempotency-Key` header to the examplegw fixture and
+   a loader test proving a request lacking it fails as not-covered.
+5. (important) `app/Payments/Support/Fixtures/GatewayFixtureDriftDetector.php` --
+   recorders return raw exchanges while committed fixtures are stored sanitized,
+   so redacted credential values registered as false-positive drift. Fixed: the
+   detector now redacts each live exchange through `GatewayFixtureSanitizer`
+   before diffing; added a unit test proving a raw bearer token in the live
+   response matches the redacted committed fixture with no drift.
+6. (important) `app/Console/Commands/RecordGatewayFixturesCommand.php` --
+   refreshing a scenario left stale higher-index fixtures behind. Fixed: the
+   command deletes existing `{scenario}-*.json` files before writing the fresh
+   set; added a feature test recording two exchanges over five stale files and
+   asserting only the two fresh files (plus an unrelated scenario) survive.
+
+Verification: `php artisan test --filter="GatewayFixtureLoader|GatewayFixtureDriftDetector|GatewayAdapterConformance|ErrorCode|RecordGatewayFixtures"`
+(111 passed) and `--filter=PendingGatewayOfferAndInitiation` (3 passed);
+`composer -d apps/api run lint` passed.
+
 ### Decisions and deviations
