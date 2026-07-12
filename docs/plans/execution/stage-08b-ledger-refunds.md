@@ -117,3 +117,23 @@ Run 1 landed T1 through T12 (commits 5a38340 through d38cc55). T13's implementat
 ### Review rounds
 
 ### Decisions and deviations
+
+## Run 3
+
+- Stage: 8b (docs/plans/stage-08b-ledger-refunds.md)
+- Date: 2026-07-12 00:09 -03
+- Branch: feat/api-implementation
+- Base commit: 0d4625ce0aac5cf28096ca7725b15d2e00c3587b
+
+Run 2 recorded its header and stopped before executing tasks. Verified against the codebase: T1 through T12 are committed (5a38340 through d38cc55); T13's implementation is still uncommitted in the working tree (RefundAndLedgerReadTest, LedgerController, LedgerEntryData, LedgerBalanceData, RefundNotFoundException, OpenAPI and generated-type changes); T14 has not started. This run picks up the same two remaining tasks.
+
+### Task checklist
+
+- [ ] T13: finish and land the read endpoints: refund show and list, ledger entries with cursor pagination, ledger balances; contract, isolation, and drift gates green (slice 8)
+- [ ] T14: balance invariant scenario harness; roadmap and master-plan status table updates (slice 9)
+
+### Task entries
+
+### Review rounds
+
+### Decisions and deviations
