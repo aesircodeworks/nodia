@@ -7,7 +7,9 @@ use App\Inventory\Actions\GetEventAvailability;
 use App\Inventory\Data\TicketTypeAvailabilityData;
 use App\Orders\Data\OrderPaymentContextData;
 use App\Payments\Data\PaymentMethodOfferData;
+use App\Payments\Enums\SubmerchantStatus;
 use App\Payments\Gateways\GatewayRegistry;
+use App\Payments\Models\SubmerchantAccount;
 use App\Payments\Support\CircuitBreaker;
 use App\Payments\Support\OfferAssembler;
 use App\Support\Tenancy\TenantContext;
@@ -38,11 +40,15 @@ final class BuildPaymentMethodOffer
      * instead of degrading the whole checkout (system-design 13);
      * initiation passes false so it can distinguish an open breaker
      * (503 gateway_unavailable) from a method that was never offered
-     * (422 payment_method_not_available).
+     * (422 payment_method_not_available). $requireActiveSubmerchant
+     * defaults to true (system-design 7.3, stage-08c plan Slice 4);
+     * initiation passes false on a second pass to tell a method
+     * withheld only by an inactive sub-merchant apart from one that
+     * was never offered at all.
      *
      * @return list<PaymentMethodOfferData>
      */
-    public function __invoke(OrderPaymentContextData $order, bool $excludeOpenBreakers = true): array
+    public function __invoke(OrderPaymentContextData $order, bool $excludeOpenBreakers = true, bool $requireActiveSubmerchant = true): array
     {
         $capabilities = [];
 
@@ -68,7 +74,23 @@ final class BuildPaymentMethodOffer
             ($this->asyncPaymentPolicy)($order->eventId),
             $this->remainingInventory($order->eventId),
             (int) config('payments.low_inventory_cutoff'),
+            $this->submerchantActiveByGateway(array_keys($capabilities)),
+            $requireActiveSubmerchant,
         );
+    }
+
+    /**
+     * @param  list<string>  $gateways
+     * @return array<string, bool>
+     */
+    private function submerchantActiveByGateway(array $gateways): array
+    {
+        return SubmerchantAccount::query()
+            ->where('tenant_id', (string) $this->tenantContext->tenantId())
+            ->whereIn('gateway', $gateways)
+            ->pluck('status', 'gateway')
+            ->map(fn (SubmerchantStatus $status): bool => $status === SubmerchantStatus::Active)
+            ->all();
     }
 
     private function remainingInventory(string $eventId): int

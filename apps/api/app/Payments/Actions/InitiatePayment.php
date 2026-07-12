@@ -17,6 +17,7 @@ use App\Payments\Exceptions\GatewayUnavailableException;
 use App\Payments\Exceptions\IdempotencyKeyReuseMismatchException;
 use App\Payments\Exceptions\OrderNotPayableException;
 use App\Payments\Exceptions\PaymentMethodNotAvailableException;
+use App\Payments\Exceptions\SubmerchantNotActiveException;
 use App\Payments\Gateways\GatewayPaymentOutcome;
 use App\Payments\Gateways\GatewayPaymentRequest;
 use App\Payments\Gateways\GatewayRegistry;
@@ -139,11 +140,23 @@ final class InitiatePayment
         return new PaymentInitiationResult($existing, replayed: true, declined: false);
     }
 
+    /**
+     * A method absent because its gateway's sub-merchant is not active
+     * (stage-08c plan, Slice 4; system-design 7.3) is a distinct 409
+     * rather than the generic 422 payment_method_not_available: a second
+     * pass with sub-merchant gating disabled tells the two cases apart.
+     */
     private function offeredMethod(OrderPaymentContextData $order, string $method): PaymentMethodOfferData
     {
         foreach (($this->buildOffer)($order, excludeOpenBreakers: false) as $item) {
             if ($item->method === $method) {
                 return $item;
+            }
+        }
+
+        foreach (($this->buildOffer)($order, excludeOpenBreakers: false, requireActiveSubmerchant: false) as $item) {
+            if ($item->method === $method) {
+                throw SubmerchantNotActiveException::forGateway($item->gateway);
             }
         }
 

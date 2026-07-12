@@ -22,6 +22,11 @@ final class OfferAssembler
      * (system-design 7.3): without an active Sub-merchant account the
      * gateway cannot split the charge, so its methods are withheld. A
      * gateway missing from the map is treated as not active.
+     * $requireActiveSubmerchant lets a caller ask for the offer as if
+     * every gateway's sub-merchant were active (stage-08c plan, Slice 4):
+     * initiation uses this to tell a method genuinely absent from the
+     * offer (payment_method_not_available) apart from one withheld only
+     * by an inactive sub-merchant (submerchant_not_active).
      *
      * @param  array<string, GatewayCapabilities>  $capabilitiesByGateway
      * @param  array<string, bool>  $submerchantActiveByGateway
@@ -34,6 +39,7 @@ final class OfferAssembler
         int $remainingInventory,
         int $defaultCutoff,
         array $submerchantActiveByGateway = [],
+        bool $requireActiveSubmerchant = true,
     ): array {
         $offer = [];
 
@@ -42,7 +48,7 @@ final class OfferAssembler
                 continue;
             }
 
-            if ($capabilities->splitSupport && ! ($submerchantActiveByGateway[$gateway] ?? false)) {
+            if ($requireActiveSubmerchant && $capabilities->splitSupport && ! ($submerchantActiveByGateway[$gateway] ?? false)) {
                 continue;
             }
 

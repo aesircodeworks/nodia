@@ -100,6 +100,7 @@ test('the registry holds exactly the known codes', function () {
         'gateway_unknown',
         'gateway_not_enabled',
         'submerchant_already_onboarded',
+        'submerchant_not_active',
     ]);
 });
 
@@ -198,6 +199,7 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'gateway_unknown' => [ErrorCode::GatewayUnknown, 422, 'Gateway unknown', '/problems/gateway-unknown'],
     'gateway_not_enabled' => [ErrorCode::GatewayNotEnabled, 409, 'Gateway not enabled', '/problems/gateway-not-enabled'],
     'submerchant_already_onboarded' => [ErrorCode::SubmerchantAlreadyOnboarded, 409, 'Submerchant already onboarded', '/problems/submerchant-already-onboarded'],
+    'submerchant_not_active' => [ErrorCode::SubmerchantNotActive, 409, 'Submerchant not active', '/problems/submerchant-not-active'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

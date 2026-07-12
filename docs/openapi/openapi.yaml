@@ -5293,9 +5293,10 @@ paths:
                 $ref: '#/components/schemas/NotFoundProblem'
         '409':
           description: >-
-            The order is not pending (code order_not_payable) or the key
+            The order is not pending (code order_not_payable), the key
             was reused with a different payload (code
-            idempotency_key_reuse_mismatch).
+            idempotency_key_reuse_mismatch), or the method's gateway has
+            no active sub-merchant account (code submerchant_not_active).
           content:
             application/problem+json:
               schema:
@@ -7459,8 +7460,10 @@ components:
     PaymentInitiationConflictProblem:
       description: >-
         Problem document for payment initiation conflicts (stage-08a
-        plan, Endpoints): the order is not pending, or the
-        Idempotency-Key was reused with a different payload.
+        plan, Endpoints; stage-08c plan, Slice 4): the order is not
+        pending, the Idempotency-Key was reused with a different
+        payload, or the requested method's gateway has no active
+        sub-merchant account.
       allOf:
         - $ref: '#/components/schemas/Problem'
         - type: object
@@ -7470,7 +7473,7 @@ components:
               enum: [409]
             code:
               type: string
-              enum: [order_not_payable, idempotency_key_reuse_mismatch]
+              enum: [order_not_payable, idempotency_key_reuse_mismatch, submerchant_not_active]
       unevaluatedProperties: false
     PaymentMethodNotAvailableProblem:
       description: >-

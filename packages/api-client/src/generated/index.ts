@@ -257,7 +257,8 @@ export type ErrorCode =
   | 'refund_tickets_not_in_order'
   | 'gateway_unknown'
   | 'gateway_not_enabled'
-  | 'submerchant_already_onboarded';
+  | 'submerchant_already_onboarded'
+  | 'submerchant_not_active';
 export type EventAvailabilityData = {
   event_id: string;
   ticket_types: TicketTypeAvailabilityData[];

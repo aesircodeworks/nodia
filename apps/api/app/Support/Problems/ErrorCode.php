@@ -103,6 +103,7 @@ enum ErrorCode: string
     case GatewayUnknown = 'gateway_unknown';
     case GatewayNotEnabled = 'gateway_not_enabled';
     case SubmerchantAlreadyOnboarded = 'submerchant_already_onboarded';
+    case SubmerchantNotActive = 'submerchant_not_active';
 
     public function status(): int
     {
@@ -203,6 +204,7 @@ enum ErrorCode: string
             self::GatewayUnknown => 422,
             self::GatewayNotEnabled => 409,
             self::SubmerchantAlreadyOnboarded => 409,
+            self::SubmerchantNotActive => 409,
         };
     }
 
@@ -305,6 +307,7 @@ enum ErrorCode: string
             self::GatewayUnknown => 'Gateway unknown',
             self::GatewayNotEnabled => 'Gateway not enabled',
             self::SubmerchantAlreadyOnboarded => 'Submerchant already onboarded',
+            self::SubmerchantNotActive => 'Submerchant not active',
         };
     }
 

@@ -112,6 +112,7 @@ use App\Payments\Exceptions\RefundPaymentNotFoundException;
 use App\Payments\Exceptions\RefundTicketsNotInOrderException;
 use App\Payments\Exceptions\SubmerchantAccountNotFoundException;
 use App\Payments\Exceptions\SubmerchantAlreadyOnboardedException;
+use App\Payments\Exceptions\SubmerchantNotActiveException;
 use App\Payments\Exceptions\UnbalancedLedgerEntrySetException;
 use App\Payments\Exceptions\WebhookSignatureInvalidException;
 use App\Payments\Exceptions\WebhookUnparseableException;
@@ -346,6 +347,7 @@ arch()->preset()->laravel()->ignoring([
     GatewayUnknownException::class,
     GatewayNotEnabledException::class,
     SubmerchantAlreadyOnboardedException::class,
+    SubmerchantNotActiveException::class,
     SubmerchantAccountNotFoundException::class,
     OrderHoldExpiredException::class,
     HoldAlreadyConvertedException::class,
