@@ -269,3 +269,17 @@ Codex review of Stage 9, round 2. Six findings (one blocking, five important); a
 Test evidence: `php artisan test --filter="Constraints|Reconcile|RecordScan"` (61 passed); `php artisan test --filter="VerifyCheckInQr|CheckInManifest"` (25 passed); `php artisan test --testsuite=Concurrency --filter=CheckInBatchReconciliation` (3 passed); `php artisan test --testsuite=Isolation --filter="CheckIn|EventSigningKey|RecordScan"` (27 passed); `php artisan test --testsuite=Feature --filter="CheckIn|Orders|Documented|ResponseSchema"` (178 passed); `composer -d apps/api run lint` (Pint, passed). No Data class changed, so no `types:generate` drift.
 
 Declined findings: none.
+
+## Review round 3 (2026-07-12 18:11:41 -03)
+
+Codex review of Stage 9, round 3. Three important findings; all addressed in code, none declined.
+
+1. (Important) `App\CheckIn\Actions\RecordScan` returned the stored check-in on an idempotent `(device_id, client_scan_id)` replay before verifying the QR or authorizing the caller, so a member lacking `checkin.scan`, or a scanner not assigned to the verified event, could replay a known key and receive ticket/event/check-in data with 200. Fixed: moved the replay short-circuit to after `assertVerified()` and `assertAuthorized()`, so a replay only returns once the QR is verified and the caller is authorized for the verified event. Added a unit test proving an unauthorized replayer gets `CheckinNotAssignedException` instead of the stored result.
+
+2. (Important) `App\CheckIn\Actions\ReconcileOfflineScans::resolveOne` performed the per-scan replay lookup before QR verification and the per-scan event-assignment check, so a scanner assigned to event B could replay a stored scan from event A (the envelope gate only proves some check-in capability). Fixed: moved the replay lookup to after verification and the `CheckEventAssignment` check. Added a unit test where a `checkin.scan` scanner unassigned to the event replays a manager-recorded scan and gets a `rejected` outcome with code `checkin_not_assigned`.
+
+3. (Important) The `{event}` routes lacked a `whereUuid('event')` constraint, so a malformed event id reached UUID DB comparisons and could raise a Postgres cast error (500) instead of a route-level 404. Fixed: added `->whereUuid('event')` to the check-in manifest and check-in-assignments routes in `app/CheckIn/Http/routes/admin.php` and to the signing-keys GET/POST routes in `app/Orders/Http/routes/admin.php`. Added a feature test asserting a non-UUID event id yields 404 on the manifest route.
+
+Test evidence: `php artisan test tests/Unit/CheckIn/RecordScanTest.php tests/Unit/CheckIn/ReconcileOfflineScansTest.php tests/Feature/CheckIn/CheckInManifestEndpointTest.php` (20 passed); `composer -d apps/api run lint` (Pint, passed). No Data class changed, so no `types:generate` drift.
+
+Declined findings: none.
