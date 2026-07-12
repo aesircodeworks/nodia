@@ -27,6 +27,7 @@ use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
@@ -58,6 +59,10 @@ afterEach(function (): void {
     // blanket User::query()->delete() the same way a stale memberships row
     // would (see the comment below).
     DB::table('mfa_recovery_codes')->delete();
+
+    // ledger_entries is append-only (DELETE raises); the ledger exercisers
+    // seed rows, so teardown truncates on the owning test connection.
+    DB::statement('truncate ledger_entries');
 
     // contractPlatformBearer() recreates its membership and role idempotently
     // per call (its own docblock), so deleting them here every test is safe
@@ -3437,6 +3442,118 @@ function documentedResponseExercisers(): array
 
             return contractCreateRefund($fixture, ['amount' => ['amount' => 100, 'currency' => 'BRL']], (string) Str::uuid7());
         },
+        'get /v1/refunds 200' => function (): TestResponse {
+            $fixture = contractConfirmedPayment();
+
+            contractCreateRefund($fixture, ['amount' => ['amount' => 100, 'currency' => 'USD']], (string) Str::uuid7());
+
+            Auth::forgetGuards();
+
+            return test()->getJson('/v1/refunds', [
+                'Authorization' => 'Bearer '.contractVenueBearer($fixture['tenant'], ['orders.view']),
+                'X-Tenant-Id' => $fixture['tenant']->id,
+            ]);
+        },
+        'get /v1/refunds 400' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->getJson('/v1/refunds?filter[bogus]=1', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['orders.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/refunds 401' => function (): TestResponse {
+            return test()->getJson('/v1/refunds');
+        },
+        'get /v1/refunds 403' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->getJson('/v1/refunds', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/refunds/{refund} 200' => function (): TestResponse {
+            $fixture = contractConfirmedPayment();
+
+            $refundId = contractCreateRefund($fixture, ['amount' => ['amount' => 100, 'currency' => 'USD']], (string) Str::uuid7())->json('id');
+
+            Auth::forgetGuards();
+
+            return test()->getJson('/v1/refunds/'.$refundId, [
+                'Authorization' => 'Bearer '.contractVenueBearer($fixture['tenant'], ['orders.view']),
+                'X-Tenant-Id' => $fixture['tenant']->id,
+            ]);
+        },
+        'get /v1/refunds/{refund} 401' => function (): TestResponse {
+            return test()->getJson('/v1/refunds/'.Str::uuid7());
+        },
+        'get /v1/refunds/{refund} 403' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->getJson('/v1/refunds/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/refunds/{refund} 404' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->getJson('/v1/refunds/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['orders.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/ledger-entries 200' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            contractSeedLedgerEntry($tenant);
+
+            return test()->getJson('/v1/ledger-entries', [
+                'Authorization' => 'Bearer '.contractLedgerBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/ledger-entries 400' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->getJson('/v1/ledger-entries?sort=amount', [
+                'Authorization' => 'Bearer '.contractLedgerBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/ledger-entries 401' => function (): TestResponse {
+            return test()->getJson('/v1/ledger-entries');
+        },
+        'get /v1/ledger-entries 403' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->getJson('/v1/ledger-entries', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['orders.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/ledger-balances 200' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            contractSeedLedgerEntry($tenant);
+
+            return test()->getJson('/v1/ledger-balances', [
+                'Authorization' => 'Bearer '.contractLedgerBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/ledger-balances 401' => function (): TestResponse {
+            return test()->getJson('/v1/ledger-balances');
+        },
+        'get /v1/ledger-balances 403' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->getJson('/v1/ledger-balances', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['orders.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
         'post /v1/webhooks/{gateway} 401' => function (): TestResponse {
             $delivery = app(FakeGateway::class)->confirmationWebhook('fake_contract_ref', Money::of(125, 'USD'));
 
@@ -3514,6 +3631,53 @@ function contractPostWebhook(string $gateway, string $body, string $signature): 
         'HTTP_ACCEPT' => 'application/json',
         'HTTP_X_FAKE_SIGNATURE' => $signature,
     ], $body);
+}
+
+/**
+ * A staff bearer holding ledger.view with confirmed MFA, since the
+ * capability is financially privileged (stage-08b plan, Endpoints).
+ */
+function contractLedgerBearer(Tenant $tenant): string
+{
+    $user = User::factory()->create();
+
+    $response = test()->postJson('/v1/auth/staff/token', [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    $user->forceFill(['mfa_enabled' => true, 'mfa_confirmed_at' => now()])->save();
+
+    app(TenantTransaction::class)->asTenant($tenant->id, function () use ($user, $tenant): void {
+        Membership::factory()->create([
+            'user_id' => $user->id,
+            'tenant_id' => $tenant->id,
+            'role_id' => Role::factory()->create(['tenant_id' => $tenant->id, 'capabilities' => ['ledger.view']])->id,
+            'scope' => MembershipScope::Tenant,
+        ]);
+    });
+
+    /** @var string $token */
+    return $response->json('access_token');
+}
+
+function contractSeedLedgerEntry(Tenant $tenant): void
+{
+    app(TenantTransaction::class)->asTenant($tenant->id, function () use ($tenant): void {
+        DB::table('ledger_entries')->insert([
+            'id' => Str::uuid7()->toString(),
+            'tenant_id' => $tenant->id,
+            'account' => 'tenant_net',
+            'direction' => 'credit',
+            'amount' => 1000,
+            'currency' => 'USD',
+            'reference_type' => 'payment',
+            'reference_id' => Str::uuid7()->toString(),
+            'source_event_id' => Str::uuid7()->toString(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    });
 }
 
 /**

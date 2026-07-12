@@ -7,10 +7,10 @@ use App\Identity\Models\Customer;
 use App\Inventory\Actions\CreateHold;
 use App\Inventory\Data\CreateHoldData;
 use App\Inventory\Models\TicketTypeInventory;
+use App\Orders\Models\Order;
 use App\Payments\Actions\ConfirmPayment;
 use App\Payments\Consumers\ProjectLedgerEntries;
 use App\Payments\Enums\PaymentStatus;
-use App\Payments\Models\LedgerEntry;
 use App\Payments\Models\Payment;
 use App\Support\Money\Money;
 use App\Support\Outbox\Jobs\ProcessOutboxDelivery;
@@ -49,7 +49,7 @@ beforeEach(function (): void {
         $customer = Customer::factory()->create(['tenant_id' => $this->tenantId]);
         $event = Event::factory()->create(['tenant_id' => $this->tenantId]);
 
-        return App\Orders\Models\Order::factory()->create([
+        return Order::factory()->create([
             'tenant_id' => $this->tenantId,
             'customer_id' => $customer->id,
             'event_id' => $event->id,

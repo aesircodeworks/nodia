@@ -59,6 +59,7 @@ final readonly class ReconcilePendingPayments
         $applied = $this->transactions->asTenant($candidate->tenant_id, fn (): ?Payment => match ($outcome->kind) {
             WebhookKind::Confirmed => ($this->confirmPayment)($candidate->id, $outcome->fee),
             WebhookKind::Failed => ($this->failPayment)($candidate->id, (string) $outcome->failureCode),
+            WebhookKind::RefundCompleted, WebhookKind::RefundFailed => null,
         });
 
         return $applied !== null;

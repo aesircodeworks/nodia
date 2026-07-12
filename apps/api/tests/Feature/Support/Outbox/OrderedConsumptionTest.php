@@ -18,6 +18,7 @@ use Illuminate\Support\Str;
 use Tests\Support\MigratedDatabase;
 use Tests\Support\Outbox\FixtureDomainEvent;
 use Tests\Support\Outbox\FixtureDomainEventPayload;
+use Tests\Support\Outbox\KeyedOrderedTestSubscriber;
 use Tests\Support\Outbox\OrderedTestSubscriber;
 use Tests\Support\PostgresTestDatabase;
 
@@ -250,7 +251,7 @@ it('completes without releasing on the final attempt so the sweeper can re-enque
 
 function runKeyedOrderedJob(string $eventId): ProcessOutboxDelivery
 {
-    $job = new ProcessOutboxDelivery($eventId, Tests\Support\Outbox\KeyedOrderedTestSubscriber::NAME);
+    $job = new ProcessOutboxDelivery($eventId, KeyedOrderedTestSubscriber::NAME);
     $job->withFakeQueueInteractions();
 
     $job->handle(

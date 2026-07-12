@@ -7,6 +7,7 @@ use App\Payments\Exceptions\UnbalancedLedgerEntrySetException;
 use App\Payments\Models\LedgerEntry;
 use App\Payments\Support\LedgerEntrySetBuilder;
 use App\Payments\Support\LedgerLeg;
+use App\Support\Money\CurrencyMismatchException;
 use App\Support\Money\Money;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
@@ -203,7 +204,7 @@ describe('entry-set builder', function (): void {
             Money::of(10, 'BRL'),
             Money::of(10, 'USD'),
         );
-    })->throws(App\Support\Money\CurrencyMismatchException::class);
+    })->throws(CurrencyMismatchException::class);
 });
 
 it('persists through the LedgerEntry model with enum casts', function (): void {

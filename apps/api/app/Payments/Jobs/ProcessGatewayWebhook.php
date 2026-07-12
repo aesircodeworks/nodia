@@ -162,6 +162,7 @@ final class ProcessGatewayWebhook implements ShouldQueue
         $applied = match ($normalized->kind) {
             WebhookKind::Confirmed => app(ConfirmPayment::class)($payment->id, $normalized->fee),
             WebhookKind::Failed => app(FailPayment::class)($payment->id, (string) $normalized->failureCode),
+            WebhookKind::RefundCompleted, WebhookKind::RefundFailed => null,
         };
 
         if ($applied !== null) {

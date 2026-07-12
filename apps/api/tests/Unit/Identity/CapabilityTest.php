@@ -26,6 +26,7 @@ it('carries the exact capability registry, no more and no less', function () {
         'orders.view',
         'orders.refund',
         'payouts.view',
+        'ledger.view',
         'checkin.scan',
         'seat_maps.manage',
         'events.manage_seating',
@@ -35,13 +36,13 @@ it('carries the exact capability registry, no more and no less', function () {
     ]);
 });
 
-it('marks exactly orders.refund and payouts.view as financially privileged', function () {
+it('marks exactly orders.refund, payouts.view, and ledger.view as financially privileged', function () {
     $privileged = array_map(
         fn (Capability $capability): string => $capability->value,
         array_values(array_filter(Capability::cases(), fn (Capability $capability): bool => $capability->isFinanciallyPrivileged())),
     );
 
-    expect($privileged)->toBe(['orders.refund', 'payouts.view']);
+    expect($privileged)->toBe(['orders.refund', 'payouts.view', 'ledger.view']);
 });
 
 it('marks every other capability as not financially privileged', function (Capability $capability) {

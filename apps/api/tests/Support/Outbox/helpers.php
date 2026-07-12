@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\Support\Outbox\FixtureDomainEvent;
 use Tests\Support\Outbox\IdempotentTestSubscriber;
+use Tests\Support\Outbox\KeyedOrderedTestSubscriber;
 use Tests\Support\Outbox\OrderedTestSubscriber;
 
 /**
@@ -48,12 +49,12 @@ function registerOrderedOutboxSubscriber(?array $eventTypes = null): OrderedTest
     return $subscriber;
 }
 
-function registerKeyedOrderedOutboxSubscriber(string $keyPath = 'aggregate_id'): Tests\Support\Outbox\KeyedOrderedTestSubscriber
+function registerKeyedOrderedOutboxSubscriber(string $keyPath = 'aggregate_id'): KeyedOrderedTestSubscriber
 {
-    $subscriber = new Tests\Support\Outbox\KeyedOrderedTestSubscriber($keyPath);
+    $subscriber = new KeyedOrderedTestSubscriber($keyPath);
 
     app(EventTypeRegistry::class)->register(FixtureDomainEvent::TYPE);
-    app(SubscriberRegistry::class)->register(Tests\Support\Outbox\KeyedOrderedTestSubscriber::NAME, [FixtureDomainEvent::TYPE], $subscriber);
+    app(SubscriberRegistry::class)->register(KeyedOrderedTestSubscriber::NAME, [FixtureDomainEvent::TYPE], $subscriber);
 
     return $subscriber;
 }

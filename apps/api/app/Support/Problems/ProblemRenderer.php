@@ -181,6 +181,12 @@ class ProblemRenderer
             ErrorCode::GatewayUnavailable => 'The payment gateway is temporarily unavailable; retry after the interval in the Retry-After header.',
             ErrorCode::WebhookSignatureInvalid => 'The webhook signature failed verification.',
             ErrorCode::WebhookUnparseable => 'The webhook body could not be parsed into a gateway event.',
+            ErrorCode::RefundPaymentNotFound => 'No payment has this id for the resolved tenant.',
+            ErrorCode::RefundNotFound => 'No refund has this id for the resolved tenant.',
+            ErrorCode::PaymentNotRefundable => 'This payment is not confirmed or its order is not in a refundable status.',
+            ErrorCode::RefundAmountExceedsRefundable => 'The requested amount exceeds the payment\'s remaining refundable amount.',
+            ErrorCode::RefundCurrencyMismatch => 'The requested amount currency does not match the payment currency.',
+            ErrorCode::RefundTicketsNotInOrder => 'One or more of the requested ticket_ids do not belong to this order.',
         };
     }
 }

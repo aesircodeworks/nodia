@@ -20,6 +20,7 @@ export type Capability =
   | 'orders.view'
   | 'orders.refund'
   | 'payouts.view'
+  | 'ledger.view'
   | 'checkin.scan'
   | 'seat_maps.manage'
   | 'events.manage_seating'
@@ -351,7 +352,21 @@ export type InviteUserData = {
 };
 export type LedgerAccount =
   'gateway_receivable' | 'gateway_fees' | 'platform_commission' | 'tenant_net';
+export type LedgerBalanceData = {
+  currency: string;
+  account: LedgerAccount;
+  balance: Money;
+};
 export type LedgerDirection = 'debit' | 'credit';
+export type LedgerEntryData = {
+  id: string;
+  account: LedgerAccount;
+  direction: LedgerDirection;
+  amount: Money;
+  reference_type: string;
+  reference_id: string;
+  created_at: string;
+};
 export type LengthAwarePaginator<TKey, TValue> = {
   data: TKey extends string ? Record<TKey, TValue> : TValue[];
   links: {
@@ -772,4 +787,4 @@ export type VenueData = {
   created_at: string;
   updated_at: string;
 };
-export type WebhookKind = 'confirmed' | 'failed';
+export type WebhookKind = 'confirmed' | 'failed' | 'refund_completed' | 'refund_failed';

@@ -61,7 +61,13 @@ final class TenantFixture
 
         actingAsRole(Rls::PLATFORM_ROLE, null, function (): void {
             DB::table('tenant_domains')->delete();
-            DB::table('tenants')->where('id', '!=', config('tenancy.platform_tenant_id'))->delete();
+            DB::table('tenants')
+                ->whereNotIn('id', [
+                    config('tenancy.platform_tenant_id'),
+                    LedgerEntryFixture::TENANT_A,
+                    LedgerEntryFixture::TENANT_B,
+                ])
+                ->delete();
         });
     }
 }

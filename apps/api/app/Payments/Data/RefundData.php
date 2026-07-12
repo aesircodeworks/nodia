@@ -3,6 +3,7 @@
 namespace App\Payments\Data;
 
 use App\Payments\Enums\RefundStatus;
+use App\Payments\Models\Payment;
 use App\Payments\Models\Refund;
 use App\Support\Money\Money;
 use Carbon\CarbonImmutable;
@@ -33,8 +34,11 @@ class RefundData extends Data
         public string $createdAt,
     ) {}
 
-    public static function fromModel(Refund $refund, string $orderId): self
+    public static function fromModel(Refund $refund, ?string $orderId = null): self
     {
+        $orderId ??= $refund->getAttribute('order_id')
+            ?? Payment::query()->findOrFail($refund->payment_id)->order_id;
+
         return new self(
             $refund->id,
             $refund->payment_id,

@@ -9,6 +9,7 @@ use App\Payments\Consumers\ExecuteRefund;
 use App\Payments\Data\CreateRefundData;
 use App\Payments\Enums\PaymentStatus;
 use App\Payments\Enums\RefundStatus;
+use App\Payments\Exceptions\GatewayUnavailableException;
 use App\Payments\Gateways\FakeGatewayScenarios;
 use App\Payments\Models\Payment;
 use App\Payments\Models\Refund;
@@ -156,7 +157,7 @@ it('leaves the refund pending for a retry when the gateway transport fails', fun
 
     try {
         executionRefund($this->tenantId, $this->paymentId);
-    } catch (App\Payments\Exceptions\GatewayUnavailableException) {
+    } catch (GatewayUnavailableException) {
         // The sync-queue executor ran on commit and its transport failure
         // bubbled up; in production the queued job retries instead.
     }

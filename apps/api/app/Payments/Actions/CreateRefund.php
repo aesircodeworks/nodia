@@ -143,7 +143,7 @@ final class CreateRefund
             throw RefundTicketsNotInOrderException::forOrder($orderId);
         }
 
-        return array_values($requested);
+        return $requested;
     }
 
     /**
