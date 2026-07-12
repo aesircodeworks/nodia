@@ -37,6 +37,16 @@ final class FakeGateway implements GatewayAdapter
         return $this->identifier;
     }
 
+    /**
+     * Exposes the scenario controls bound to this instance so test
+     * harnesses (the adapter conformance suite in particular) can arrange
+     * a scripted outcome for the same adapter they hold a reference to.
+     */
+    public function scenarios(): FakeGatewayScenarios
+    {
+        return $this->scenarios;
+    }
+
     public function capabilities(): GatewayCapabilities
     {
         return new GatewayCapabilities(
