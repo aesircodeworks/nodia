@@ -3675,6 +3675,95 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/SigningKeyEventNotFoundProblem'
+  /v1/events/{event}/check-in-manifest:
+    parameters:
+      - name: event
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getCheckInManifest
+      summary: Get an event's cursor-paginated check-in manifest
+      description: >-
+        Tenant admin surface (stage-09 plan, Endpoints "GET
+        /v1/events/{event}/check-in-manifest"): authorizes through
+        checkin.scan plus an assignment row for the event, or
+        checkin.manage as a bypass, evaluated by the CheckIn context's
+        CheckEventAssignment Action. Cursor-paginated over ticket id
+        ascending, built by BuildManifest from the Orders per-event
+        ticket listing overlaid with this context's own check_ins
+        accepted rows. filter[updated_since] narrows to entries whose
+        ticket updated_at or accepted check-in synced_at, whichever is
+        greater, is strictly after the given instant; unknown filters
+        are rejected with 400 invalid_query_parameter.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          style: deepObject
+          explode: true
+          description: 'Allowed filters: filter[updated_since] (ISO 8601).'
+          schema:
+            type: object
+            properties:
+              updated_since:
+                type: string
+            additionalProperties: false
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: per_page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: One cursor page of the event's manifest entries.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManifestCursorPage'
+        '400':
+          description: >-
+            A filter parameter outside the endpoint allowlist (code
+            invalid_query_parameter).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/InvalidQueryParameterProblem'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            The caller holds neither checkin.scan nor checkin.manage, or
+            holds checkin.scan with no check-in assignment for this
+            event (code checkin_not_assigned in both cases).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/CheckinNotAssignedProblem'
+        '404':
+          description: No event is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ManifestEventNotFoundProblem'
   /v1/storefront/events:
     get:
       operationId: listStorefrontEvents
@@ -7187,6 +7276,69 @@ components:
     SigningKeyEventNotFoundProblem:
       description: >-
         Problem document for GET/POST /v1/events/{event}/signing-keys
+        when the given event id resolves to no visible row for the
+        acting tenant (stage-09 plan, Endpoints, code event_not_found).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [404]
+            code:
+              type: string
+              enum: [event_not_found]
+      unevaluatedProperties: false
+    ManifestEntry:
+      type: object
+      description: >-
+        One row of GET /v1/events/{event}/check-in-manifest's response
+        (stage-09 plan, Endpoints): ticket id, status, rotation counter,
+        and the accepted check-in overlay. Deliberately no attendee PII.
+      required:
+        - ticket_id
+        - status
+        - rotation_counter
+        - checked_in_at
+      properties:
+        ticket_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [issued, canceled, refunded]
+        rotation_counter:
+          type: integer
+          minimum: 0
+        checked_in_at:
+          type: string
+          format: date-time
+          nullable: true
+      additionalProperties: false
+    ManifestCursorPage:
+      type: object
+      description: >-
+        Cursor-paginated envelope (data, links, meta) for the check-in
+        manifest (stage-09 plan, Endpoints "GET /v1/events/{event}/
+        check-in-manifest"), ordered deterministically by ticket_id.
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ManifestEntry'
+        links:
+          type: array
+          items: {}
+        meta:
+          $ref: '#/components/schemas/CursorPageMeta'
+      additionalProperties: false
+    ManifestEventNotFoundProblem:
+      description: >-
+        Problem document for GET /v1/events/{event}/check-in-manifest
         when the given event id resolves to no visible row for the
         acting tenant (stage-09 plan, Endpoints, code event_not_found).
       allOf:

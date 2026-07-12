@@ -1,5 +1,6 @@
 <?php
 
+use App\CheckIn\CheckInServiceProvider;
 use App\EventCatalog\EventCatalogServiceProvider;
 use App\Identity\IdentityServiceProvider;
 use App\Inventory\InventoryServiceProvider;
@@ -20,4 +21,5 @@ return [
     InventoryServiceProvider::class,
     OrdersServiceProvider::class,
     PaymentsServiceProvider::class,
+    CheckInServiceProvider::class,
 ];

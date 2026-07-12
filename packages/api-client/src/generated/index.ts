@@ -406,6 +406,12 @@ export type LengthAwarePaginator<TKey, TValue> = {
   };
 };
 export type LengthAwarePaginatorInterface<TKey, TValue> = LengthAwarePaginator<TKey, TValue>;
+export type ManifestEntryData = {
+  ticket_id: string;
+  status: string;
+  rotation_counter: number;
+  checked_in_at: string | null;
+};
 export type MediaConversionsData = {
   thumb: string | null;
   card: string | null;

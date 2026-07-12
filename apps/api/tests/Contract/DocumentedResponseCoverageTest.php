@@ -3869,6 +3869,48 @@ function documentedResponseExercisers(): array
                 'X-Tenant-Id' => $tenant->id,
             ]);
         },
+        // Stage-09 plan, Endpoints "GET /v1/events/{event}/check-in-manifest".
+        'get /v1/events/{event}/check-in-manifest 200' => function (): TestResponse {
+            $tenant = contractTenant();
+            $event = contractEvent($tenant);
+
+            return test()->getJson('/v1/events/'.$event->id.'/check-in-manifest', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/events/{event}/check-in-manifest 400' => function (): TestResponse {
+            $tenant = contractTenant();
+            $event = contractEvent($tenant);
+
+            return test()->getJson('/v1/events/'.$event->id.'/check-in-manifest?filter[bogus]=1', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/events/{event}/check-in-manifest 401' => function (): TestResponse {
+            $tenant = contractTenant();
+            $event = contractEvent($tenant);
+
+            return test()->getJson('/v1/events/'.$event->id.'/check-in-manifest');
+        },
+        'get /v1/events/{event}/check-in-manifest 403' => function (): TestResponse {
+            $tenant = contractTenant();
+            $event = contractEvent($tenant);
+
+            return test()->getJson('/v1/events/'.$event->id.'/check-in-manifest', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.scan']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/events/{event}/check-in-manifest 404' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->getJson('/v1/events/'.Str::uuid7().'/check-in-manifest', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['checkin.manage']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
     ];
 }
 

@@ -1,7 +1,9 @@
 <?php
 
+use App\CheckIn\CheckInServiceProvider;
 use App\CheckIn\Enums\CheckInResult;
 use App\CheckIn\Exceptions\CheckinNotAssignedException;
+use App\CheckIn\Exceptions\ManifestEventNotFoundException;
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\EventCatalogServiceProvider;
 use App\EventCatalog\Exceptions\CurrencyMismatchException as TicketTypeCurrencyMismatchException;
@@ -347,6 +349,8 @@ arch()->preset()->laravel()->ignoring([
     'App\Payments\Models',
     'App\Payments\Http\Controllers',
     PaymentsServiceProvider::class,
+    'App\CheckIn\Http\Controllers',
+    CheckInServiceProvider::class,
     GatewayUnavailableException::class,
     WebhookSignatureInvalidException::class,
     WebhookUnparseableException::class,
@@ -388,5 +392,6 @@ arch()->preset()->laravel()->ignoring([
     MediaNotFoundException::class,
     CheckInResult::class,
     CheckinNotAssignedException::class,
+    ManifestEventNotFoundException::class,
     'App\CheckIn\Models',
 ]);
