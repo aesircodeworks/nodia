@@ -49,6 +49,7 @@ final class SeedTemplateRoles
                 Capability::OrdersView,
                 Capability::OrdersRefund,
                 Capability::PayoutsView,
+                Capability::LedgerView,
                 Capability::CheckinScan,
                 Capability::SeatMapsManage,
                 Capability::EventsManageSeating,
@@ -78,6 +79,7 @@ final class SeedTemplateRoles
                 Capability::OrdersView,
                 Capability::OrdersRefund,
                 Capability::PayoutsView,
+                Capability::LedgerView,
                 Capability::CustomersView,
             ],
             'Check-in Agent' => [
