@@ -92,6 +92,30 @@ final class GatewayFixtureLoader
             return false;
         }
 
+        if (isset($matcher['headers']) && is_array($matcher['headers']) && ! $this->headersMatch($matcher['headers'], $request)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Every header the fixture requires must be present on the request with
+     * a matching value. This is what lets the harness assert an adapter
+     * transmits required gateway headers (an Idempotency-Key in
+     * particular); an exchange recorded with a header only replays for a
+     * request that actually carries it.
+     *
+     * @param  array<string, mixed>  $expected
+     */
+    private function headersMatch(array $expected, ClientRequest $request): bool
+    {
+        foreach ($expected as $name => $value) {
+            if (! in_array((string) $value, $request->header((string) $name), true)) {
+                return false;
+            }
+        }
+
         return true;
     }
 

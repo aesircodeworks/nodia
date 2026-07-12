@@ -81,6 +81,37 @@ it('reports drift when the live sandbox returns a different number of exchanges 
     expect($result)->not->toBe([]);
 });
 
+it('does not report drift when the live sandbox returns raw credentials the committed fixture stores redacted', function (): void {
+    $root = sys_get_temp_dir().'/gateway-drift-'.uniqid();
+    mkdir($root.'/examplegw', 0777, true);
+    file_put_contents(
+        $root.'/examplegw/create-payment.json',
+        json_encode([
+            'request' => ['method' => 'POST', 'url' => 'https://sandbox.test/v1/payments', 'headers' => ['Authorization' => '[REDACTED]']],
+            'response' => ['status' => 201, 'body' => ['id' => 'pay_1']],
+        ]),
+    );
+
+    $recorder = new class implements GatewayFixtureRecorder
+    {
+        public function record(string $scenario): array
+        {
+            return [[
+                'request' => ['method' => 'POST', 'url' => 'https://sandbox.test/v1/payments', 'headers' => ['Authorization' => 'Bearer sk_live_supersecrettoken1234']],
+                'response' => ['status' => 201, 'body' => ['id' => 'pay_1']],
+            ]];
+        }
+    };
+
+    $detector = new GatewayFixtureDriftDetector($root);
+
+    expect($detector->detect('examplegw', 'create-payment', $recorder))->toBe([]);
+
+    array_map('unlink', glob($root.'/examplegw/*.json') ?: []);
+    rmdir($root.'/examplegw');
+    rmdir($root);
+});
+
 it('reports drift when no fixture exists yet for the scenario being checked', function (): void {
     $recorder = new class implements GatewayFixtureRecorder
     {

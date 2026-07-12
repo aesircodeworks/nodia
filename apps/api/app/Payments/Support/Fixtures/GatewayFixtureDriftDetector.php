@@ -12,7 +12,10 @@ namespace App\Payments\Support\Fixtures;
  */
 final class GatewayFixtureDriftDetector
 {
-    public function __construct(private readonly string $fixturesRoot) {}
+    public function __construct(
+        private readonly string $fixturesRoot,
+        private readonly GatewayFixtureSanitizer $sanitizer = new GatewayFixtureSanitizer,
+    ) {}
 
     /**
      * @return list<array{gateway: string, scenario: string, index: int, reason: string, recorded: mixed, actual: mixed}>
@@ -20,7 +23,15 @@ final class GatewayFixtureDriftDetector
     public function detect(string $gateway, string $scenario, GatewayFixtureRecorder $recorder): array
     {
         $recordedExchanges = $this->loadRecordedExchanges($gateway, $scenario);
-        $actualExchanges = $recorder->record($scenario);
+
+        // The committed fixtures are stored sanitized (the record command
+        // redacts before writing), while the recorder returns raw sandbox
+        // exchanges. Sanitize the live ones the same way before diffing so
+        // redacted credential values never register as false drift.
+        $actualExchanges = array_map(
+            fn (array $exchange): array => $this->sanitizer->redact($exchange),
+            $recorder->record($scenario),
+        );
 
         if ($recordedExchanges === []) {
             return [[

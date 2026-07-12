@@ -186,4 +186,15 @@ describe('POST /v1/storefront/orders/{order}/payments naming the pending gateway
         $response->assertStatus(409)->assertConformsToOpenApi();
         $response->assertJsonPath('code', 'gateway_not_configured');
     });
+
+    it('renders payment_method_not_available, not gateway_not_configured, when a configured gateway is enabled alongside the skeleton but does not serve the requested method', function (): void {
+        config(['payments.gateways.pending.enabled' => true]);
+        app()->forgetScopedInstances();
+        $fixture = pendingGatewayFixture(['fake', 'pending']);
+
+        $response = initiatePendingGatewayPayment($fixture, 'sepa');
+
+        $response->assertStatus(422)->assertConformsToOpenApi();
+        $response->assertJsonPath('code', 'payment_method_not_available');
+    });
 });

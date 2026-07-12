@@ -30,6 +30,8 @@ function gatewayAdapterConformanceSuite(string $label, GatewayAdapterConformance
             expect($first)->toBeInstanceOf(GatewayPaymentResult::class)
                 ->and($first->gatewayReference)->not->toBe('')
                 ->and($second->gatewayReference)->toBe($first->gatewayReference);
+
+            ($context->assertIdempotencyKeyTransmitted)($adapter, $paymentId, $first);
         });
 
         it('returns a typed failure from refund on an unknown reference, never an exception', function () use ($context): void {

@@ -4,6 +4,7 @@ namespace Tests\Support\Payments;
 
 use App\Payments\Gateways\GatewayAdapter;
 use App\Payments\Gateways\GatewayPaymentRequest;
+use App\Payments\Gateways\GatewayPaymentResult;
 use App\Payments\Gateways\GatewayRefundRequest;
 use Closure;
 
@@ -22,6 +23,7 @@ final readonly class GatewayAdapterConformanceContext
      * @param  Closure(GatewayAdapter $adapter): GatewayRefundRequest  $unknownReferenceRefundRequest  arranges the given adapter instance, if needed, so the returned request refunds a reference the adapter will decline
      * @param  Closure(GatewayAdapter $adapter): array{body: string, headers: array<string, string>}  $signedWebhook
      * @param  Closure(array<string, string> $headers): array<string, string>  $tamperSignature
+     * @param  Closure(GatewayAdapter $adapter, string $paymentId, GatewayPaymentResult $result): void  $assertIdempotencyKeyTransmitted  asserts the server-generated gateway idempotency key (the payment id) actually reached the gateway on createPayment, not merely that two calls agreed
      */
     public function __construct(
         public Closure $adapter,
@@ -29,5 +31,6 @@ final readonly class GatewayAdapterConformanceContext
         public Closure $unknownReferenceRefundRequest,
         public Closure $signedWebhook,
         public Closure $tamperSignature,
+        public Closure $assertIdempotencyKeyTransmitted,
     ) {}
 }

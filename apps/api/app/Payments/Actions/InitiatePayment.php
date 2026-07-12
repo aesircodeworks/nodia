@@ -155,7 +155,10 @@ final class InitiatePayment
      * never appears in any offer pass above) gets its own 409
      * gateway_not_configured rather than the generic 422: the tenant
      * enabled a gateway that cannot yet serve any method, which is a
-     * platform configuration gap, not a request the buyer got wrong.
+     * platform configuration gap, not a request the buyer got wrong. This
+     * only fires when every enabled gateway is such a skeleton; if any
+     * enabled gateway is actually configured, the method the buyer named
+     * genuinely is not on offer and the generic 422 is correct.
      */
     private function offeredMethod(OrderPaymentContextData $order, string $method): PaymentMethodOfferData
     {
@@ -171,12 +174,27 @@ final class InitiatePayment
             }
         }
 
+        $unconfiguredGateway = null;
+        $hasConfiguredGateway = false;
+
         foreach (($this->enabledGateways)((string) $this->tenantContext->tenantId()) as $identifier) {
             $adapter = $this->gateways->get($identifier);
 
-            if ($adapter !== null && $adapter->capabilities()->methods === [] && $adapter->capabilities()->currencies === []) {
-                throw GatewayNotConfiguredException::forGateway($identifier);
+            if ($adapter === null) {
+                continue;
             }
+
+            if ($adapter->capabilities()->methods === [] && $adapter->capabilities()->currencies === []) {
+                $unconfiguredGateway ??= $identifier;
+
+                continue;
+            }
+
+            $hasConfiguredGateway = true;
+        }
+
+        if ($unconfiguredGateway !== null && ! $hasConfiguredGateway) {
+            throw GatewayNotConfiguredException::forGateway($unconfiguredGateway);
         }
 
         throw PaymentMethodNotAvailableException::forMethod($method);

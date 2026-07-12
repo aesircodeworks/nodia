@@ -4,6 +4,7 @@ use App\Payments\Gateways\FakeGateway;
 use App\Payments\Gateways\FakeGatewayScenarios;
 use App\Payments\Gateways\GatewayAdapter;
 use App\Payments\Gateways\GatewayPaymentRequest;
+use App\Payments\Gateways\GatewayPaymentResult;
 use App\Payments\Gateways\GatewayRefundRequest;
 use App\Support\Money\Money;
 use Illuminate\Support\Str;
@@ -51,4 +52,11 @@ gatewayAdapterConformanceSuite('fake', new GatewayAdapterConformanceContext(
         return ['body' => $delivery->body, 'headers' => $delivery->headers];
     },
     tamperSignature: fn (array $headers): array => ['X-Fake-Signature' => 'bogus'] + $headers,
+    assertIdempotencyKeyTransmitted: function (GatewayAdapter $adapter, string $paymentId, GatewayPaymentResult $result): void {
+        // FakeGateway has no wire; the server-generated idempotency key (the
+        // payment id) reaching the gateway is observable in the reference it
+        // derives from that id. An HTTP-backed adapter instead asserts the
+        // Idempotency-Key header on the recorded outbound request.
+        expect($result->gatewayReference)->toContain($paymentId);
+    },
 ));

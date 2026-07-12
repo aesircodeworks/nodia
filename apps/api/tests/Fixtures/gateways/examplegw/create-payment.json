@@ -2,6 +2,9 @@
     "request": {
         "method": "POST",
         "url": "https://sandbox.examplegw.test/v1/payments",
+        "headers": {
+            "Idempotency-Key": "idem-1"
+        },
         "body": {
             "amount": 1000,
             "currency": "BRL"

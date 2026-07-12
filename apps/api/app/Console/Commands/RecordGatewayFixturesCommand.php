@@ -53,6 +53,14 @@ class RecordGatewayFixturesCommand extends Command
             mkdir($directory, 0777, true);
         }
 
+        // Re-recording is a full replace of the scenario. Clearing the old
+        // set first stops a shorter recording from leaving stale
+        // higher-index files behind that the loader and drift detector would
+        // still consume as part of the scenario.
+        foreach (glob("{$directory}/{$scenario}-*.json") ?: [] as $stale) {
+            unlink($stale);
+        }
+
         foreach ($exchanges as $index => $exchange) {
             $path = "{$directory}/{$scenario}-{$index}.json";
             file_put_contents($path, json_encode($exchange, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).PHP_EOL);
