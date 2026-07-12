@@ -50,8 +50,17 @@ class ProblemRenderer
             }
 
             $headers = $e instanceof HasProblemHeaders ? $e->problemHeaders() : [];
+            $problem = ProblemData::fromErrorCode($code, $detail, $correlationId);
 
-            return ProblemData::fromErrorCode($code, $detail, $correlationId)->toProblemResponse($headers);
+            if ($e instanceof HasProblemExtensions) {
+                return response()->json(
+                    [...$problem->toArray(), ...$e->problemExtensions()],
+                    $code->status(),
+                    $headers + ['Content-Type' => 'application/problem+json'],
+                );
+            }
+
+            return $problem->toProblemResponse($headers);
         }
 
         // The query-builder allowlist exceptions are vendor classes, so they
@@ -187,6 +196,9 @@ class ProblemRenderer
             ErrorCode::RefundAmountExceedsRefundable => 'The requested amount exceeds the payment\'s remaining refundable amount.',
             ErrorCode::RefundCurrencyMismatch => 'The requested amount currency does not match the payment currency.',
             ErrorCode::RefundTicketsNotInOrder => 'One or more of the requested ticket_ids do not belong to this order.',
+            ErrorCode::GatewayUnknown => 'No adapter is registered for this gateway.',
+            ErrorCode::GatewayNotEnabled => "This gateway is not in the tenant's enabled_gateways.",
+            ErrorCode::SubmerchantAlreadyOnboarded => 'A sub-merchant account for this tenant and gateway already exists.',
         };
     }
 }

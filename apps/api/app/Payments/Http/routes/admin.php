@@ -12,6 +12,7 @@ use App\Http\Middleware\RequireCapability;
 use App\Identity\Capability;
 use App\Payments\Http\Controllers\LedgerController;
 use App\Payments\Http\Controllers\RefundController;
+use App\Payments\Http\Controllers\SubmerchantAccountController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware([RequireCapability::class.':'.Capability::OrdersRefund->value, RecordActivityAudit::class])->group(function (): void {
@@ -26,4 +27,13 @@ Route::middleware(RequireCapability::class.':'.Capability::OrdersView->value)->g
 Route::middleware(RequireCapability::class.':'.Capability::LedgerView->value)->group(function (): void {
     Route::get('/ledger-entries', [LedgerController::class, 'entries']);
     Route::get('/ledger-balances', [LedgerController::class, 'balances']);
+});
+
+Route::middleware([RequireCapability::class.':'.Capability::PayoutsManage->value, RecordActivityAudit::class])->group(function (): void {
+    Route::post('/submerchant-accounts', [SubmerchantAccountController::class, 'store']);
+});
+
+Route::middleware(RequireCapability::class.':'.Capability::PayoutsView->value)->group(function (): void {
+    Route::get('/submerchant-accounts', [SubmerchantAccountController::class, 'index']);
+    Route::get('/submerchant-accounts/{submerchant_account}', [SubmerchantAccountController::class, 'show'])->whereUuid('submerchant_account');
 });

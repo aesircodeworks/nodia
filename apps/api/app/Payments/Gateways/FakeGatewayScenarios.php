@@ -30,6 +30,9 @@ final class FakeGatewayScenarios
     /** @var array<string, GatewaySubmerchantResult> */
     private array $submerchantStatuses = [];
 
+    /** @var array<string, int> */
+    private array $submerchantCreationCalls = [];
+
     /** @var list<GatewayPayoutRecord> */
     private array $payouts = [];
 
@@ -122,6 +125,23 @@ final class FakeGatewayScenarios
     public function submerchantStatusFor(string $gatewayAccountReference): ?GatewaySubmerchantResult
     {
         return $this->submerchantStatuses[$gatewayAccountReference] ?? null;
+    }
+
+    /**
+     * Records one createSubmerchant call for a tenant and gateway pair,
+     * the side effect the duplicate-onboarding-start concurrency test
+     * asserts stays at exactly one for the winner (stage-08c plan,
+     * Slice 2).
+     */
+    public function recordSubmerchantCreationCall(string $tenantId, string $gateway): void
+    {
+        $key = $tenantId.':'.$gateway;
+        $this->submerchantCreationCalls[$key] = ($this->submerchantCreationCalls[$key] ?? 0) + 1;
+    }
+
+    public function submerchantCreationCallCountFor(string $tenantId, string $gateway): int
+    {
+        return $this->submerchantCreationCalls[$tenantId.':'.$gateway] ?? 0;
     }
 
     /**

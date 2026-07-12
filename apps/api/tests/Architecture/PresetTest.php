@@ -96,7 +96,9 @@ use App\Payments\Enums\PayoutStatus;
 use App\Payments\Enums\RefundCommissionPolicy;
 use App\Payments\Enums\RefundStatus;
 use App\Payments\Enums\SubmerchantStatus;
+use App\Payments\Exceptions\GatewayNotEnabledException;
 use App\Payments\Exceptions\GatewayUnavailableException;
+use App\Payments\Exceptions\GatewayUnknownException;
 use App\Payments\Exceptions\IdempotencyKeyMissingException;
 use App\Payments\Exceptions\IdempotencyKeyReuseMismatchException;
 use App\Payments\Exceptions\OrderNotPayableException;
@@ -108,6 +110,8 @@ use App\Payments\Exceptions\RefundCurrencyMismatchException;
 use App\Payments\Exceptions\RefundNotFoundException;
 use App\Payments\Exceptions\RefundPaymentNotFoundException;
 use App\Payments\Exceptions\RefundTicketsNotInOrderException;
+use App\Payments\Exceptions\SubmerchantAccountNotFoundException;
+use App\Payments\Exceptions\SubmerchantAlreadyOnboardedException;
 use App\Payments\Exceptions\UnbalancedLedgerEntrySetException;
 use App\Payments\Exceptions\WebhookSignatureInvalidException;
 use App\Payments\Exceptions\WebhookUnparseableException;
@@ -339,6 +343,10 @@ arch()->preset()->laravel()->ignoring([
     RefundPaymentNotFoundException::class,
     RefundTicketsNotInOrderException::class,
     UnbalancedLedgerEntrySetException::class,
+    GatewayUnknownException::class,
+    GatewayNotEnabledException::class,
+    SubmerchantAlreadyOnboardedException::class,
+    SubmerchantAccountNotFoundException::class,
     OrderHoldExpiredException::class,
     HoldAlreadyConvertedException::class,
     OrderNotFoundException::class,

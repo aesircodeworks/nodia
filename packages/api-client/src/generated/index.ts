@@ -20,6 +20,7 @@ export type Capability =
   | 'orders.view'
   | 'orders.refund'
   | 'payouts.view'
+  | 'payouts.manage'
   | 'ledger.view'
   | 'checkin.scan'
   | 'seat_maps.manage'
@@ -253,7 +254,10 @@ export type ErrorCode =
   | 'payment_not_refundable'
   | 'refund_amount_exceeds_refundable'
   | 'refund_currency_mismatch'
-  | 'refund_tickets_not_in_order';
+  | 'refund_tickets_not_in_order'
+  | 'gateway_unknown'
+  | 'gateway_not_enabled'
+  | 'submerchant_already_onboarded';
 export type EventAvailabilityData = {
   event_id: string;
   ticket_types: TicketTypeAvailabilityData[];
@@ -602,6 +606,9 @@ export type StaffTokenRequestData = {
   password: string;
   mfa_code: string | null;
 };
+export type StartSubmerchantOnboardingData = {
+  gateway: string;
+};
 export type StorefrontEventData = {
   id: string;
   name: string;
@@ -638,6 +645,17 @@ export type StorefrontTicketTypeData = {
   price: Money;
   sales_start: string | null;
   sales_end: string | null;
+};
+export type SubmerchantAccountData = {
+  id: string;
+  gateway: string;
+  status: SubmerchantStatus;
+  gateway_account_reference: string | null;
+  onboarding_url: string | null;
+  requirements: string[];
+  activated_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
 export type SubmerchantStatus =
   'pending' | 'under_review' | 'action_required' | 'active' | 'rejected' | 'disabled';

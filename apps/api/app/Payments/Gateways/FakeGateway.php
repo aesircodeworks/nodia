@@ -198,6 +198,8 @@ final class FakeGateway implements GatewayAdapter
 
     public function createSubmerchant(SubmerchantRegistrationRequest $request): GatewaySubmerchantResult
     {
+        $this->scenarios->recordSubmerchantCreationCall($request->tenantId, $this->identifier);
+
         $scripted = $this->scenarios->consumeSubmerchantCreation();
 
         if ($scripted !== null) {

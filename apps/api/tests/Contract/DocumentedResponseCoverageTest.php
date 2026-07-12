@@ -21,6 +21,8 @@ use App\Orders\Actions\MarkOrderPaid;
 use App\Orders\Models\PromoCode;
 use App\Payments\Gateways\FakeGateway;
 use App\Payments\Gateways\FakeGatewayScenarios;
+use App\Payments\Models\SubmerchantAccount;
+use App\Payments\Support\CircuitBreaker;
 use App\Support\Money\Money;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
@@ -93,6 +95,11 @@ afterEach(function (): void {
             DB::table('outbox_deliveries')->where('tenant_id', $tenantId)->delete();
             DB::table('outbox_events')->where('tenant_id', $tenantId)->delete();
             DB::table('memberships')->where('tenant_id', $tenantId)->delete();
+
+            // The submerchant-account exercisers (stage-08c plan, task
+            // breakdown item 4) write submerchant_accounts referencing the
+            // tenant with no cascade, so they go ahead of the tenant delete.
+            DB::table('submerchant_accounts')->where('tenant_id', $tenantId)->delete();
 
             // The refund exercisers (stage-08b plan, task breakdown item 8)
             // write refunds referencing payments with no cascade, so they go
@@ -3569,6 +3576,116 @@ function documentedResponseExercisers(): array
 
             return contractPostWebhook('fake', $body, hash_hmac('sha256', $body, config()->string('payments.gateways.fake.webhook_secret')));
         },
+        'post /v1/submerchant-accounts 201' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->postJson('/v1/submerchant-accounts', ['gateway' => 'fake'], [
+                'Authorization' => 'Bearer '.contractPayoutsManageBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/submerchant-accounts 401' => function (): TestResponse {
+            return test()->postJson('/v1/submerchant-accounts', ['gateway' => 'fake']);
+        },
+        'post /v1/submerchant-accounts 403' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->postJson('/v1/submerchant-accounts', ['gateway' => 'fake'], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['payouts.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/submerchant-accounts 409' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+            $bearer = contractPayoutsManageBearer($tenant);
+
+            contractSubmerchantAccount($tenant, 'fake');
+
+            return test()->postJson('/v1/submerchant-accounts', ['gateway' => 'fake'], [
+                'Authorization' => 'Bearer '.$bearer,
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/submerchant-accounts 422' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->postJson('/v1/submerchant-accounts', ['gateway' => 'nope'], [
+                'Authorization' => 'Bearer '.contractPayoutsManageBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/submerchant-accounts 503' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+            $bearer = contractPayoutsManageBearer($tenant);
+
+            config()->set('payments.circuit_breaker.failure_threshold', 1);
+            app(CircuitBreaker::class)->recordFailure('fake');
+
+            return test()->postJson('/v1/submerchant-accounts', ['gateway' => 'fake'], [
+                'Authorization' => 'Bearer '.$bearer,
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/submerchant-accounts 200' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+            $bearer = contractPayoutsViewBearer($tenant);
+
+            contractSubmerchantAccount($tenant, 'fake');
+
+            return test()->getJson('/v1/submerchant-accounts', [
+                'Authorization' => 'Bearer '.$bearer,
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/submerchant-accounts 400' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->getJson('/v1/submerchant-accounts?filter[bogus]=1', [
+                'Authorization' => 'Bearer '.contractPayoutsViewBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/submerchant-accounts 401' => function (): TestResponse {
+            return test()->getJson('/v1/submerchant-accounts');
+        },
+        'get /v1/submerchant-accounts 403' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->getJson('/v1/submerchant-accounts', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/submerchant-accounts/{submerchant_account} 200' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+            $bearer = contractPayoutsViewBearer($tenant);
+
+            $account = contractSubmerchantAccount($tenant, 'fake');
+
+            return test()->getJson('/v1/submerchant-accounts/'.$account->id, [
+                'Authorization' => 'Bearer '.$bearer,
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/submerchant-accounts/{submerchant_account} 401' => function (): TestResponse {
+            return test()->getJson('/v1/submerchant-accounts/'.Str::uuid7());
+        },
+        'get /v1/submerchant-accounts/{submerchant_account} 403' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->getJson('/v1/submerchant-accounts/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/submerchant-accounts/{submerchant_account} 404' => function (): TestResponse {
+            ['tenant' => $tenant] = contractPaymentTenant();
+
+            return test()->getJson('/v1/submerchant-accounts/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.contractPayoutsViewBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
     ];
 }
 
@@ -3748,6 +3865,59 @@ function contractCreateRefund(array $fixture, array $body, ?string $key): TestRe
     }
 
     return test()->postJson('/v1/payments/'.$fixture['paymentId'].'/refunds', $body, $headers);
+}
+
+/**
+ * A staff bearer holding payouts.manage with confirmed MFA, since the
+ * capability is financially privileged (stage-08c plan, Endpoints).
+ */
+function contractPayoutsManageBearer(Tenant $tenant): string
+{
+    return contractFinanciallyPrivilegedBearer($tenant, ['payouts.manage']);
+}
+
+/**
+ * A staff bearer holding payouts.view with confirmed MFA, since the
+ * capability is financially privileged (stage-08c plan, Endpoints).
+ */
+function contractPayoutsViewBearer(Tenant $tenant): string
+{
+    return contractFinanciallyPrivilegedBearer($tenant, ['payouts.view']);
+}
+
+/**
+ * @param  list<string>  $capabilities
+ */
+function contractFinanciallyPrivilegedBearer(Tenant $tenant, array $capabilities): string
+{
+    $user = User::factory()->create();
+
+    $response = test()->postJson('/v1/auth/staff/token', [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    $user->forceFill(['mfa_enabled' => true, 'mfa_confirmed_at' => now()])->save();
+
+    app(TenantTransaction::class)->asTenant($tenant->id, function () use ($user, $tenant, $capabilities): void {
+        Membership::factory()->create([
+            'user_id' => $user->id,
+            'tenant_id' => $tenant->id,
+            'role_id' => Role::factory()->create(['tenant_id' => $tenant->id, 'capabilities' => $capabilities])->id,
+            'scope' => MembershipScope::Tenant,
+        ]);
+    });
+
+    /** @var string $token */
+    return $response->json('access_token');
+}
+
+function contractSubmerchantAccount(Tenant $tenant, string $gateway): SubmerchantAccount
+{
+    return app(TenantTransaction::class)->asTenant(
+        $tenant->id,
+        fn () => SubmerchantAccount::factory()->create(['tenant_id' => $tenant->id, 'gateway' => $gateway]),
+    );
 }
 
 /**

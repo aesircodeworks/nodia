@@ -97,6 +97,9 @@ test('the registry holds exactly the known codes', function () {
         'refund_amount_exceeds_refundable',
         'refund_currency_mismatch',
         'refund_tickets_not_in_order',
+        'gateway_unknown',
+        'gateway_not_enabled',
+        'submerchant_already_onboarded',
     ]);
 });
 
@@ -192,6 +195,9 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'gateway_unavailable' => [ErrorCode::GatewayUnavailable, 503, 'Gateway unavailable', '/problems/gateway-unavailable'],
     'webhook_signature_invalid' => [ErrorCode::WebhookSignatureInvalid, 401, 'Webhook signature invalid', '/problems/webhook-signature-invalid'],
     'webhook_unparseable' => [ErrorCode::WebhookUnparseable, 422, 'Webhook unparseable', '/problems/webhook-unparseable'],
+    'gateway_unknown' => [ErrorCode::GatewayUnknown, 422, 'Gateway unknown', '/problems/gateway-unknown'],
+    'gateway_not_enabled' => [ErrorCode::GatewayNotEnabled, 409, 'Gateway not enabled', '/problems/gateway-not-enabled'],
+    'submerchant_already_onboarded' => [ErrorCode::SubmerchantAlreadyOnboarded, 409, 'Submerchant already onboarded', '/problems/submerchant-already-onboarded'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

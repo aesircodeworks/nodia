@@ -4827,6 +4827,202 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/RefundNotFoundProblem'
+  /v1/submerchant-accounts:
+    post:
+      operationId: startSubmerchantOnboarding
+      summary: Start sub-merchant onboarding for one gateway
+      description: >-
+        Staff surface under the tenancy.admin group (stage-08c plan,
+        Endpoints; system-design 7.3, 14.2): requires the
+        payouts.manage capability, a confirmed-MFA session; the
+        mutation is activity-logged. Inserts the pending row relying on
+        the (tenant_id, gateway) unique constraint, then calls
+        GatewayAdapter::createSubmerchant with the tenant's settlement
+        details and payout_schedule. Gateway acknowledgment may arrive
+        synchronously or later via webhook, so the returned status may
+        already be beyond pending.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: X-Tenant-Id
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartSubmerchantOnboardingRequest'
+      responses:
+        '201':
+          description: The onboarding registration.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmerchantAccount'
+        '401':
+          description: Missing or invalid staff bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            Missing payouts.manage capability, or the acting membership
+            mandates confirmed MFA (code mfa_enforcement_required).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
+        '409':
+          description: >-
+            The gateway is not in the tenant's enabled_gateways (code
+            gateway_not_enabled), or a sub-merchant account for this
+            tenant and gateway already exists (code
+            submerchant_already_onboarded, with existing_id).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SubmerchantOnboardingConflictProblem'
+        '422':
+          description: >-
+            Validation failure, or no adapter is registered for the
+            gateway (code gateway_unknown).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SubmerchantOnboardingUnprocessableProblem'
+        '503':
+          description: >-
+            The circuit breaker for this gateway is open, or the
+            adapter reported a transport failure (code
+            gateway_unavailable). Carries Retry-After.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/GatewayUnavailableProblem'
+    get:
+      operationId: listSubmerchantAccounts
+      summary: List the tenant's sub-merchant accounts
+      description: >-
+        Tenant admin surface behind payouts.view (stage-08c plan,
+        Endpoints). Bounded collection (at most one row per gateway),
+        page pagination. Allowed query-builder parameters are
+        filter[gateway], filter[status] (exact) and sort=-created_at;
+        unknown parameters are rejected with 400
+        invalid_query_parameter, never ignored.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          style: deepObject
+          explode: true
+          schema:
+            type: object
+            properties:
+              gateway:
+                type: string
+              status:
+                type: string
+            additionalProperties:
+              type: string
+        - name: sort
+          in: query
+          required: false
+          description: 'Allowed sort: -created_at.'
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: One page of sub-merchant accounts in the acting tenant.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmerchantAccountPage'
+        '400':
+          description: >-
+            A filter or sort parameter outside the endpoint allowlist
+            (code invalid_query_parameter).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/InvalidQueryParameterProblem'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: No membership in the asserted tenant or missing payouts.view.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
+  /v1/submerchant-accounts/{submerchant_account}:
+    parameters:
+      - name: submerchant_account
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getSubmerchantAccount
+      summary: Fetch one sub-merchant account
+      description: >-
+        Tenant admin surface behind payouts.view (stage-08c plan,
+        Endpoints).
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The sub-merchant account.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmerchantAccount'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: No membership in the asserted tenant or missing payouts.view.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
+        '404':
+          description: >-
+            Unknown or cross-tenant sub-merchant account id (code
+            request.not_found); RLS makes the cross-tenant case
+            indistinguishable from absence.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
   /v1/ledger-entries:
     get:
       operationId: listLedgerEntries
@@ -7471,6 +7667,121 @@ components:
                 - refund_amount_exceeds_refundable
                 - refund_currency_mismatch
                 - refund_tickets_not_in_order
+            errors:
+              type: object
+      unevaluatedProperties: false
+    SubmerchantAccount:
+      type: object
+      description: >-
+        One tenant's onboarding registration with a gateway for split
+        payments and payouts (stage-08c plan, Endpoints; system-design
+        7.3, 19). requirements is the gateway's outstanding requirement
+        keys, opaque strings never typed fields.
+      required:
+        - id
+        - gateway
+        - status
+        - gateway_account_reference
+        - onboarding_url
+        - requirements
+        - activated_at
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        gateway:
+          type: string
+        status:
+          type: string
+          enum: [pending, under_review, action_required, active, rejected, disabled]
+        gateway_account_reference:
+          type: ['string', 'null']
+        onboarding_url:
+          type: ['string', 'null']
+        requirements:
+          type: array
+          items:
+            type: string
+        activated_at:
+          type: ['string', 'null']
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    StartSubmerchantOnboardingRequest:
+      type: object
+      description: >-
+        gateway must be a registered adapter identifier (stage-08c
+        plan, Endpoints).
+      required:
+        - gateway
+      properties:
+        gateway:
+          type: string
+      additionalProperties: false
+    SubmerchantAccountPage:
+      type: object
+      description: >-
+        Laravel standard paginator envelope (data, links, meta) per
+        docs/api-conventions.md.
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubmerchantAccount'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageLink'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      additionalProperties: false
+    SubmerchantOnboardingConflictProblem:
+      description: >-
+        Problem document for onboarding-start conflicts (stage-08c
+        plan, Endpoints): the gateway is not enabled for the tenant, or
+        a sub-merchant account for this tenant and gateway already
+        exists, in which case existing_id names the pre-existing row.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [gateway_not_enabled, submerchant_already_onboarded]
+            existing_id:
+              type: string
+              format: uuid
+      unevaluatedProperties: false
+    SubmerchantOnboardingUnprocessableProblem:
+      description: >-
+        Problem document for onboarding-start semantic failures
+        (stage-08c plan, Endpoints).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [422]
+            code:
+              type: string
+              enum:
+                - request.validation_failed
+                - gateway_unknown
             errors:
               type: object
       unevaluatedProperties: false

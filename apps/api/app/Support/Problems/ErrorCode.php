@@ -100,6 +100,9 @@ enum ErrorCode: string
     case RefundAmountExceedsRefundable = 'refund_amount_exceeds_refundable';
     case RefundCurrencyMismatch = 'refund_currency_mismatch';
     case RefundTicketsNotInOrder = 'refund_tickets_not_in_order';
+    case GatewayUnknown = 'gateway_unknown';
+    case GatewayNotEnabled = 'gateway_not_enabled';
+    case SubmerchantAlreadyOnboarded = 'submerchant_already_onboarded';
 
     public function status(): int
     {
@@ -197,6 +200,9 @@ enum ErrorCode: string
             self::RefundAmountExceedsRefundable => 422,
             self::RefundCurrencyMismatch => 422,
             self::RefundTicketsNotInOrder => 422,
+            self::GatewayUnknown => 422,
+            self::GatewayNotEnabled => 409,
+            self::SubmerchantAlreadyOnboarded => 409,
         };
     }
 
@@ -296,6 +302,9 @@ enum ErrorCode: string
             self::RefundAmountExceedsRefundable => 'Refund amount exceeds refundable',
             self::RefundCurrencyMismatch => 'Refund currency mismatch',
             self::RefundTicketsNotInOrder => 'Refund tickets not in order',
+            self::GatewayUnknown => 'Gateway unknown',
+            self::GatewayNotEnabled => 'Gateway not enabled',
+            self::SubmerchantAlreadyOnboarded => 'Submerchant already onboarded',
         };
     }
 
