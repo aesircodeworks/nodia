@@ -16,7 +16,7 @@ Nothing from this stage has landed: there is no `app/CheckIn` bounded context, n
 - [x] T1 `checkin.manage` capability and template-role wiring (identity)
 - [x] T2 `check_ins` table with RLS, model, enum, factory, isolation tests (checkin)
 - [x] T3 `check_in_assignments` table with RLS, model, factory, isolation tests (checkin)
-- [ ] T4 `event_signing_keys` table with RLS, model, enum, encrypted cast, factory, isolation tests (orders)
+- [x] T4 `event_signing_keys` table with RLS, model, enum, encrypted cast, factory, isolation tests (orders)
 - [ ] T5 Key rotation and get-or-create Actions, provider swap behind `TicketSigningKeyProvider`, deployment-transition and rotation concurrency tests (orders)
 - [ ] T6 Check-in policy layer and `CheckEventAssignment` Action (checkin)
 - [ ] T7 Signing-key endpoints with contract fragments and authorization matrix (orders)
@@ -69,3 +69,19 @@ Test evidence: `php artisan test tests/Isolation/CheckInAssignmentsIsolationTest
 Commit: `b836ba2` feat(checkin): add check_in_assignments table with RLS, model, factory.
 
 No deviations from the plan.
+
+#### T4: 2026-07-12
+
+Added the `event_signing_keys` table (migration, RLS policy in the same migration, unique `(event_id, key_version)`, partial unique index `event_signing_keys_active_event_idx` on `event_id` where `status = 'active'`), `App\Orders\Enums\SigningKeyStatus` (`active`/`retired`/`revoked`), `App\Orders\Models\EventSigningKey` (`HasUuids`, enum cast on `status`, Laravel's built-in `encrypted` cast on `secret`, `Fillable`), and a factory, mirroring the `check_ins` and `check_in_assignments` migrations from T2/T3.
+
+TDD: `tests/Isolation/EventSigningKeysIsolationTest.php` and its `EventSigningKeyFixture` (building on `EventFixture`, one active key per tenant, mirroring `CheckInFixture`'s structure) written first against the standard `Rls::applyTenantPolicies` posture; `tests/Unit/Orders/EventSigningKeyConstraintsTest.php` written first for four DB-level invariants: the `status` enum cast throws `ValueError` on an out-of-enum value read back (no DB-level `CHECK` constraint, matching the `check_ins.result` precedent), the `(event_id, key_version)` unique index rejects a duplicate version, the partial unique index rejects a second `active` key per event, and the `secret` column round-trips through the `encrypted` cast (model reads back plaintext; the raw stored value decrypts to the same plaintext but is not itself the plaintext). Confirmed all fourteen tests failing (`Class "App\Orders\Models\EventSigningKey" not found` / `relation "event_signing_keys" does not exist`) before the migration, enum, model, and factory landed.
+
+One deviation surfaced during the round-trip test: Laravel's `encrypted` cast serializes the value before encrypting (the same as the global `encrypt()` helper's default), so decrypting the raw stored ciphertext with the test's own `decrypt()` call needed `unserialize: false` to avoid `unserialize(): Error at offset 0` on the already-unserialized string; this is a test-assertion detail, not a design deviation, and is called out here only because it is easy to miss when writing this kind of round-trip test again.
+
+`tests/Architecture/PresetTest.php` needed `SigningKeyStatus` added to the Laravel preset's `ignoring()` list, the same treatment `TicketStatus` and `OrderStatus` already receive; `ContextBoundariesTest` needed no change since `Orders` was already a registered context.
+
+Test evidence: `php artisan test tests/Isolation/EventSigningKeysIsolationTest.php tests/Unit/Orders/EventSigningKeyConstraintsTest.php` (14 passed, 22 assertions); `php artisan test --testsuite=Isolation` (294 passed, 578 assertions); `php artisan test --testsuite=Architecture` (40 passed, 97 assertions); `./vendor/bin/pint --dirty` clean. No Data class changed, so `composer types:generate` was not run.
+
+Commit: `ad58c57` feat(orders): add event_signing_keys table with RLS, model, encrypted secret.
+
+No deviations from the plan beyond the test-assertion detail noted above.
