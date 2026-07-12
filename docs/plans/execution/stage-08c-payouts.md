@@ -11,7 +11,7 @@
 - [x] T1 payments: extend GatewayAdapter with sub-merchant and payout operations, wire split-support flag, FakeGateway scenarios and webhook emitters (slice 1)
 - [x] T2 payments: submerchant_accounts migration with RLS, SubmerchantAccount model, SubmerchantStatus enum, factory, isolation tests (slice 2)
 - [x] T3 identity: register payouts.manage capability, financially privileged, template role wiring
-- [ ] T4 payments: StartSubmerchantOnboarding action, POST/list/detail endpoints, Data objects, OpenAPI, error codes, duplicate-start concurrency test (slice 2)
+- [x] T4 payments: StartSubmerchantOnboarding action, POST/list/detail endpoints, Data objects, OpenAPI, error codes, duplicate-start concurrency test (slice 2)
 - [ ] T5 payments: sub-merchant webhook normalization, transition Action, refresh endpoint, concurrency and duplicate-delivery tests (slice 3)
 - [ ] T6 payments: checkout offer and initiation gating on active sub-merchant, submerchant_not_active code (slice 4)
 - [ ] T7 payments: payouts migration with RLS, Payout model, PayoutStatus enum, factory, isolation tests (slice 5)
@@ -89,3 +89,34 @@ Test evidence (from `apps/api`):
 - `vendor/bin/pint --test` on all touched files: passed.
 
 No Data class changed, so `composer types:generate` was not run. No deviation from the plan: this is exactly the small, capability-registry-only task the plan describes, unblocking T4, T5, and T9.
+
+#### T4: StartSubmerchantOnboarding action, POST/list/detail endpoints, OpenAPI, error codes (2026-07-12)
+
+This task was already substantially implemented and left uncommitted in the working tree at the start of this run (`git status` showed the action, controller, Data objects, exceptions, OpenAPI paths, and all three test files already present but untracked); this entry verifies, closes the remaining gap, and commits it.
+
+Landed:
+
+- `App\Payments\Actions\StartSubmerchantOnboarding`: reads `enabled_gateways` through `App\Tenancy\Actions\ResolveEnabledGateways` (never the tenant model directly), inserts the `pending` row first so a losing concurrent start never reaches the gateway, catches `UniqueConstraintViolationException` on the `(tenant_id, gateway)` constraint to raise `SubmerchantAlreadyOnboardedException` with the existing row's id, checks the circuit breaker before calling the gateway and records success/failure on it, then updates the row with `GatewayAdapter::createSubmerchant`'s result (status, reference, onboarding URL, requirements, `activated_at` when immediately active).
+- `App\Tenancy\Actions\ResolveTenantPayoutSchedule`, mirroring `ResolveTenantSettlementCurrency`'s cross-context read pattern, feeding `payout_schedule` into the gateway registration request.
+- `StartSubmerchantOnboardingData` (request) and `SubmerchantAccountData` (response, `#[TypeScript]`) laravel-data objects; `App\Payments\Http\Controllers\SubmerchantAccountController` with `store`/`index`/`show`, `index` on `Spatie\QueryBuilder` with `filter[gateway]`, `filter[status]` (exact) and `-created_at` default sort, unknown filters rejected by the existing query-builder-exception handling.
+- New error codes on the shared `ErrorCode` enum: `gateway_unknown` (422), `gateway_not_enabled` (409), `submerchant_already_onboarded` (409); `App\Support\Problems\HasProblemExtensions` interface added so `SubmerchantAlreadyOnboardedException` can attach `existing_id` to the problem document without every other exception gaining an unused hook (`ProblemRenderer::render` now checks for the interface and merges its extensions in).
+- Routes: `POST /v1/submerchant-accounts` behind `payouts.manage` plus `RecordActivityAudit` (activity log entry asserted in the feature test); `GET /v1/submerchant-accounts` and `GET /v1/submerchant-accounts/{submerchant_account}` behind `payouts.view`.
+- OpenAPI: all four submerchant-account paths (the fourth, refresh, is Slice 3's; only POST/list/detail ship here) with `SubmerchantAccount`, `StartSubmerchantOnboardingRequest`, `SubmerchantAccountPage`, and the two new problem schemas.
+- `FakeGatewayScenarios::recordSubmerchantCreationCall`/`submerchantCreationCallCountFor`, called from `FakeGateway::createSubmerchant`, giving the unit and concurrency tests a way to assert the gateway was called exactly once per successful start without relying on shared in-process state across `ParallelRunner`'s forked processes (the concurrency test asserts on the database row count and non-null `gateway_account_reference` instead, per its own docblock).
+- Tests: `tests/Feature/Payments/SubmerchantOnboardingTest.php` (201 pending and immediate-active paths, all four stable error codes, validation, missing `X-Tenant-Id`, capability and MFA denial, list with every filter, unknown-filter rejection, detail shape, 404 for absent and cross-tenant ids); `tests/Unit/Payments/StartSubmerchantOnboardingActionTest.php` (insert-then-call ordering, each error path calls the gateway zero or one times as expected, `existing_id` on the conflict); `tests/Concurrency/SubmerchantOnboardingContentionTest.php` (4-way parallel start: exactly one row, one `gateway_account_reference`, three losers).
+- Filled the one real gap found during verification: `tests/Contract/DocumentedResponseCoverageTest.php` had no exercisers registered for any of the fifteen new documented responses (`DocumentedResponseCoverageTest::documented_response_is_exercised_with_conformance_asserted` failed for all fifteen). Added `contractPayoutsManageBearer`, `contractPayoutsViewBearer`, their shared `contractFinanciallyPrivilegedBearer` helper, and `contractSubmerchantAccount`, then one exerciser per documented status code, following the existing `contractRefundBearer`/`contractCreateRefund` precedent. Also added a `submerchant_accounts` cleanup line to the suite's per-tenant `afterEach` teardown (missing it broke tenant deletion with a foreign-key violation, since `submerchant_accounts.tenant_id` carries no cascade, the same pattern already followed for `refunds` and `payments`).
+
+Test evidence (from `apps/api`):
+
+- `php artisan test --filter=SubmerchantOnboardingTest`: 16 passed, 65 assertions.
+- `php artisan test --filter=StartSubmerchantOnboardingActionTest`: 4 passed, 10 assertions.
+- `php artisan test --filter=SubmerchantOnboardingContentionTest`: 1 passed, 4 assertions.
+- `php artisan test --testsuite=Contract`: 377 passed, 2417 assertions (full contract regression, confirms the fifteen new exercisers pass and nothing else broke).
+- `php artisan test --testsuite=Feature --filter=Payments`: 115 passed, 659 assertions.
+- `php artisan test --testsuite=Unit`: 852 passed, 2056 assertions.
+- `php artisan test --testsuite=Architecture`: 40 passed, 97 assertions.
+- `php artisan test --testsuite=Concurrency`: 41 passed, 185 assertions.
+- `vendor/bin/pint --test` on all touched/new files: passed.
+- `composer types:generate`: ran and committed regenerated output (`Capability::PayoutsManage`, the three new `ErrorCode` members, `StartSubmerchantOnboardingData`, `SubmerchantAccountData`).
+
+No deviation from the plan's endpoint or error-code shapes. Commit: `982adc5` (`feat(payments): add submerchant onboarding start and read endpoints`).
