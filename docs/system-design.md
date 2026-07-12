@@ -98,6 +98,8 @@ The boundary rule: a context may invoke another context's Actions (passing and r
 
 The API application follows the standard Laravel skeleton, with one folder per bounded context under `app/`. Migrations, factories, and seeders stay in the conventional central `database/` directory. Each context ships a service provider that registers its routes, event subscriptions, and policies.
 
+Stage 10's high-demand waiting room (rate-limit tiers, purchase counters, queue, gatekeeper, and admission tokens) lives entirely under `Inventory/` rather than a separate `Support/OnSale` context: every piece of it exists to protect the hold path Inventory already owns, and the availability read cache fronts Inventory's own reads, so no context boundary would be served by splitting it out.
+
 ```
 apps/api/
   app/
@@ -143,10 +145,12 @@ apps/api/
       Data/
       EventCatalogServiceProvider.php
     Inventory/
-      Models/                     TicketTypeInventory, EventSeat, Hold, HoldItem
+      Models/                     TicketTypeInventory, EventSeat, Hold, HoldItem, PurchaseCounter
       Actions/                    CreateHold, ExtendHold, ReleaseHold, CommitHold, MaterializeEventSeats
       Events/                     HoldCreated, HoldExpired, HoldReleased
       Console/                    ReleaseExpiredHolds (scheduled sweeper)
+      Support/                    RateLimiterKeys, PurchaseCounters (guarded upsert/decrement); the stage-10
+                                   waiting room's queue, gatekeeper, and admission-token machinery land here too
       Http/
         Controllers/
         Requests/
