@@ -477,4 +477,37 @@ tests/Feature/Payments/SubmerchantOnboardingTest.php` (24 passed) and
 `tests/Contract/DocumentedResponseCoverageTest.php` (385 passed);
 `composer -d apps/api run lint` passed.
 
+#### Review round 3 (2026-07-12 14:21 -03, Codex)
+
+Two important findings:
+
+1. (important) `app/Payments/Support/Fixtures/GatewayFixtureLoader.php` -- `fake()`
+   loaded every `*.json` in the gateway directory regardless of scenario, so
+   identical matchers recorded under different scenarios were combined into one
+   replay sequence and a scenario could receive another scenario's response
+   (same underlying issue flagged for the drift detector's prefix matching).
+   Fixed: `fake()` now takes a `scenario` argument and loads only that
+   scenario's files, throwing `GatewayFixtureNotCoveredException` when the
+   scenario has none. Selection is centralized in a new
+   `GatewayScenarioFixtures::orderedPaths()` helper shared with the detector.
+   Renamed the committed fixtures to the `{scenario}-{index}.json` convention
+   (`examplegw/create-payment-0.json`, `pollinggw/poll-submerchant-0.json` and
+   `-1.json`). Added loader tests proving a scenario loads only its own files
+   when another scenario shares the same matcher, plus replay in numeric order
+   past ten exchanges.
+2. (important) `app/Payments/Support/Fixtures/GatewayFixtureDriftDetector.php` --
+   `loadRecordedExchanges()` globbed `{scenario}*.json` (prefix match, no
+   delimiter) and sorted lexicographically, so `scenario-10` sorted between
+   `scenario-1` and `scenario-2` (out-of-order compare -> false drift) and a
+   sibling scenario sharing a name prefix leaked into the set. Fixed: it now
+   uses the same `GatewayScenarioFixtures::orderedPaths()` helper, which
+   matches `^{scenario}-(\d+)\.json$` and sorts by the numeric index. Added
+   detector tests proving numeric ordering past ten exchanges and that a
+   prefix-sharing sibling scenario (`poll-refund-0.json`) is excluded from the
+   `poll` scenario.
+
+Verification: `php artisan test --filter=GatewayFixture` (23 passed);
+`composer -d apps/api run analyse` (0 errors) and
+`composer -d apps/api run lint` passed.
+
 ### Decisions and deviations
