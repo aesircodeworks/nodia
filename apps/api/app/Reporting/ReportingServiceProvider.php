@@ -6,7 +6,10 @@ use App\Reporting\Jobs\ProjectDailySales;
 use App\Reporting\Jobs\ProjectEventAttendance;
 use App\Reporting\Jobs\ProjectEventFinance;
 use App\Reporting\Support\Export\ExportSourceRegistry;
+use App\Reporting\Support\Export\Sources\CheckInsExportSource;
+use App\Reporting\Support\Export\Sources\LedgerEntriesExportSource;
 use App\Reporting\Support\Export\Sources\OrdersExportSource;
+use App\Reporting\Support\Export\Sources\TicketsExportSource;
 use App\Support\Outbox\SubscriberRegistry;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -36,9 +39,10 @@ use Illuminate\Support\ServiceProvider;
  * ExportSourceRegistry (task 15) is bound as a singleton here rather
  * than left to auto-resolution, so the same populated instance answers
  * every consumer: the future POST /v1/exports validator (task 16) and
- * App\Reporting\Actions\BuildExport. `orders` is the only source
- * registered by this task; `tickets` and `ledger_entries` land with task
- * 12, `check_ins` with or after task 11's attendance projector.
+ * App\Reporting\Actions\BuildExport. `orders`, `tickets`,
+ * `ledger_entries`, and `check_ins` are all registered as of task 12
+ * (T12): the attendance projector (task 11) already landed in T7, so
+ * `check_ins` was never gated in this run.
  */
 class ReportingServiceProvider extends ServiceProvider
 {
@@ -68,6 +72,9 @@ class ReportingServiceProvider extends ServiceProvider
         );
 
         $exportSources->register($this->app->make(OrdersExportSource::class));
+        $exportSources->register($this->app->make(TicketsExportSource::class));
+        $exportSources->register($this->app->make(LedgerEntriesExportSource::class));
+        $exportSources->register($this->app->make(CheckInsExportSource::class));
 
         Route::middleware('tenancy.admin')
             ->prefix('v1')
