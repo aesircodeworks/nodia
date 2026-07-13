@@ -37,10 +37,14 @@ const MAX_REVIEW_ROUNDS = 3
 let input = args
 if (typeof input === 'string') {
   try {
-    input = JSON.parse(input)
+    const parsed = JSON.parse(input)
+    // A bare numeric key such as "11" is valid JSON, so only an object counts as structured args
+    input = parsed && typeof parsed === 'object' ? parsed : { stage: input.trim() }
   } catch (e) {
     input = { stage: input.trim() }
   }
+} else if (typeof input === 'number') {
+  input = { stage: String(input) }
 }
 const stageKey = input && input.stage ? String(input.stage) : null
 if (!stageKey || !STAGES[stageKey]) {
