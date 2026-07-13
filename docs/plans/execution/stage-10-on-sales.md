@@ -373,3 +373,33 @@ Walking `docs/plans/stage-10-on-sales.md`'s 12 exit criteria against the code an
 12. **Not met.** `composer lint` and `composer analyse` pass; all six suites pass (3133/3133, confirmed fresh in this closing session, see Run summary); the TypeScript drift gate is clean. But the status table row for Stage 10 does not read "done" (see below), and per this criterion's own text tying gate passage to the status table reading done, criterion 12 as a whole is not satisfied while blockers 1-3 remain open.
 
 **Overall: 9 of 12 exit criteria met.** Criteria 8, 10, and 12 are not met, tracing to the same three open blockers (admission-token empty-secret fallback; missing OpenAPI 429 documentation and test coverage for `queue_entry`/`queue_poll`). Stage 10 is not done.
+
+## Review round 2
+
+Codex review of the stage-10 diff (`1f03eaa..HEAD`, 21 commits, 102 files), run after the round-1 blockers were fixed.
+
+**Round-1 blockers: all three resolved.**
+
+1. **Fixed** in `cf997e3` (`fix(inventory): fail closed when the admission token signing key is unset`). `AdmissionToken::issue` now raises `RuntimeException` when the current key's secret is unset, and `secretForKeyId` treats an unset secret as an unknown key, so `verify` rejects rather than HMAC-ing under the empty string. A regression test forges a token under the empty secret exactly as an attacker would and asserts `verify` returns null; it failed against the old code, proving the hole was real and is now closed. Round 2 additionally caught that a quoted whitespace-only secret (`" "`) was still usable, fixed in `11c4b88` by trimming before the blank check, with dataset tests over `''`, `' '`, `'\t'`, `'\n'`.
+2. **Fixed** in `cf997e3`. `docs/openapi/openapi.yaml` gains a `RateLimitedProblem` schema (status 429, code `request.rate_limited`) and documents the 429 with its `Retry-After` header on both `POST /v1/storefront/events/{event}/queue-entries` and `GET /v1/storefront/queue-entries/{entry}`. This is the first 429 documented anywhere in the spec; the repo previously documented none.
+3. **Fixed** in `cf997e3`. `tests/Feature/Inventory/RateLimitingTest.php` drives both tiers past their limit and asserts 429, the problem document, and `Retry-After`, plus fake-clock decay-window resets. Two exercisers in `tests/Contract/DocumentedResponseCoverageTest.php` conformance-assert the newly documented 429 shapes; the Contract suite's own `DocumentedResponseCoverageTest` rejected the OpenAPI addition until they existed.
+
+**New round-2 finding, open, not fixed:**
+
+4. **Important, design question, needs a decision before it is coded.** The gatekeeper releases a whole minute's admission budget in the first sub-minute tick. `OnSaleQueue::intervalId` (`app/Inventory/Support/OnSaleQueue.php:197`) buckets the budget key per UTC minute, `RunGatekeeperTick` (`app/Inventory/Actions/RunGatekeeperTick.php:74`) seeds it with the full `admission_rate_per_minute`, and `ADMIT_SCRIPT` admits `min(remaining, waiting_count)` in one pass. So with a rate of 600 and a backlog, the first 10-second tick admits all 600 and the minute's remaining five ticks admit none. The per-minute ceiling is still honoured, so this is not an oversell or a correctness bug, and exit criterion 5 ("never exceeds the interval budget") holds. What fails is the stated reason the sub-minute cadence exists at all: `bootstrap/app.php`'s own comment and the plan's Risks section, "Gatekeeper cadence", say the sub-minute ticks are there to make a per-minute rate feel smooth, and a burst-then-idle pattern is not smooth.
+
+   This is left open deliberately, because the plan contradicts itself and the resolution is a plan decision, not a code cleanup. The Risks section wants smoothing, but the Slice 5 test spec (plan line 187) specifies "one gatekeeper tick admits `min(R-per-interval, W)`", which with a per-minute interval is exactly the current behaviour: the implementation follows the plan's test spec and violates the plan's rationale. Fixing it means either a continuously replenished token bucket or an elapsed-time-proportional allowance per tick, plus a fake-clock test over all six ticks of a minute, and it changes the plan's own Slice 5 spec. Decide the intended admission shape first.
+
+**Flaky tests observed, pre-existing, not caused by this stage.** One full serial run of the suite failed `tests/Feature/Identity/AuthorizationMatrixTest.php` (401 instead of 403, a JWT `RequiredConstraint` violation) and `tests/Feature/Payments/LedgerInvariantHarnessTest.php` ("Expecting [] not to be empty"). Both passed in isolation and both passed on a full re-run (3151/3151), so they are order- or timing-dependent flakes in Identity and Payments, untouched by stage 10. Worth their own investigation; they are not a stage-10 gate.
+
+### Gate record, review round 2
+
+Run against `11c4b88`, all fresh in this session:
+
+- `composer lint` (Pint): passed.
+- `composer analyse` (Larastan): passed, 0 errors.
+- `./vendor/bin/pest` (full suite, all six suites): 3151 tests, 3151 passed, 12420 assertions, ~420s. Note that `composer test` cannot run the full suite: it exceeds Composer's own 300s script timeout and gets killed with no failing test to point at, which is a tooling artifact and not a red suite. This is now documented in `CLAUDE.md`.
+- `composer types:generate`: no contract drift.
+- CI on `11c4b88`: all 5 checks green (API, Storefront, Packages, Checkin, Admin).
+
+**Exit criteria after round 2: 11 of 12 met.** Criteria 8 and 10 are now met (the `queue_entry`/`queue_poll` 429 is documented, contract-conformed, and feature-tested). Criterion 12 remains unmet only because finding 4 is open and the status table therefore does not read done.

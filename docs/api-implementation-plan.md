@@ -26,7 +26,7 @@ Update this table when a stage starts and when it merges.
 | Stage 8c: Payouts and Sub-merchant Onboarding | Done |
 | Stage 8d: Real Gateway Adapter (gated on ADR) | In progress |
 | Stage 9: Check-in and Offline Reconciliation | Done |
-| Stage 10: High-Demand On-Sales | In progress (blocked on review round 1: forgeable admission tokens when the signing secret is unset; missing 429 docs/coverage for the queue_entry and queue_poll rate-limit tiers — see docs/plans/execution/stage-10-on-sales.md) |
+| Stage 10: High-Demand On-Sales | In progress (round-1 blockers fixed; open: the gatekeeper releases a whole minute's admission budget in the first sub-minute tick, which needs a plan decision because the plan's Risks section and its Slice 5 test spec disagree — see docs/plans/execution/stage-10-on-sales.md) |
 | Stage 11: Reporting and Exports | Not started |
 | Stage 12: Compliance, Operations, Hardening | Not started |
 
