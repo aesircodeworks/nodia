@@ -74,6 +74,26 @@ function attemptBrowseAvailability(string $host): TestResponse
     return test()->getJson('http://'.$host.'/v1/storefront/events/'.Str::uuid7().'/availability');
 }
 
+/**
+ * Unknown event, so every request short of the tier's own limit reaches the
+ * controller and renders event_not_found (404) rather than a validation
+ * failure, keeping the throttle status the only variable under test.
+ *
+ * @return TestResponse<JsonResponse>
+ */
+function attemptQueueEntry(string $host): TestResponse
+{
+    return test()->postJson('http://'.$host.'/v1/storefront/events/'.Str::uuid7().'/queue-entries', []);
+}
+
+/**
+ * @return TestResponse<JsonResponse>
+ */
+function attemptQueuePoll(string $host): TestResponse
+{
+    return test()->getJson('http://'.$host.'/v1/storefront/queue-entries/'.Str::uuid7());
+}
+
 describe('hold_creation rate limiter tier', function (): void {
     it('returns a 429 request.rate_limited problem document with Retry-After once the ip tier is exceeded', function (): void {
         config(['onsale.rate_limits.hold_creation.ip' => ['max_attempts' => 2, 'decay_seconds' => 60]]);
@@ -101,6 +121,66 @@ describe('hold_creation rate limiter tier', function (): void {
         test()->travelTo(now()->addSeconds(31));
 
         attemptHoldCreation($host)->assertStatus(404);
+    });
+});
+
+describe('queue_entry rate limiter tier', function (): void {
+    it('returns a 429 request.rate_limited problem document with Retry-After once the tier is exceeded', function (): void {
+        config(['onsale.rate_limits.queue_entry' => ['max_attempts' => 2, 'decay_seconds' => 60]]);
+        ['host' => $host] = rateLimitedTenant();
+
+        attemptQueueEntry($host)->assertStatus(404);
+        attemptQueueEntry($host)->assertStatus(404);
+        $blocked = attemptQueueEntry($host);
+
+        $blocked->assertStatus(429)
+            ->assertHeader('Content-Type', 'application/problem+json')
+            ->assertMatchesProblemSchema()
+            ->assertJsonPath('code', 'request.rate_limited');
+
+        expect($blocked->headers->get('Retry-After'))->not->toBeNull();
+    });
+
+    it('resets once the fake clock advances past the decay window, with no real sleeping', function (): void {
+        config(['onsale.rate_limits.queue_entry' => ['max_attempts' => 1, 'decay_seconds' => 30]]);
+        ['host' => $host] = rateLimitedTenant();
+
+        attemptQueueEntry($host)->assertStatus(404);
+        attemptQueueEntry($host)->assertStatus(429);
+
+        test()->travelTo(now()->addSeconds(31));
+
+        attemptQueueEntry($host)->assertStatus(404);
+    });
+});
+
+describe('queue_poll rate limiter tier', function (): void {
+    it('returns a 429 request.rate_limited problem document with Retry-After once the tier is exceeded', function (): void {
+        config(['onsale.rate_limits.queue_poll' => ['max_attempts' => 2, 'decay_seconds' => 60]]);
+        ['host' => $host] = rateLimitedTenant();
+
+        attemptQueuePoll($host)->assertStatus(404);
+        attemptQueuePoll($host)->assertStatus(404);
+        $blocked = attemptQueuePoll($host);
+
+        $blocked->assertStatus(429)
+            ->assertHeader('Content-Type', 'application/problem+json')
+            ->assertMatchesProblemSchema()
+            ->assertJsonPath('code', 'request.rate_limited');
+
+        expect($blocked->headers->get('Retry-After'))->not->toBeNull();
+    });
+
+    it('resets once the fake clock advances past the decay window, with no real sleeping', function (): void {
+        config(['onsale.rate_limits.queue_poll' => ['max_attempts' => 1, 'decay_seconds' => 30]]);
+        ['host' => $host] = rateLimitedTenant();
+
+        attemptQueuePoll($host)->assertStatus(404);
+        attemptQueuePoll($host)->assertStatus(429);
+
+        test()->travelTo(now()->addSeconds(31));
+
+        attemptQueuePoll($host)->assertStatus(404);
     });
 });
 

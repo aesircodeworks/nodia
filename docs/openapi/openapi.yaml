@@ -4495,6 +4495,19 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/QueueChallengeProblem'
+        '429':
+          description: >-
+            The per-IP queue_entry rate limiter tier was exceeded (code
+            request.rate_limited); carries Retry-After.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: string
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/RateLimitedProblem'
   /v1/storefront/queue-entries/{entry}:
     parameters:
       - name: entry
@@ -4532,6 +4545,21 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/QueueEntryNotFoundProblem'
+        '429':
+          description: >-
+            The per-IP queue_poll rate limiter tier was exceeded (code
+            request.rate_limited); carries Retry-After. Storefront
+            clients poll this endpoint, so they must honour Retry-After
+            rather than tightening their poll interval.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: string
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/RateLimitedProblem'
   /v1/storefront/orders:
     post:
       operationId: createOrder
@@ -10422,6 +10450,23 @@ components:
             code:
               type: string
               enum: [queue_entry_not_found]
+      unevaluatedProperties: false
+    RateLimitedProblem:
+      description: >-
+        Problem document for a request rejected by a named rate limiter
+        tier (stage-10 plan, Endpoints "Rate limiting tiers"). Carries
+        Retry-After; nothing about the attempt persists, so the client
+        may retry once the window decays.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [429]
+            code:
+              type: string
+              enum: [request.rate_limited]
       unevaluatedProperties: false
     RoleNameTakenProblem:
       description: >-

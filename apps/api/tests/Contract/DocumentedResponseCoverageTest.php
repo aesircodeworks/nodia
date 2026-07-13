@@ -3014,6 +3014,26 @@ function documentedResponseExercisers(): array
 
             return test()->getJson('http://'.$host.'/v1/storefront/queue-entries/'.Str::uuid7());
         },
+        // The queue_entry and queue_poll tiers, driven past their own limit
+        // through a config override rather than the platform default, so the
+        // documented 429 shape is asserted without issuing 20-plus requests
+        // (stage-10 plan, Endpoints "Rate limiting tiers").
+        'post /v1/storefront/events/{event}/queue-entries 429' => function (): TestResponse {
+            config(['onsale.rate_limits.queue_entry' => ['max_attempts' => 1, 'decay_seconds' => 60]]);
+            ['host' => $host] = contractHoldTenant();
+
+            test()->postJson('http://'.$host.'/v1/storefront/events/'.Str::uuid7().'/queue-entries', []);
+
+            return test()->postJson('http://'.$host.'/v1/storefront/events/'.Str::uuid7().'/queue-entries', []);
+        },
+        'get /v1/storefront/queue-entries/{entry} 429' => function (): TestResponse {
+            config(['onsale.rate_limits.queue_poll' => ['max_attempts' => 1, 'decay_seconds' => 60]]);
+            ['host' => $host] = contractHoldTenant();
+
+            test()->getJson('http://'.$host.'/v1/storefront/queue-entries/'.Str::uuid7());
+
+            return test()->getJson('http://'.$host.'/v1/storefront/queue-entries/'.Str::uuid7());
+        },
         // Stage-07 plan, task breakdown item 3: the storefront order
         // conversion surface. Every case authenticates as a customer over
         // the Host-resolved endpoint; only the 401 goes without a bearer.

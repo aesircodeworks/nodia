@@ -5,6 +5,7 @@ namespace App\Inventory\Support;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Date;
 use JsonException;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -35,7 +36,8 @@ final class AdmissionToken
     public static function issue(string $entrantId, string $eventId, string $tenantId, CarbonInterface $expiresAt): string
     {
         $keyId = config()->string('onsale.admission_token.current_key_id');
-        $secret = self::secretForKeyId($keyId) ?? '';
+        $secret = self::secretForKeyId($keyId)
+            ?? throw new RuntimeException('Admission token signing key is not configured; set ONSALE_ADMISSION_TOKEN_SIGNING_KEY.');
 
         $expiresAtIso = $expiresAt->toIso8601String();
 
@@ -130,20 +132,32 @@ final class AdmissionToken
         return hash_hmac('sha256', $entrantId.'|'.$eventId.'|'.$tenantId.'|'.$expiresAtIso, $secret);
     }
 
+    /**
+     * A key whose secret is unset or blank resolves to null, exactly like an
+     * unknown key id: ONSALE_ADMISSION_TOKEN_SIGNING_KEY ships blank in
+     * .env.example, and HMAC-ing under the empty string would leave every
+     * admission token forgeable by anyone who knows the (public) key id.
+     * Rejecting here fails the whole gate closed rather than open.
+     */
     private static function secretForKeyId(string $keyId): ?string
     {
         /** @var array{current_key_id: string, current_key_secret: ?string, previous_key_id: ?string, previous_key_secret: ?string} $config */
         $config = config('onsale.admission_token');
 
         if ($keyId === $config['current_key_id']) {
-            return (string) ($config['current_key_secret'] ?? '');
+            return self::usableSecret($config['current_key_secret']);
         }
 
         if ($config['previous_key_id'] !== null && $keyId === $config['previous_key_id']) {
-            return (string) ($config['previous_key_secret'] ?? '');
+            return self::usableSecret($config['previous_key_secret']);
         }
 
         return null;
+    }
+
+    private static function usableSecret(?string $secret): ?string
+    {
+        return $secret === null || $secret === '' ? null : $secret;
     }
 
     private static function base64UrlEncode(string $value): string

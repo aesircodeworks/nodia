@@ -106,3 +106,64 @@ test('expiry is checked against the injected clock, the exact expiry instant cou
         ->and(AdmissionToken::verify($token, $this->eventId, $this->tenantId, $now->copy()->addMinutes(5)))->toBeNull()
         ->and(AdmissionToken::verify($token, $this->eventId, $this->tenantId, $now->copy()->addMinutes(6)))->toBeNull();
 });
+
+/*
+ * Fail closed on an unset signing secret. ONSALE_ADMISSION_TOKEN_SIGNING_KEY
+ * ships blank in .env.example, so a deployment that never sets it must not
+ * quietly fall back to HMAC-ing under the empty string: that key is guessable
+ * by anyone, which would make every admission token forgeable and the
+ * high-demand hold gate decorative.
+ */
+test('issue refuses to sign when the current key secret is unset', function (): void {
+    config(['onsale.admission_token.current_key_secret' => null]);
+
+    expect(fn () => AdmissionToken::issue($this->entrantId, $this->eventId, $this->tenantId, now()->addMinutes(5)))
+        ->toThrow(RuntimeException::class);
+});
+
+test('issue refuses to sign when the current key secret is blank', function (): void {
+    config(['onsale.admission_token.current_key_secret' => '']);
+
+    expect(fn () => AdmissionToken::issue($this->entrantId, $this->eventId, $this->tenantId, now()->addMinutes(5)))
+        ->toThrow(RuntimeException::class);
+});
+
+test('verify rejects a token forged under the empty secret when the current key secret is unset', function (): void {
+    $now = now();
+    $expiresAtIso = $now->copy()->addMinutes(5)->toIso8601String();
+
+    // Exactly what the old empty-string fallback would have produced, which is
+    // what any attacker could compute knowing only the (public) key id.
+    $forged = 'k2.'.rtrim(strtr(base64_encode((string) json_encode([
+        'entrant_id' => $this->entrantId,
+        'event_id' => $this->eventId,
+        'tenant_id' => $this->tenantId,
+        'expires_at' => $expiresAtIso,
+        'signature' => hash_hmac('sha256', $this->entrantId.'|'.$this->eventId.'|'.$this->tenantId.'|'.$expiresAtIso, ''),
+    ], JSON_THROW_ON_ERROR)), '+/', '-_'), '=');
+
+    config(['onsale.admission_token.current_key_secret' => null]);
+
+    expect(AdmissionToken::verify($forged, $this->eventId, $this->tenantId, $now))->toBeNull();
+
+    config(['onsale.admission_token.current_key_secret' => '']);
+
+    expect(AdmissionToken::verify($forged, $this->eventId, $this->tenantId, $now))->toBeNull();
+});
+
+test('verify rejects a token bearing a previous key id whose secret is blank', function (): void {
+    $now = now();
+    $expiresAtIso = $now->copy()->addMinutes(5)->toIso8601String();
+
+    $forged = 'k1.'.rtrim(strtr(base64_encode((string) json_encode([
+        'entrant_id' => $this->entrantId,
+        'event_id' => $this->eventId,
+        'tenant_id' => $this->tenantId,
+        'expires_at' => $expiresAtIso,
+        'signature' => hash_hmac('sha256', $this->entrantId.'|'.$this->eventId.'|'.$this->tenantId.'|'.$expiresAtIso, ''),
+    ], JSON_THROW_ON_ERROR)), '+/', '-_'), '=');
+
+    config(['onsale.admission_token.previous_key_secret' => '']);
+
+    expect(AdmissionToken::verify($forged, $this->eventId, $this->tenantId, $now))->toBeNull();
+});
