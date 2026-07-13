@@ -65,3 +65,17 @@ it('schedules webhooks:prune-payloads daily', function (): void {
     expect($prune)->not->toBeNull()
         ->and($prune->expression)->toBe('0 0 * * *');
 });
+
+it('schedules data-subject-requests:prune-exports daily', function (): void {
+    Artisan::all();
+
+    $events = collect(app(Schedule::class)->events());
+
+    $prune = $events->first(
+        fn ($event): bool => is_string($event->command)
+            && str_contains($event->command, 'data-subject-requests:prune-exports'),
+    );
+
+    expect($prune)->not->toBeNull()
+        ->and($prune->expression)->toBe('0 0 * * *');
+});
