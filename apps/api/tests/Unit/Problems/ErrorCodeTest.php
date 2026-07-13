@@ -123,6 +123,8 @@ test('the registry holds exactly the known codes', function () {
         'queue_entry_not_found',
         'admission_required',
         'admission_invalid',
+        'export_not_ready',
+        'export_failed',
     ]);
 });
 
@@ -244,6 +246,8 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'queue_entry_not_found' => [ErrorCode::QueueEntryNotFound, 404, 'Queue entry not found', '/problems/queue-entry-not-found'],
     'admission_required' => [ErrorCode::AdmissionRequired, 403, 'Admission required', '/problems/admission-required'],
     'admission_invalid' => [ErrorCode::AdmissionInvalid, 403, 'Admission invalid', '/problems/admission-invalid'],
+    'export_not_ready' => [ErrorCode::ExportNotReady, 409, 'Export not ready', '/problems/export-not-ready'],
+    'export_failed' => [ErrorCode::ExportFailed, 409, 'Export failed', '/problems/export-failed'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {
