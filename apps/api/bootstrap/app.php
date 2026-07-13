@@ -56,6 +56,12 @@ return Application::configure(basePath: dirname(__DIR__))
         // like every other scheduled command in this file rather than
         // dispatching a queued job.
         $schedule->command('onsale:gatekeeper')->everyTenSeconds();
+
+        // Stage-12 plan, Slice 3, task breakdown item 7: the retention
+        // window is day-scale (config/retention.php), so the pruner
+        // runs daily rather than at the minute cadence the sweepers
+        // above use.
+        $schedule->command('webhooks:prune-payloads')->daily();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

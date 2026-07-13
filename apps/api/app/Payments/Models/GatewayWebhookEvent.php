@@ -17,10 +17,11 @@ use Illuminate\Support\Carbon;
  * @property string $tenant_id
  * @property string $gateway
  * @property string $gateway_event_id
- * @property array<string, mixed> $payload
+ * @property array<string, mixed>|null $payload
  * @property GatewayWebhookStatus $status
  * @property Carbon $received_at
  * @property Carbon|null $processed_at
+ * @property Carbon|null $payload_pruned_at
  * @property Carbon $created_at
  * @property Carbon $updated_at
  */
@@ -32,6 +33,7 @@ use Illuminate\Support\Carbon;
     'status',
     'received_at',
     'processed_at',
+    'payload_pruned_at',
 ])]
 class GatewayWebhookEvent extends Model
 {
@@ -47,6 +49,7 @@ class GatewayWebhookEvent extends Model
             'status' => GatewayWebhookStatus::class,
             'received_at' => 'datetime',
             'processed_at' => 'datetime',
+            'payload_pruned_at' => 'datetime',
         ];
     }
 }
