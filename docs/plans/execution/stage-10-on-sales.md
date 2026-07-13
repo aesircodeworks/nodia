@@ -285,4 +285,4 @@ Test evidence (all run from `apps/api` against the real PostgreSQL test database
 
 Commits:
 
-- (pending) feat(inventory): enforce admission tokens on POST /v1/storefront/holds
+- `9b0f986` feat(inventory): enforce admission tokens on POST /v1/storefront/holds
