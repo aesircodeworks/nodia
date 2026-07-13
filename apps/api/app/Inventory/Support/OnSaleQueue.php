@@ -34,42 +34,45 @@ use Illuminate\Support\Facades\Redis;
  * "cross-tenant resolves to not-found by key namespacing").
  *
  * admit() (stage-10 plan task breakdown item 8) is the gatekeeper's own
- * Lua-scripted admission step: popping the earliest arrivals from
- * waiting, writing them to admitted, and decrementing the interval
- * budget all happen inside one redis.call sequence within a single Lua
- * script, which Redis executes as one atomic, single-threaded unit
- * (stage-10 plan, Data model "Admission and dequeue run as Lua scripts
- * so that popping an entrant from waiting, writing it to admitted, and
- * decrementing the budget are one atomic step; two racing gatekeeper
- * runs cannot admit the same entrant twice or exceed the interval
- * budget"). The budget key embeds an interval id (the current UTC
- * minute, floor(timestamp / 60), matching admission_rate_per_minute's
- * own per-minute unit) so a fresh budget begins automatically at each
- * minute boundary with no explicit reset step, and every admit() call
- * within the same minute shares and depletes the one budget key
- * regardless of how many gatekeeper ticks land inside it.
+ * Lua-scripted admission step: refilling the budget, popping the earliest
+ * arrivals from waiting, writing them to admitted, and charging them
+ * against the budget all happen inside one redis.call sequence within a
+ * single Lua script, which Redis executes as one atomic, single-threaded
+ * unit (stage-10 plan, Data model "Admission and dequeue run as Lua
+ * scripts so that popping an entrant from waiting, writing it to
+ * admitted, and decrementing the budget are one atomic step; two racing
+ * gatekeeper runs cannot admit the same entrant twice or exceed the
+ * interval budget").
+ *
+ * The budget is a token bucket, not a per-minute counter that resets on
+ * the minute boundary. Tokens accrue continuously with elapsed time at
+ * admission_rate_per_minute (measured on the framework clock the caller
+ * passes in, never a Redis TTL, so a fake clock governs it in tests), and
+ * the bucket holds at most one tick's worth of them. That cap is the
+ * whole point: the waiting room exists to admit entrants into checkout
+ * "matched to what the payment path sustains" (stage-10 plan, Overview),
+ * and a bucket that could hold a whole minute's rate would let the first
+ * tick of each minute dump all of it into checkout at once and then idle,
+ * which is the thundering herd the waiting room is there to prevent. The
+ * bucket starts empty and accrual is the only thing that ever adds to it,
+ * so the admissions in any 60-second window still cannot exceed
+ * admission_rate_per_minute; capping only ever discards accrual, and an
+ * idle event therefore banks no burst to spend later.
  */
 final class OnSaleQueue
 {
     private const ACTIVE_SET = 'onsale:active';
 
     /**
-     * The per-minute unit admission_rate_per_minute is expressed in
-     * (stage-10 plan, Data model "events.on_sale_policy"): the budget
-     * key's interval id changes only once every 60 seconds, so repeated
-     * sub-minute gatekeeper ticks (stage-10 plan Risks "Gatekeeper
-     * cadence") share and deplete one budget for the whole minute.
+     * The bucket key's own Redis TTL, garbage collection only (stage-10
+     * plan, Data model "Redis structures"), never consulted for
+     * admission semantics (only the Lua script's own token arithmetic
+     * is). Every tick rewrites the key, so this only ever elapses for an
+     * event the gatekeeper has stopped ticking, which means no live
+     * queue; the bucket then reseeds empty, which under-admits by at
+     * most one tick and can never over-admit.
      */
-    private const INTERVAL_SECONDS = 60;
-
-    /**
-     * The budget key's own Redis TTL, garbage collection only (stage-10
-     * plan, Data model "Redis structures"): two intervals wide so a key
-     * always outlives the minute it governs even under clock skew
-     * between gatekeeper ticks, never consulted for admission semantics
-     * (only the Lua script's own remaining-budget arithmetic is).
-     */
-    private const BUDGET_KEY_TTL_SECONDS = self::INTERVAL_SECONDS * 2;
+    private const BUCKET_KEY_TTL_SECONDS = 300;
 
     /**
      * How long past an admitted entry's own expiry score trimAdmitted()
@@ -84,14 +87,14 @@ final class OnSaleQueue
     private const ADMITTED_TRIM_GRACE_SECONDS = 30;
 
     /**
-     * Pops the earliest arrivals from waiting, admits them, and
-     * decrements the interval budget as one atomic Lua script (see the
-     * class docblock). $rate seeds the interval budget the first time
-     * any admit() call touches it this minute; later calls in the same
-     * minute ignore it and read the already-initialized remaining
-     * value instead, so passing a different rate mid-interval never
-     * retroactively changes the budget already committed to. Returns
-     * the admitted entrant ids in arrival order, possibly empty.
+     * Refills the event's token bucket for the time elapsed since the
+     * last tick, then pops that many of the earliest arrivals from
+     * waiting and admits them, as one atomic Lua script (see the class
+     * docblock). $rate is the accrual rate, read fresh on every call, so
+     * raising or lowering an event's admission_rate_per_minute takes
+     * effect from the next tick without retroactively crediting or
+     * clawing back tokens already accrued. Returns the admitted entrant
+     * ids in arrival order, possibly empty.
      *
      * @return list<string>
      */
@@ -100,14 +103,15 @@ final class OnSaleQueue
         $keys = [
             self::waitingKey($tenantId, $eventId),
             self::admittedKey($tenantId, $eventId),
-            self::budgetKey($tenantId, $eventId, self::intervalId($now)),
+            self::bucketKey($tenantId, $eventId),
         ];
 
         $args = [
             $now->getPreciseTimestamp(3),
             $tokenTtlSeconds * 1000,
             $rate,
-            self::BUDGET_KEY_TTL_SECONDS,
+            self::bucketCapacity($rate),
+            self::BUCKET_KEY_TTL_SECONDS,
         ];
 
         // Illuminate\Redis\Connections\PhpRedisConnection::eval()
@@ -190,13 +194,17 @@ final class OnSaleQueue
     }
 
     /**
-     * The current admission_rate_per_minute interval bucket: a new
-     * budget key begins automatically every 60 seconds with no explicit
-     * reset (see INTERVAL_SECONDS).
+     * The most tokens the bucket may hold, and so the most entrants one
+     * tick may release: exactly the allowance a tick's worth of elapsed
+     * time accrues at $rate (see the class docblock). Never below 1, or
+     * an event whose rate is slower than one entrant per tick would cap
+     * its bucket under a whole token and admit nobody, ever.
      */
-    public static function intervalId(CarbonInterface $now): int
+    public static function bucketCapacity(int $rate): int
     {
-        return intdiv($now->getTimestamp(), self::INTERVAL_SECONDS);
+        $tickSeconds = (int) config('onsale.gatekeeper.tick_seconds');
+
+        return max(1, (int) ceil($rate * $tickSeconds / 60));
     }
 
     /**
@@ -266,9 +274,14 @@ final class OnSaleQueue
         return sprintf('onsale:%s:admitted', self::hashTag($tenantId, $eventId));
     }
 
-    public static function budgetKey(string $tenantId, string $eventId, int $interval): string
+    /**
+     * One continuous bucket per event, with no interval id in the key:
+     * the budget is refilled by elapsed time rather than reset on a
+     * boundary, so there is no interval to name.
+     */
+    public static function bucketKey(string $tenantId, string $eventId): string
     {
-        return sprintf('onsale:%s:budget:%d', self::hashTag($tenantId, $eventId), $interval);
+        return sprintf('onsale:%s:budget', self::hashTag($tenantId, $eventId));
     }
 
     public static function entrantKey(string $tenantId, string $entrantId): string
@@ -292,49 +305,72 @@ final class OnSaleQueue
     }
 
     /**
-     * KEYS[1] waiting, KEYS[2] admitted, KEYS[3] this minute's budget.
-     * ARGV[1] now in epoch milliseconds, ARGV[2] the admission token TTL
-     * in milliseconds (the score written to admitted), ARGV[3] the
-     * interval's admission rate (seeds the budget key only the first
-     * time it is touched this minute), ARGV[4] the budget key's own
-     * Redis TTL in seconds (garbage collection only). Returns the list
-     * of admitted entrant ids, arrival-ordered, possibly empty.
+     * KEYS[1] waiting, KEYS[2] admitted, KEYS[3] the event's token
+     * bucket (a hash of tokens and updated_at). ARGV[1] now in epoch
+     * milliseconds, ARGV[2] the admission token TTL in milliseconds (the
+     * score written to admitted), ARGV[3] admission_rate_per_minute (the
+     * accrual rate), ARGV[4] the bucket's capacity in tokens, ARGV[5] the
+     * bucket key's own Redis TTL in seconds (garbage collection only).
+     * Returns the list of admitted entrant ids, arrival-ordered, possibly
+     * empty.
+     *
+     * The bucket is rewritten on every call, including the calls that
+     * admit nobody: that is what advances updated_at, so accrual is
+     * measured from the last tick rather than compounding from a stale
+     * one. A first touch seeds it empty, so the tick that discovers a new
+     * queue admits nobody and the one a tick later admits a tick's worth.
      */
     private const ADMIT_SCRIPT = <<<'LUA'
         local waiting_key = KEYS[1]
         local admitted_key = KEYS[2]
-        local budget_key = KEYS[3]
+        local bucket_key = KEYS[3]
         local now_ms = tonumber(ARGV[1])
         local admission_ttl_ms = tonumber(ARGV[2])
-        local rate = tonumber(ARGV[3])
-        local budget_ttl_seconds = tonumber(ARGV[4])
+        local rate_per_minute = tonumber(ARGV[3])
+        local capacity = tonumber(ARGV[4])
+        local bucket_ttl_seconds = tonumber(ARGV[5])
+        local minute_ms = 60000
 
-        if redis.call('EXISTS', budget_key) == 0 then
-            redis.call('SET', budget_key, rate, 'EX', budget_ttl_seconds)
+        local tokens = 0
+        local state = redis.call('HMGET', bucket_key, 'tokens', 'updated_at')
+
+        if state[1] then
+            -- A clock that went backwards accrues nothing rather than
+            -- clawing tokens back out of the bucket.
+            local elapsed_ms = now_ms - tonumber(state[2])
+            if elapsed_ms < 0 then
+                elapsed_ms = 0
+            end
+
+            tokens = tonumber(state[1]) + (elapsed_ms * rate_per_minute) / minute_ms
+
+            if tokens > capacity then
+                tokens = capacity
+            end
         end
 
-        local remaining = tonumber(redis.call('GET', budget_key))
-        if remaining == nil or remaining <= 0 then
-            return {}
-        end
-
+        local to_admit = math.floor(tokens)
         local waiting_count = redis.call('ZCARD', waiting_key)
-        local to_admit = math.min(remaining, waiting_count)
-        if to_admit <= 0 then
-            return {}
+
+        if to_admit > waiting_count then
+            to_admit = waiting_count
         end
 
-        local entrants = redis.call('ZRANGE', waiting_key, 0, to_admit - 1)
-        if #entrants == 0 then
-            return {}
+        local entrants = {}
+
+        if to_admit > 0 then
+            entrants = redis.call('ZRANGE', waiting_key, 0, to_admit - 1)
+
+            for i = 1, #entrants do
+                redis.call('ZREM', waiting_key, entrants[i])
+                redis.call('ZADD', admitted_key, now_ms + admission_ttl_ms, entrants[i])
+            end
+
+            tokens = tokens - #entrants
         end
 
-        for i = 1, #entrants do
-            redis.call('ZREM', waiting_key, entrants[i])
-            redis.call('ZADD', admitted_key, now_ms + admission_ttl_ms, entrants[i])
-        end
-
-        redis.call('DECRBY', budget_key, #entrants)
+        redis.call('HSET', bucket_key, 'tokens', tokens, 'updated_at', now_ms)
+        redis.call('EXPIRE', bucket_key, bucket_ttl_seconds)
 
         return entrants
         LUA;

@@ -97,6 +97,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Gatekeeper Cadence
+    |--------------------------------------------------------------------------
+    |
+    | How often the gatekeeper ticks, which is also the widest slice of a
+    | minute's admission rate App\Inventory\Support\OnSaleQueue's token
+    | bucket will release at once: a tick admits at most the allowance
+    | accrued since the last one, so the waiting room shapes load into
+    | checkout instead of dumping a whole minute's budget in one tick
+    | (stage-10 plan, "matched to what the payment path sustains", and
+    | Risks "Gatekeeper cadence").
+    |
+    | Deliberately not env-driven: it must equal the gatekeeper's own
+    | scheduler cadence in bootstrap/app.php (everyTenSeconds), and
+    | tests/Feature/Inventory/GatekeeperTest.php asserts the two never
+    | drift. A value narrower than the real tick under-admits (the bucket
+    | caps below what a tick's elapsed time accrues); a wider one
+    | reintroduces the burst the bucket exists to prevent.
+    |
+    */
+
+    'gatekeeper' => [
+        'tick_seconds' => 10,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Admission Token
     |--------------------------------------------------------------------------
     |

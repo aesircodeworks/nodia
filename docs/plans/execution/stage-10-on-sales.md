@@ -403,3 +403,30 @@ Run against `11c4b88`, all fresh in this session:
 - CI on `11c4b88`: all 5 checks green (API, Storefront, Packages, Checkin, Admin).
 
 **Exit criteria after round 2: 11 of 12 met.** Criteria 8 and 10 are now met (the `queue_entry`/`queue_poll` 429 is documented, contract-conformed, and feature-tested). Criterion 12 remains unmet only because finding 4 is open and the status table therefore does not read done.
+
+## Review round 2, finding 4: gatekeeper admission shaping
+
+Fixed. Finding 4 was left open pending a decision on the intended admission shape; the decision was that the waiting room is a shaper, not a counter, so the burst is a defect rather than a design alternative.
+
+**The reasoning.** The plan's own first description of the gatekeeper (Overview) is "a scheduled process admitting entrants into checkout at the configured per-event rate, matched to what the payment path sustains". Releasing a whole minute's budget in the first 10-second tick is not matched to what the payment path sustains: it hands checkout the entire minute's load at once and then idles for 50 seconds. A per-minute ceiling bounds the total, but the payment path fails on concurrency, which the old budget left completely unshaped. The plan's Slice 5 line ("one tick admits `min(R-per-interval, W)`") never pinned the interval to the tick rather than the budget minute; it was loose wording, not a competing design, and it has been tightened rather than honoured.
+
+**The change** (`apps/api/app/Inventory/Support/OnSaleQueue.php`). The per-minute budget key, which seeded the full rate and reset on the minute boundary, is replaced by a per-event token bucket (`onsale:{tenant}:{event}:budget`, a hash of `tokens` and `updated_at`). Tokens accrue continuously with elapsed time at `admission_rate_per_minute`, measured on the framework clock the caller passes in (never a Redis TTL, so the fake clock still governs it in tests), and the bucket holds at most one tick's worth. Refill, pop, admit, and charge all stay inside the one Lua script, so the atomicity the concurrency proof rests on is unchanged.
+
+Two properties make the ceiling safe. The bucket starts empty, and accrual is the only thing that ever adds to it, so admissions in any 60-second window still cannot exceed `admission_rate_per_minute`; capping only ever discards accrual, so an idle event banks no burst to spend later. The cost is that the tick which first discovers a new queue admits nobody, and the one a tick later admits a tick's worth: a new entrant waits up to one extra tick, which is the correct trade for a waiting room.
+
+**Cadence coupling.** The bucket's capacity is one tick's allowance, so it depends on how often the gatekeeper actually runs. That cadence lives in `bootstrap/app.php` (`everyTenSeconds`) and the capacity input lives in `config/onsale.php` (`gatekeeper.tick_seconds`, deliberately not env-driven). A capacity narrower than the real tick silently under-admits; a wider one silently restores the burst. `GatekeeperTest` therefore asserts the registered schedule's `repeatSeconds` equals the config value, since nothing else would catch them drifting.
+
+**Tests.** `OnSaleQueueTest` replaces the per-interval budget arithmetic with the bucket's: capacity is one tick's worth and never below one entrant; the first tick on a new queue seeds an empty bucket; a full minute of ticks admits the whole rate as `[10, 10, 10, 10, 10, 10]` and never in one burst; an idle event releases at most one tick's worth after a five-minute gap; ticking every second for a minute still admits exactly the minute's rate (accrual, not tick count, governs); a rate raised mid-flight applies from the next tick with no retroactive credit. `GatekeeperTest` adds the end-to-end smoothing proof through the real Artisan command plus the cadence guard. `GatekeeperAdmissionContentionTest` now seeds the bucket and races its workers one tick later, when there is an allowance to contend over: racing at the seeding instant would have proved nothing, since the bucket is empty and nobody could be admitted.
+
+One thing the new feature test surfaced, worth recording because it looked like a gatekeeper bug and was not: joining 60 entrants from the test's single IP trips the `queue_entry` tier's own 20-per-minute default, so only 20 entrants ever reached the room and the queue drained after two ticks. The fixture raises the tier and asserts all 60 joins landed. Real buyers arrive on their own IPs, so the throttle is not a constraint on a real on-sale.
+
+### Gate record, finding 4
+
+- `composer lint` (Pint): passed.
+- `composer analyse` (Larastan): passed, 0 errors.
+- `./vendor/bin/pest` (full suite): 3155 tests, 3155 passed, 12431 assertions.
+- `--testsuite=Concurrency`: 59 passed, 296 assertions, including the three racing-gatekeeper datasets against the bucket.
+
+Plan amended in the same change: the Data model's budget key, the Lua atomicity paragraph, the Slice 5 concurrency/feature/unit specs, exit criterion 5, and the Risks section's "Gatekeeper cadence" entry now all describe the token bucket and agree with each other.
+
+**Exit criteria: 12 of 12 met.**
