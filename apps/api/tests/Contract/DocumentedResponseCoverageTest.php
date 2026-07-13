@@ -4284,6 +4284,36 @@ function documentedResponseExercisers(): array
                 'X-Tenant-Id' => $tenant->id,
             ]);
         },
+        'get /v1/reports/daily-sales 200' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+            ['event' => $event, 'ticketType' => $ticketType] = contractHoldFixture($tenant);
+
+            contractSeedDailySales($tenant, $event->id, $ticketType->id);
+
+            return test()->getJson('/v1/reports/daily-sales', [
+                'Authorization' => 'Bearer '.contractReportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/reports/daily-sales 400' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            return test()->getJson('/v1/reports/daily-sales?filter[bogus]=1', [
+                'Authorization' => 'Bearer '.contractReportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/reports/daily-sales 401' => function (): TestResponse {
+            return test()->getJson('/v1/reports/daily-sales');
+        },
+        'get /v1/reports/daily-sales 403' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            return test()->getJson('/v1/reports/daily-sales', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['orders.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
     ];
 }
 
@@ -4374,6 +4404,54 @@ function contractLedgerBearer(Tenant $tenant): string
 
     /** @var string $token */
     return $response->json('access_token');
+}
+
+/**
+ * A staff bearer holding reports.view with confirmed MFA, since the
+ * capability is financially privileged (stage-11 plan task-01 journal).
+ */
+function contractReportsBearer(Tenant $tenant): string
+{
+    $user = User::factory()->create();
+
+    $response = test()->postJson('/v1/auth/staff/token', [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    $user->forceFill(['mfa_enabled' => true, 'mfa_confirmed_at' => now()])->save();
+
+    app(TenantTransaction::class)->asTenant($tenant->id, function () use ($user, $tenant): void {
+        Membership::factory()->create([
+            'user_id' => $user->id,
+            'tenant_id' => $tenant->id,
+            'role_id' => Role::factory()->create(['tenant_id' => $tenant->id, 'capabilities' => ['reports.view']])->id,
+            'scope' => MembershipScope::Tenant,
+        ]);
+    });
+
+    /** @var string $token */
+    return $response->json('access_token');
+}
+
+function contractSeedDailySales(Tenant $tenant, string $eventId, string $ticketTypeId): void
+{
+    app(TenantTransaction::class)->asTenant($tenant->id, function () use ($tenant, $eventId, $ticketTypeId): void {
+        DB::table('report_daily_sales')->insert([
+            'id' => Str::uuid7()->toString(),
+            'tenant_id' => $tenant->id,
+            'event_id' => $eventId,
+            'ticket_type_id' => $ticketTypeId,
+            'sales_date' => now()->toDateString(),
+            'tickets_issued_count' => 1,
+            'tickets_refunded_count' => 0,
+            'gross_amount' => 1000,
+            'refunded_amount' => 0,
+            'currency' => 'USD',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    });
 }
 
 function contractSeedLedgerEntry(Tenant $tenant): void

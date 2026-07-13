@@ -260,6 +260,9 @@ arch()->preset()->security();
 // not App\Providers. App\Reporting\Models\DailySales (stage-11 task-04)
 // lives with its own bounded context like every other context's Models
 // directory already ignored above, not App\Models.
+// App\Reporting\Http\Controllers\DailySalesController (stage-11 task-06)
+// is the same story as every other context's own Http\Controllers
+// directory already ignored above, not App\Http\Controllers.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -451,4 +454,5 @@ arch()->preset()->laravel()->ignoring([
     'App\CheckIn\Models',
     ReportingServiceProvider::class,
     'App\Reporting\Models',
+    'App\Reporting\Http\Controllers',
 ]);

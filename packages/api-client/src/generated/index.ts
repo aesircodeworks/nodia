@@ -186,6 +186,15 @@ export type CustomerTokenRequestData = {
   email: string;
   password: string;
 };
+export type DailySalesData = {
+  event_id: string;
+  ticket_type_id: string;
+  sales_date: string;
+  tickets_issued_count: number;
+  tickets_refunded_count: number;
+  gross: Money;
+  refunded: Money;
+};
 export type DisableMfaData = {
   code: string;
 };

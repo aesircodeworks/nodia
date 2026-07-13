@@ -6215,6 +6215,102 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/WebhookUnparseableProblem'
+  /v1/reports/daily-sales:
+    get:
+      operationId: listDailySales
+      summary: List daily sales rows for the acting tenant
+      description: >-
+        Reporting dashboard read behind reports.view (stage-11 plan,
+        Endpoints; reports.view is financially privileged, so a confirmed
+        MFA session is required). One row per event, ticket type, and UTC
+        calendar day with sales activity; gross and refunded are the
+        ticket type's pre-discount face value at issue time, not the
+        actual charge (stage-11 plan, Data model "report_daily_sales"
+        money semantics note). Cursor-paginated with a deterministic
+        (sales_date, id) order. Allowed filters: filter[event_id],
+        filter[ticket_type_id] (exact), filter[from], filter[to] (both
+        inclusive bounds on sales_date); sort in (sales_date,
+        -sales_date); unknown filter or sort values are rejected with 400
+        invalid_query_parameter, never ignored.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          style: deepObject
+          explode: true
+          description: >-
+            Allowed filters: filter[event_id], filter[ticket_type_id]
+            (exact match); filter[from], filter[to] (inclusive sales_date
+            bounds, ISO 8601 dates).
+          schema:
+            type: object
+            properties:
+              event_id:
+                type: string
+                format: uuid
+              ticket_type_id:
+                type: string
+                format: uuid
+              from:
+                type: string
+                format: date
+              to:
+                type: string
+                format: date
+            additionalProperties:
+              type: string
+        - name: sort
+          in: query
+          required: false
+          description: 'Allowed sorts: sales_date, -sales_date.'
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: per_page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: One cursor page of daily sales rows.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailySalesCursorPage'
+        '400':
+          description: >-
+            A filter or sort parameter outside the endpoint allowlist
+            (code invalid_query_parameter).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/InvalidQueryParameterProblem'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing reports.view, or
+            unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
 components:
   securitySchemes:
     BearerAuth:
@@ -11326,3 +11422,61 @@ components:
               type: string
               enum: [payload_too_large]
       unevaluatedProperties: false
+    DailySales:
+      type: object
+      description: >-
+        One event, ticket type, and UTC calendar day's sales activity
+        (stage-11 plan, Endpoints "DailySalesData"; Data model
+        "report_daily_sales"). gross and refunded are the ticket type's
+        pre-discount face value at issue time, allocated per ticket, not
+        the finance projection's actual-charge figures. No id: the row's
+        natural key is event_id, ticket_type_id, and sales_date together
+        (the table's own unique constraint), and this projection has no
+        GET-by-id endpoint.
+      required:
+        - event_id
+        - ticket_type_id
+        - sales_date
+        - tickets_issued_count
+        - tickets_refunded_count
+        - gross
+        - refunded
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        ticket_type_id:
+          type: string
+          format: uuid
+        sales_date:
+          type: string
+          format: date
+        tickets_issued_count:
+          type: integer
+        tickets_refunded_count:
+          type: integer
+        gross:
+          $ref: '#/components/schemas/Money'
+        refunded:
+          $ref: '#/components/schemas/Money'
+      additionalProperties: false
+    DailySalesCursorPage:
+      type: object
+      description: >-
+        Cursor-paginated envelope (data, links, meta) for the daily sales
+        list (stage-11 plan, Endpoints).
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/DailySales'
+        links:
+          type: array
+          items: {}
+        meta:
+          $ref: '#/components/schemas/CursorPageMeta'
+      additionalProperties: false
