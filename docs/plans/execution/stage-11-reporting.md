@@ -539,3 +539,19 @@ Decisions and deviations, disclosed in full:
 5. No other deviation from the plan's task-16 description or this task's own instructions.
 
 Commits: b10e227 (feat(reporting): add export lifecycle endpoints (create, list, show, download)).
+
+## Gate
+
+Mon Jul 13 14:35:59 -03 2026
+
+Full quality gates run after Stage 11 implementation work.
+
+- `composer -d apps/api run lint` (Pint): passed
+- `composer -d apps/api run analyse` (PHPStan/Larastan): passed, 0 errors
+- `php artisan test --parallel`: fatal `Constant WORKERS already defined` in `tests/Concurrency/DailySalesProjectionContentionTest.php` (and, once isolated, the same clash in `EventFinanceProjectionContentionTest.php`, `ExportClaimContentionTest.php`, `SigningKeyRotationContentionTest.php`); several Concurrency test files each declare a top-level `const WORKERS`, which paratest's process model loads more than once in the same PHP process, a pre-existing parallelism artifact unrelated to Stage 11's own changes. Fell back to the full sequential suite per the runbook.
+- `./vendor/bin/pest` (first run): 1 failure, `tests/Unit/Problems/ErrorCodeTest.php` ("the registry holds exactly the known codes") — the test's expected list predated Stage 11's `ExportNotReady`/`ExportFailed` additions to `App\Support\Problems\ErrorCode`. Fixed by adding both codes (and their status/title/type mapping) to the test, test-first verified against the single failing test before the full rerun.
+- `./vendor/bin/pest` (second run, after the fix): 3374 passed, 13392 assertions, 0 failures.
+- `composer -d apps/api run types:generate` + `git status --short packages/api-client/src/generated`: no contract drift.
+- `pnpm typecheck`: run because the generated api-client types changed within this stage's own commits; all six workspaces clean.
+
+Fix commit: f809e0a (fix(reporting): register export error codes in ErrorCodeTest).
