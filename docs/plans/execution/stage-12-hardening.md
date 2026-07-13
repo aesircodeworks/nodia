@@ -40,7 +40,7 @@ Stage 8d is still In progress and gated on the launch-gateway ADR. Per the stage
 - [x] T12 `payments:reconcile` command (payments)
 - [x] T13 `holds:release-stuck` command with the sweeper-race concurrency test (inventory)
 - [x] T14 Coverage completeness, authorization matrix, and payload PII meta-tests (support)
-- [ ] T15 Webhook negative matrix across registered gateways (payments)
+- [x] T15 Webhook negative matrix across registered gateways (payments)
 - [ ] T16 Secret scanner in CI, `env()` architecture test, `.env.example` assertions (ci)
 - [ ] T17 Smoke suite and required CI gate (support, ci)
 - [ ] T18 Load tooling, `infra/load/` scenarios, `docs/load-targets.md` (ci, docs)
@@ -374,6 +374,8 @@ Test evidence:
 
 Commit: `59bc52c` (`feat(support): add outbox:replay-failed operational command`).
 
+Commit: `6d03849` (`feat(payments): bind a timestamp into fake gateway webhook signatures and run the negative matrix over every registered gateway`).
+
 Deviation from the plan: none in scope. One design decision not spelled out in the plan text, recorded above: the "matching failed jobs" and "stranded deliveries" candidate lists are made mutually exclusive (a delivery behind a dead-lettered job is reported only once, as a failed job, never doubly as a stranded delivery too), since the plan's own wording ("lists matching failed jobs and stranded deliveries") does not say whether the two can overlap and an uncorrected overlap would both misreport counts and re-enqueue the same delivery twice on `--execute` (harmless under consumer idempotence, but a misleading audit trail). A second judgment call: failed-job retry pushes the original serialized payload back raw (`Queue::pushRaw`, Laravel's own `queue:retry` mechanics) rather than reconstructing a fresh `ProcessOutboxDelivery::dispatch()` call, driven by the `unserialize()` architecture constraint rather than a stated plan preference; this also means a failed-job replay is not observable through `Queue::fake()->assertPushed(ProcessOutboxDelivery::class, ...)` the way a stranded-delivery replay is, so its test coverage instead inspects `Queue::pushedRaw()`.
 
 ## T12: payments:reconcile-orders command
@@ -481,3 +483,38 @@ Pre-existing gate failure found at close-out, **not caused by this task and not 
 Commit: `9425c11` (`test(support): add coverage completeness, authorization matrix, and payload PII meta-tests`).
 
 Deviation from the plan: none in the code. Process deviation: the stage was abandoned after this task at the operator's direction, so T14 landed without the workflow's codex review rounds, without the full local quality gate, and without a push or CI verification. T15 through T18 remain unstarted and the stage checklist reflects that.
+
+## T15: Webhook negative matrix across registered gateways
+
+2026-07-13 20:55 -03
+
+Landed stage-12 plan Slice 6's webhook negatives and task breakdown item 15: the four forgeries (missing signature, body changed after signing, signature from a foreign key, signature outside the freshness window) are now driven over the real ingestion route against every adapter the `GatewayRegistry` binds, enumerated live rather than named by hand, and each must be rejected with `webhook_signature_invalid` before anything is persisted or queued. No Data class and no new endpoint (the 401 arm of `POST /v1/webhooks/{gateway}` is already an OpenAPI-documented response, asserted here with `assertConformsToOpenApi()`), so the double-loop's contract and TypeScript steps do not apply.
+
+Scheme change, decided with the operator before any code was written: the stale-timestamp arm had nothing to bite on. FakeGateway signed `HMAC(secret, body)` with no time component anywhere, so a captured delivery stayed valid forever and no adapter in the registry could demonstrate the rejection the slice requires. The three alternatives put to the operator were a timestamp header bound into the signature (Stripe's shape), a timestamp inside the signed body, and waiving the arm for untimestamped schemes with a reasoned exemption. The operator chose the header. So FakeGateway now signs `HMAC(secret, "{timestamp}.{body}")` and sends `X-Fake-Timestamp` alongside `X-Fake-Signature`; `parseWebhook` rejects a missing or non-numeric timestamp, a signature that does not cover the timestamp it was sent with, and a timestamp further from now than `payments.gateways.fake.webhook_tolerance_seconds` (default 300, `FAKE_GATEWAY_WEBHOOK_TOLERANCE_SECONDS`). Binding the timestamp into the HMAC, rather than checking a free-floating header, is what stops a caller from pasting a fresh timestamp onto a captured signature; there is a unit case for exactly that. The waive option was rejected in the ask because the only working gateway would have waived it, leaving the requirement vacuous until a real adapter lands.
+
+What landed:
+
+- `App\Payments\Gateways\FakeGateway`: the timestamped signing scheme above, on both the emitter (`sign()`) and the verifier (`parseWebhook()`). Time comes from `Illuminate\Support\Facades\Date`, so frozen-clock and time-travelling tests sign and verify against the same clock they manipulate.
+- `App\Payments\Gateways\FakeWebhookDelivery::serverHeaders()`: the delivery's headers in the `HTTP_*` server-parameter form a test request takes. Every call site that used to reach into `$delivery->headers['X-Fake-Signature']` by name now spreads this in, so the next scheme change (a second signing secret during rotation, say, per the fixtures README) touches the adapter and not fourteen test files.
+- `config/payments.php`: `payments.gateways.fake.webhook_tolerance_seconds`.
+
+Tests:
+
+- `tests/Feature/Payments/WebhookSignatureNegativeMatrixTest.php` (new): three cases. A completeness case asserting every slug in the live `GatewayRegistry` has a probe declared. The matrix itself, iterating gateway by arm over the real HTTP route with `Queue::fake()`, asserting 401, `webhook_signature_invalid`, OpenAPI conformance, zero rows in `gateway_webhook_events`, and zero `ProcessGatewayWebhook` pushes. And a positive control asserting each gateway still accepts what it itself signs, so the negatives cannot pass vacuously (a verifier that rejected everything would satisfy the matrix alone).
+- `tests/Support/Payments/WebhookNegativeProbe.php` and `WebhookNegativeProbes.php` (new): the per-adapter forgeries, one probe per registered slug. `PendingGatewayAdapter`'s probe carries `acceptsValidDelivery: false` with the reason stated in place (stage-08d, Slice 3: the skeleton rejects every webhook by contract, so it has no positive control to run).
+- `tests/Support/Payments/FakeGatewaySignature.php` (new): the signing scheme restated on the test side, so a test can sign a body the gateway would never emit and the negative matrix can forge a foreign-key or backdated signature. The adapter is therefore verified against an independent statement of its scheme rather than against itself.
+- `tests/Unit/Payments/FakeGatewayTest.php`: two new adapter-level cases (the freshness window's boundary, accepted at exactly the tolerance and rejected one second past it; and a fresh timestamp pasted onto a backdated signature, rejected). The existing tampered-signature case now keeps the valid timestamp so it still isolates the signature.
+- Fourteen existing files updated to the two-header scheme, no behavior changed: the payments, reporting, contract, and concurrency tests that post fake webhooks.
+
+Test evidence:
+
+- Red first, witnessed: with the matrix written and the adapter untouched, `./vendor/bin/pest tests/Feature/Payments/WebhookSignatureNegativeMatrixTest.php` failed with `Undefined array key "X-Fake-Timestamp"` — the wrong-key and stale arms could not even be forged against a scheme with no timestamp. The missing-signature and tampered-body arms passed from the start; those two were already covered by Stage 8a, which is why this task's plan line calls it a re-run.
+- Meta-test proven against a seeded gap, witnessed: registering a third adapter (`$adapters['seeded_gap'] = new PendingGatewayAdapter('seeded_gap')`) in `PaymentsServiceProvider` made two of the three cases fail — the completeness case reporting `seeded_gap` as undeclared, and the matrix's own `assertNotNull` on the missing probe. The provider edit was reverted (`git checkout`, diff confirmed empty) and the file is untouched in this commit.
+- `./vendor/bin/pest tests/Unit/Payments tests/Feature/Payments` — 388 passed. `./vendor/bin/pest tests/Contract tests/Feature/Reporting` — 573 passed. `php artisan test --testsuite=Concurrency` — 65 passed. `php artisan test --testsuite=Architecture` — 43 passed.
+- `composer analyse` (Larastan) — passed, 0 errors. The T2-era `ProblemRenderer` error T14 recorded is gone, fixed by `32e89ae`/`2488cae`. (Invoking `./vendor/bin/phpstan analyse` directly, outside the Composer script, OOMs at PHP's default 128M memory limit; that is an invocation artifact, not a finding. Use `composer analyse`.)
+- `./vendor/bin/pint --test` — passed.
+- Full suite, `./vendor/bin/pest` — 3584 tests, 3583 passed, **1 failed**: `tests/Feature/Support/ActivityLogArchivalTest.php:114`, "Failed asserting that 42 is identical to 1". **Pre-existing and not caused by this task**, verified rather than assumed: stashing this task's entire diff and re-running the full suite on the clean tree reproduces the identical failure (3579 tests, same test, same message). T9's archival test sets a 2-day retention window and expects to archive exactly the one old row it inserted, but in a whole-suite run it also sweeps up `activity_log` rows left behind by earlier tests that travel to dates more than two days back (the payments suites travel to 2026-07-11). It passes in isolation. Left for whoever picks up the stage; it is a test-isolation defect in T9, not a defect in the archiver.
+
+Commit: `6d03849` (`feat(payments): bind a timestamp into fake gateway webhook signatures and run the negative matrix over every registered gateway`).
+
+Deviation from the plan: none in scope. One design decision the plan did not spell out, recorded above and confirmed with the operator before implementation: FakeGateway's signing scheme gained a bound timestamp, because the plan's stale-timestamp arm is unprovable against a scheme with no time in it.
