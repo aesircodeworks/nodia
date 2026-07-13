@@ -8,6 +8,7 @@ use App\Support\Outbox\Jobs\ProcessOutboxDelivery;
 use App\Support\Outbox\Models\OutboxDelivery;
 use App\Support\Outbox\OrderedConsumption;
 use App\Support\Outbox\OutboxRecorder;
+use App\Support\Outbox\ProjectionLock;
 use App\Support\Outbox\SubscriberRegistry;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
@@ -86,6 +87,7 @@ it('resolves two parallel workers on one delivery to exactly one subscriber effe
                 app(TenantTransaction::class),
                 app(SubscriberRegistry::class),
                 app(OrderedConsumption::class),
+                app(ProjectionLock::class),
             );
 
             return true;

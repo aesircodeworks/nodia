@@ -7,6 +7,8 @@ use App\Support\Outbox\Models\OutboxDelivery;
 use App\Support\Outbox\Models\OutboxEvent;
 use App\Support\Outbox\OrderedConsumption;
 use App\Support\Outbox\OrderedOutboxSubscriber;
+use App\Support\Outbox\ProjectionLock;
+use App\Support\Outbox\ProjectionLockedSubscriber;
 use App\Support\Outbox\SubscriberRegistry;
 use App\Support\Tenancy\TenantTransaction;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -34,6 +36,14 @@ use Illuminate\Queue\InteractsWithQueue;
  * grace so stranded rows still age out). On the final attempt the job
  * returns without failing so the sweeper re-enqueues rather than the
  * delivery landing in failed_jobs (stage-04 ordered-helper risk).
+ *
+ * ProjectionLockedSubscriber handlers (stage-11 plan, task 13) take
+ * ProjectionLock shared immediately before markProcessed and release it
+ * immediately after the effect runs; a reporting:rebuild pass holding
+ * the same key exclusive makes the shared attempt fail, and the job
+ * defers with the same ordered_defer_seconds backoff rather than
+ * failing, so a rebuild and a live delivery on the same projection
+ * always serialize instead of interleaving.
  */
 class ProcessOutboxDelivery implements ShouldQueue
 {
@@ -82,6 +92,7 @@ class ProcessOutboxDelivery implements ShouldQueue
         TenantTransaction $transactions,
         SubscriberRegistry $subscribers,
         OrderedConsumption $ordered,
+        ProjectionLock $lock,
     ): void {
         $event = $transactions->asPlatform(
             fn (): ?OutboxEvent => OutboxEvent::query()->whereKey($this->eventId)->first(),
@@ -96,7 +107,7 @@ class ProcessOutboxDelivery implements ShouldQueue
 
         $deferred = false;
 
-        $transactions->asTenant($event->tenant_id, function () use ($event, $handler, $subscriber, $ordered, &$deferred): void {
+        $transactions->asTenant($event->tenant_id, function () use ($event, $handler, $subscriber, $ordered, $lock, &$deferred): void {
             $keyPath = $handler instanceof KeyedOrderedOutboxSubscriber ? $handler->orderingKeyPayloadPath() : null;
 
             if ($handler instanceof OrderedOutboxSubscriber && ! $ordered->isReady($event, $subscriber, $keyPath)) {
@@ -105,30 +116,47 @@ class ProcessOutboxDelivery implements ShouldQueue
                 return;
             }
 
-            $delivery = OutboxDelivery::query()
-                ->where('outbox_event_id', $event->id)
-                ->where('subscriber', $subscriber)
-                ->firstOrFail();
+            $lockKey = $handler instanceof ProjectionLockedSubscriber ? $handler->projectionLockKey() : null;
 
-            // Conditional mark BEFORE the effect so concurrent workers
-            // serialize on the row lock and losers never run the effect.
-            if (! $delivery->markProcessed()) {
+            if ($lockKey !== null && ! $lock->tryAcquireShared($lockKey)) {
+                $deferred = true;
+
                 return;
             }
 
-            $handler->handle($event);
+            try {
+                $delivery = OutboxDelivery::query()
+                    ->where('outbox_event_id', $event->id)
+                    ->where('subscriber', $subscriber)
+                    ->firstOrFail();
+
+                // Conditional mark BEFORE the effect so concurrent workers
+                // serialize on the row lock and losers never run the effect.
+                if (! $delivery->markProcessed()) {
+                    return;
+                }
+
+                $handler->handle($event);
+            } finally {
+                if ($lockKey !== null) {
+                    $lock->releaseShared($lockKey);
+                }
+            }
         });
 
         if ($deferred) {
-            $this->deferOrdered();
+            $this->defer();
         }
     }
 
     /**
      * Release with config backoff, or complete cleanly on the final attempt
-     * so the pending delivery remains for the reconciliation sweeper.
+     * so the pending delivery remains for the reconciliation sweeper. Used
+     * for both ordered-predecessor deferrals and projection-lock
+     * deferrals (stage-11 plan, task 13): the backoff and final-attempt
+     * behavior are identical either way.
      */
-    private function deferOrdered(): void
+    private function defer(): void
     {
         if ($this->attempts() >= $this->tries) {
             return;

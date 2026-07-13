@@ -9,6 +9,7 @@ use App\Support\Outbox\Models\OutboxDelivery;
 use App\Support\Outbox\Models\OutboxEvent;
 use App\Support\Outbox\OrderedConsumption;
 use App\Support\Outbox\OutboxRecorder;
+use App\Support\Outbox\ProjectionLock;
 use App\Support\Outbox\SubscriberRegistry;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
@@ -110,6 +111,7 @@ function runOrderedJob(string $eventId, bool $fakeQueue = true): ProcessOutboxDe
         app(TenantTransaction::class),
         app(SubscriberRegistry::class),
         app(OrderedConsumption::class),
+        app(ProjectionLock::class),
     );
 
     return $job;
@@ -240,6 +242,7 @@ it('completes without releasing on the final attempt so the sweeper can re-enque
         app(TenantTransaction::class),
         app(SubscriberRegistry::class),
         app(OrderedConsumption::class),
+        app(ProjectionLock::class),
     );
 
     $job->assertNotReleased();
@@ -258,6 +261,7 @@ function runKeyedOrderedJob(string $eventId): ProcessOutboxDelivery
         app(TenantTransaction::class),
         app(SubscriberRegistry::class),
         app(OrderedConsumption::class),
+        app(ProjectionLock::class),
     );
 
     return $job;

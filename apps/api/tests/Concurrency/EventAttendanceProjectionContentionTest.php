@@ -19,6 +19,7 @@ use App\Reporting\Jobs\ProjectEventAttendance;
 use App\Support\Outbox\Jobs\ProcessOutboxDelivery;
 use App\Support\Outbox\Models\OutboxEvent;
 use App\Support\Outbox\OrderedConsumption;
+use App\Support\Outbox\ProjectionLock;
 use App\Support\Outbox\SubscriberRegistry;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
@@ -181,6 +182,7 @@ it('converges to exactly N increments and keeps the scan-timestamp bounds correc
                 app(TenantTransaction::class),
                 app(SubscriberRegistry::class),
                 app(OrderedConsumption::class),
+                app(ProjectionLock::class),
             );
 
             return true;

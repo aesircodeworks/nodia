@@ -12,6 +12,7 @@ use App\Support\Outbox\Models\OutboxEvent;
 use App\Support\Outbox\OrderedConsumption;
 use App\Support\Outbox\OutboxRecorder;
 use App\Support\Outbox\OutboxReplay;
+use App\Support\Outbox\ProjectionLock;
 use App\Support\Outbox\SubscriberRegistry;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
@@ -86,6 +87,7 @@ function runPayoutLedgerProjection(string $eventId): void
         app(TenantTransaction::class),
         app(SubscriberRegistry::class),
         app(OrderedConsumption::class),
+        app(ProjectionLock::class),
     );
 }
 
@@ -143,7 +145,7 @@ it('defers a same-payout successor while its predecessor delivery is unprocessed
 
     $deferred = new ProcessOutboxDelivery($eventB->id, ProjectLedgerEntries::NAME);
     $deferred->withFakeQueueInteractions();
-    $deferred->handle(app(TenantTransaction::class), app(SubscriberRegistry::class), app(OrderedConsumption::class));
+    $deferred->handle(app(TenantTransaction::class), app(SubscriberRegistry::class), app(OrderedConsumption::class), app(ProjectionLock::class));
 
     $deferred->assertReleased(config()->integer('outbox.ordered_defer_seconds'));
 
@@ -152,7 +154,7 @@ it('defers a same-payout successor while its predecessor delivery is unprocessed
     runPayoutLedgerProjection($eventA->id);
     $deferred2 = new ProcessOutboxDelivery($eventB->id, ProjectLedgerEntries::NAME);
     $deferred2->withFakeQueueInteractions();
-    $deferred2->handle(app(TenantTransaction::class), app(SubscriberRegistry::class), app(OrderedConsumption::class));
+    $deferred2->handle(app(TenantTransaction::class), app(SubscriberRegistry::class), app(OrderedConsumption::class), app(ProjectionLock::class));
     $deferred2->assertNotReleased();
 
     expect(payoutLedgerRowsFor($this->tenantId, $payoutA->id))->toHaveCount(4);

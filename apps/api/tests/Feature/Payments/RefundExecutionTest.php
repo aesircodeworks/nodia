@@ -17,6 +17,7 @@ use App\Support\Money\Money;
 use App\Support\Outbox\Jobs\ProcessOutboxDelivery;
 use App\Support\Outbox\Models\OutboxEvent;
 use App\Support\Outbox\OrderedConsumption;
+use App\Support\Outbox\ProjectionLock;
 use App\Support\Outbox\SubscriberRegistry;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
@@ -120,8 +121,8 @@ it('calls the gateway once under duplicate RefundInitiated delivery', function (
     );
 
     $job = new ProcessOutboxDelivery($eventId, ExecuteRefund::NAME);
-    $job->handle(app(TenantTransaction::class), app(SubscriberRegistry::class), app(OrderedConsumption::class));
-    $job->handle(app(TenantTransaction::class), app(SubscriberRegistry::class), app(OrderedConsumption::class));
+    $job->handle(app(TenantTransaction::class), app(SubscriberRegistry::class), app(OrderedConsumption::class), app(ProjectionLock::class));
+    $job->handle(app(TenantTransaction::class), app(SubscriberRegistry::class), app(OrderedConsumption::class), app(ProjectionLock::class));
 
     expect(app(FakeGatewayScenarios::class)->refundCallsFor($refund->id))->toBe(1)
         ->and(freshRefund($this->tenantId, $refund->id)->status)->toBe(RefundStatus::Processing);
@@ -181,7 +182,7 @@ it('leaves the refund pending for a retry when the gateway transport fails', fun
     );
 
     $job = new ProcessOutboxDelivery($eventId, ExecuteRefund::NAME);
-    $job->handle(app(TenantTransaction::class), app(SubscriberRegistry::class), app(OrderedConsumption::class));
+    $job->handle(app(TenantTransaction::class), app(SubscriberRegistry::class), app(OrderedConsumption::class), app(ProjectionLock::class));
 
     expect(freshRefund($this->tenantId, $refund->id)->status)->toBe(RefundStatus::Processing);
 });

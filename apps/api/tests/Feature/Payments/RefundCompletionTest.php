@@ -31,6 +31,7 @@ use App\Support\Outbox\Jobs\ProcessOutboxDelivery;
 use App\Support\Outbox\Models\OutboxEvent;
 use App\Support\Outbox\OrderedConsumption;
 use App\Support\Outbox\OutboxSweeper;
+use App\Support\Outbox\ProjectionLock;
 use App\Support\Outbox\SubscriberRegistry;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
@@ -254,7 +255,7 @@ it('produces exactly one ledger set under duplicate RefundCompleted delivery', f
     foreach ([1, 2] as $attempt) {
         $job = new ProcessOutboxDelivery($eventId, ProjectLedgerEntries::NAME);
         $job->withFakeQueueInteractions();
-        $job->handle(app(TenantTransaction::class), app(SubscriberRegistry::class), app(OrderedConsumption::class));
+        $job->handle(app(TenantTransaction::class), app(SubscriberRegistry::class), app(OrderedConsumption::class), app(ProjectionLock::class));
     }
 
     $count = app(TenantTransaction::class)->asTenant(

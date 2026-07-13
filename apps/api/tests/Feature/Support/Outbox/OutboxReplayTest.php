@@ -8,6 +8,7 @@ use App\Support\Outbox\Models\OutboxEvent;
 use App\Support\Outbox\OrderedConsumption;
 use App\Support\Outbox\OutboxRecorder;
 use App\Support\Outbox\OutboxReplay;
+use App\Support\Outbox\ProjectionLock;
 use App\Support\Outbox\SubscriberRegistry;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
@@ -89,6 +90,7 @@ function processDelivery(string $eventId, string $subscriber): void
         app(TenantTransaction::class),
         app(SubscriberRegistry::class),
         app(OrderedConsumption::class),
+        app(ProjectionLock::class),
     );
 }
 
