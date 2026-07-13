@@ -68,6 +68,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // log archive-then-prune command, same day-scale cadence as
         // the two pruners above.
         $schedule->command('activity-log:archive')->daily();
+
+        // Stage-12 plan, Slice 4, task breakdown item 10: the outbox
+        // archiver, same day-scale cadence as the activity log archiver.
+        $schedule->command('outbox:archive')->daily();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

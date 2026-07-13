@@ -19,7 +19,8 @@ it('ships config/retention.php with the stage-12 default windows', function (): 
         ->and(config()->integer('retention.activity_log_days'))->toBe(400)
         ->and(config()->integer('retention.outbox_archival_days'))->toBe(180)
         ->and(config()->integer('retention.export_attachment_days'))->toBe(7)
-        ->and(config()->string('retention.archive_disk'))->toBe('s3');
+        ->and(config()->string('retention.archive_disk'))->toBe('s3')
+        ->and(config()->integer('retention.outbox_archive_batch_size'))->toBe(5000);
 });
 
 it('reads every window from config so tests can override them', function (): void {
@@ -27,11 +28,13 @@ it('reads every window from config so tests can override them', function (): voi
     config()->set('retention.activity_log_days', 60);
     config()->set('retention.outbox_archival_days', 90);
     config()->set('retention.export_attachment_days', 3);
+    config()->set('retention.outbox_archive_batch_size', 100);
 
     expect(config()->integer('retention.webhook_payload_days'))->toBe(30)
         ->and(config()->integer('retention.activity_log_days'))->toBe(60)
         ->and(config()->integer('retention.outbox_archival_days'))->toBe(90)
-        ->and(config()->integer('retention.export_attachment_days'))->toBe(3);
+        ->and(config()->integer('retention.export_attachment_days'))->toBe(3)
+        ->and(config()->integer('retention.outbox_archive_batch_size'))->toBe(100);
 });
 
 it('computes cutoffs from the framework clock so freezeTime and travel control the windows', function (): void {
@@ -89,6 +92,20 @@ it('schedules activity-log:archive daily', function (): void {
     $archive = $events->first(
         fn ($event): bool => is_string($event->command)
             && str_contains($event->command, 'activity-log:archive'),
+    );
+
+    expect($archive)->not->toBeNull()
+        ->and($archive->expression)->toBe('0 0 * * *');
+});
+
+it('schedules outbox:archive daily', function (): void {
+    Artisan::all();
+
+    $events = collect(app(Schedule::class)->events());
+
+    $archive = $events->first(
+        fn ($event): bool => is_string($event->command)
+            && str_contains($event->command, 'outbox:archive'),
     );
 
     expect($archive)->not->toBeNull()

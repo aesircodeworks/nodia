@@ -10,11 +10,19 @@ use LogicException;
 
 /**
  * Append-only outbox row (system-design 9.1, event-conventions envelope).
- * Rows are never updated or deleted by the application: the model blocks
- * both surfaces so later consumers and the recorder cannot mutate history.
- * Lives under App\Support\Outbox rather than a bounded context because the
- * outbox is shared infrastructure every context records into (system-design
- * 9.1, stage-04 plan).
+ * Rows are never updated, and never deleted before the retention window or
+ * by anything but the archiver (stage-12 plan, Slice 4, task breakdown item
+ * 10, relaxing the stage-04 plan's original "never deleted" reading): the
+ * model blocks both surfaces for ordinary application code so consumers and
+ * the recorder cannot mutate history. App\Support\Archive\Actions\
+ * ArchiveOutboxEvents deletes verified rows past the window through the
+ * query builder directly (DB::table('outbox_events')), which never fires
+ * Eloquent model events, so the guard below is never in that path; it is
+ * the sole approved bypass, exactly as it is for App\Support\Audit\Models\
+ * ActivityLogEntry (Stage 3 plus task breakdown item 8's scoped delete
+ * path). Lives under App\Support\Outbox rather than a bounded context
+ * because the outbox is shared infrastructure every context records into
+ * (system-design 9.1, stage-04 plan).
  *
  * @property string $id
  * @property int $sequence

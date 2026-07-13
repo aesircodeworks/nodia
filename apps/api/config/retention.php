@@ -51,6 +51,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Outbox Archive Segment Batch Size
+    |--------------------------------------------------------------------------
+    |
+    | App\Support\Archive\Actions\ArchiveOutboxEvents (stage-12 plan, Slice
+    | 4, task breakdown item 10) archives at most this many of the oldest
+    | eligible outbox_events rows per run, in global sequence order,
+    | stopping earlier if it reaches a row with any pending delivery. This
+    | is the only input segment boundaries are computed from, so a given
+    | eligible row set always splits into the same segments run to run.
+    | Bounds a single run's NDJSON object and manifest row size; a
+    | retention window with more eligible rows than this simply finishes
+    | archiving across several scheduled runs.
+    |
+    */
+
+    'outbox_archive_batch_size' => (int) env('RETENTION_OUTBOX_ARCHIVE_BATCH_SIZE', 5000),
+
+    /*
+    |--------------------------------------------------------------------------
     | Export Attachment Retention
     |--------------------------------------------------------------------------
     |
