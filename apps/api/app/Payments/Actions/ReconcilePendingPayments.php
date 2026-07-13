@@ -19,6 +19,14 @@ use Illuminate\Support\Facades\Date;
  * rather than by joining the order's status: an initiated payment past
  * grace is worth reconciling regardless, and Payments never queries
  * another context's tables (system-design 3.1).
+ *
+ * reconcile() is the reusable core both this class's own __invoke() (the
+ * automatic payments:reconcile sweep, grace-period candidates) and
+ * App\Payments\Actions\ReconcileNamedOrders (the manual
+ * payments:reconcile-orders command, stage-12 plan Slice 5, task
+ * breakdown item 12) call against their own, differently-selected
+ * candidate sets, so the adapter-poll and conditional-UPDATE path is
+ * shared rather than duplicated.
  */
 final readonly class ReconcilePendingPayments
 {
@@ -31,9 +39,17 @@ final readonly class ReconcilePendingPayments
 
     public function __invoke(): int
     {
+        return $this->reconcile($this->findCandidates());
+    }
+
+    /**
+     * @param  Collection<int, Payment>  $payments
+     */
+    public function reconcile(Collection $payments): int
+    {
         $resolved = 0;
 
-        foreach ($this->findCandidates() as $candidate) {
+        foreach ($payments as $candidate) {
             if ($this->reconcileOne($candidate)) {
                 $resolved++;
             }
