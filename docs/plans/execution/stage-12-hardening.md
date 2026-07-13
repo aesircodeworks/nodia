@@ -28,7 +28,7 @@ Stage 8d is still In progress and gated on the launch-gateway ADR. Per the stage
 
 - [x] T1 `data_subject_requests` migration, model, enums, conditional status transitions (identity)
 - [x] T2 `AnonymizeCustomer`, `CustomerAnonymized`, erasure endpoint, registry update (identity, docs)
-- [ ] T3 Orders `CustomerAnonymized` consumer scrubbing `attendee_name` (orders)
+- [x] T3 Orders `CustomerAnonymized` consumer scrubbing `attendee_name` (orders)
 - [ ] T4 Reporting `CustomerAnonymized` consumer (reporting)
 - [ ] T5 Data subject export assembler and queued job (identity)
 - [ ] T6 Export download URL plus list and show endpoints (identity)
@@ -111,3 +111,26 @@ Test evidence:
 - `composer -d apps/api run types:generate` regenerated `packages/api-client/src/generated/index.ts` and the manifest; `pnpm --filter api-client typecheck` passes against the regenerated output.
 
 Deviation from the plan: none in scope. Three judgment calls recorded above: `CreateDataSubjectRequestData.type` restricted to `erasure` only until Slice 2 lands export (the plan's own Endpoints section describes the union of both slices; Slice 1's test list names only erasure); `ClaimGuestAccount`'s anonymized-customer rejection reuses `claim_token_invalid` rather than a new code (the plan names no third code for that endpoint); the system-design 9.3 "group 1" label mismatch noted but not corrected, since the plan's substantive instruction (add the event to Identity's own line) is unambiguous regardless of the label.
+
+## T3: Orders CustomerAnonymized consumer scrubbing ticket attendee_name
+
+2026-07-13 16:00 -03
+
+Landed stage-12 plan Domain events "Consumed" and task breakdown item 4: the Orders subscriber for Identity's `CustomerAnonymized`. No contract step in this task's TDD double loop: it is an internal outbox consumer with no endpoint and no Data class, the same shape as `CancelOrderOnHoldExpired` (Stage 7) and `HandlePaymentConfirmed` (Stage 8a), so only the duplicate-delivery Feature test and the implementation apply.
+
+What landed:
+
+- `App\Orders\Jobs\ScrubTicketAttendeeNames`: an `OutboxSubscriber` that overwrites `attendee_name` with a constant placeholder (`Erased Attendee`) on every ticket whose `order_id` belongs to an order for the anonymized customer, via one UPDATE scoped by a subquery over `orders.customer_id` and `whereNotNull('attendee_name')` (a ticket that never carried a name is left alone rather than stamped with the placeholder). No per-customer HKDF derivation like `AnonymizationPlaceholder`: `attendee_name` carries no uniqueness constraint, so a single shared constant satisfies "naturally idempotent" without inventing per-row uniqueness nobody needs. Reads and writes only Orders' own `orders`/`tickets` tables (event-conventions: a consumer never writes to another context's tables); the tenant scope comes for free from `ProcessOutboxDelivery` already running the handler inside `TenantTransaction::asTenant()`, so no extra scoping call was needed in the handler itself.
+- `App\Orders\OrdersServiceProvider::boot()`: registered `ScrubTicketAttendeeNames::NAME` against `['CustomerAnonymized']` in the `SubscriberRegistry`, alongside the existing Orders subscribers.
+- `tests/Feature/Orders/CustomerAnonymizedConsumerTest.php`, mirroring `HoldExpiredConsumerTest.php`'s structure: subscriber-registration assertion; a scrub test proving a named ticket is overwritten with the placeholder while a null-named ticket on the same order stays null; a duplicate-delivery test running the same outbox event id through `ProcessOutboxDelivery::handle()` twice and asserting both the final `attendee_name` and exactly one `processed` row in `outbox_deliveries`; a cross-boundary test with a second customer in the same tenant and a customer in a second tenant, both with named tickets, proving neither is touched by the first customer's anonymization. The `CustomerAnonymized` event itself is produced by driving the real `AnonymizeCustomer` Action inside an explicit `DB::transaction()` (needed here since, unlike the HTTP path, there is no ambient `TransactsRequests` middleware transaction), the same "drive the real producer" posture `tests/Feature/Payments/LedgerProjectionTest.php` uses for `PaymentConfirmed` rather than hand-rolling an outbox row.
+
+Test evidence:
+
+- Confirmed red first: ran the new test file before `ScrubTicketAttendeeNames` existed. All four cases failed with `Class "App\Orders\Jobs\ScrubTicketAttendeeNames" not found`.
+- Green after implementation: `./vendor/bin/pest tests/Feature/Orders/CustomerAnonymizedConsumerTest.php` — 4 tests, 4 passed, 8 assertions.
+- `php artisan test --testsuite=Architecture` (the task's named context-boundary guard) — 40 tests, 40 passed.
+- Scoped regression per the task ("plus the Architecture suite files that guard the context boundary"), widened to the whole touched directory since `OrdersServiceProvider` is shared: `./vendor/bin/pest tests/Feature/Orders tests/Unit/Orders` — 194 tests, 194 passed, 613 assertions.
+- `./vendor/bin/pint --test` and `./vendor/bin/phpstan analyse --memory-limit=1G` on the two changed `app/` files: both pass with zero errors. (`phpstan.neon`'s `paths` covers `app` only, not `tests`; running phpstan directly against the test file produces `Pest\PendingCalls\TestCall` false positives on every `$this->tenantId`-style dynamic property, confirmed as pre-existing noise by reproducing the identical error shape against the untouched `HoldExpiredConsumerTest.php`, not a defect introduced here.)
+- No Data class changed, so `composer -d apps/api run types:generate` was not run (nothing to regenerate).
+
+Deviation from the plan: none. The consumer scrubs to a fixed constant rather than a per-customer derived value (unlike `AnonymizationPlaceholder` for the customer row itself); this is a judgment call, not a deviation, since the plan's own idempotence reasoning ("overwriting a placeholder with the same placeholder is a no-op") only requires a stable value, and `attendee_name` has no uniqueness constraint for a derived value to satisfy.

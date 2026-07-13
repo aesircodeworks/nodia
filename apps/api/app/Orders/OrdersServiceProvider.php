@@ -7,6 +7,7 @@ use App\Orders\Jobs\GenerateTicketPdf;
 use App\Orders\Jobs\HandlePaymentConfirmed;
 use App\Orders\Jobs\HandlePaymentExpired;
 use App\Orders\Jobs\HandlePaymentFailed;
+use App\Orders\Jobs\ScrubTicketAttendeeNames;
 use App\Orders\Jobs\SendOrderConfirmation;
 use App\Orders\Support\DompdfTicketPdfRenderer;
 use App\Orders\Support\EventSigningKeyProvider;
@@ -72,6 +73,12 @@ class OrdersServiceProvider extends ServiceProvider
             GenerateTicketPdf::NAME,
             ['TicketIssued'],
             $this->app->make(GenerateTicketPdf::class),
+        );
+
+        $subscribers->register(
+            ScrubTicketAttendeeNames::NAME,
+            ['CustomerAnonymized'],
+            $this->app->make(ScrubTicketAttendeeNames::class),
         );
 
         Route::middleware('tenancy.storefront')
