@@ -5,6 +5,7 @@ namespace App\Reporting;
 use App\Reporting\Jobs\ProjectDailySales;
 use App\Reporting\Jobs\ProjectEventAttendance;
 use App\Reporting\Jobs\ProjectEventFinance;
+use App\Reporting\Jobs\ScrubReportingPii;
 use App\Reporting\Support\Export\ExportSourceRegistry;
 use App\Reporting\Support\Export\Sources\CheckInsExportSource;
 use App\Reporting\Support\Export\Sources\LedgerEntriesExportSource;
@@ -34,7 +35,11 @@ use Illuminate\Support\ServiceProvider;
  * DuplicateScanDetected by App\CheckIn\CheckInServiceProvider.
  * ProjectDailySales (task 5), ProjectEventFinance (task 8), and
  * ProjectEventAttendance (task 11) are the outbox subscribers this
- * provider registers.
+ * provider registers. ScrubReportingPii (stage-12 plan, task
+ * breakdown item 5) is a fourth: the CustomerAnonymized consumer,
+ * registered even though it is a no-op today (Stage 11's read models
+ * carry no PII), so a future PII-carrying read model inherits the
+ * scrub obligation visibly.
  *
  * ExportSourceRegistry (task 15) is bound as a singleton here rather
  * than left to auto-resolution, so the same populated instance answers
@@ -69,6 +74,12 @@ class ReportingServiceProvider extends ServiceProvider
             ProjectEventAttendance::NAME,
             ['TicketCheckedIn', 'DuplicateScanDetected'],
             $this->app->make(ProjectEventAttendance::class),
+        );
+
+        $subscribers->register(
+            ScrubReportingPii::NAME,
+            ['CustomerAnonymized'],
+            $this->app->make(ScrubReportingPii::class),
         );
 
         $exportSources->register($this->app->make(OrdersExportSource::class));
