@@ -28,3 +28,11 @@ Route::middleware(RequireCapability::class.':'.Capability::CustomersView->value)
 Route::middleware(RecordActivityAudit::class)->group(function (): void {
     Route::post('/customers/{customer}/data-subject-requests', [DataSubjectRequestController::class, 'store'])->whereUuid('customer');
 });
+
+// GET /v1/data-subject-requests/{data_subject_request} and GET
+// /v1/data-subject-requests (task breakdown item 6): read-only, so no
+// RecordActivityAudit, and gated on either capability directly inside
+// the controller (CapabilityGate::authorizeAny) rather than a static
+// RequireCapability entry, mirroring store()'s own posture above.
+Route::get('/data-subject-requests', [DataSubjectRequestController::class, 'index']);
+Route::get('/data-subject-requests/{data_subject_request}', [DataSubjectRequestController::class, 'show'])->whereUuid('data_subject_request');

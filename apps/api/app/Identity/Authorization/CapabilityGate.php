@@ -66,4 +66,28 @@ final class CapabilityGate
             throw MissingCapabilityException::for($capability);
         }
     }
+
+    /**
+     * Passes if the acting membership holds at least one of the given
+     * capabilities (GET /v1/data-subject-requests/{data_subject_request}
+     * and GET /v1/data-subject-requests, stage-12 plan, Endpoints: "403
+     * without either capability"), unlike authorize()'s single-capability
+     * requirement. The denial names the first capability in the list,
+     * mirroring authorize()'s own message shape rather than enumerating
+     * every capability that was missing.
+     */
+    public function authorizeAny(Capability ...$capabilities): void
+    {
+        $user = Auth::guard('staff')->user();
+
+        if ($user !== null) {
+            foreach ($capabilities as $capability) {
+                if ($this->allowsFor($user, $capability)) {
+                    return;
+                }
+            }
+        }
+
+        throw MissingCapabilityException::for($capabilities[0]);
+    }
 }

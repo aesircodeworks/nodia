@@ -14,12 +14,14 @@ use Spatie\LaravelData\Mappers\SnakeCaseMapper;
  * The data subject request lifecycle wire shape (stage-12 plan, Endpoints
  * "DataSubjectRequestData: id, customer_id, type, status,
  * requested_by_user_id, completed_at, download_url, created_at").
- * download_url stays null unconditionally on this Data class: an erasure
- * never attaches a file, and a completed export's signed download URL is
- * computed by the GET /v1/data-subject-requests/{data_subject_request}
- * endpoint (task breakdown item 6's own download-URL half), not by
- * fromModel() here, which App\Identity\Actions\CreateDataSubjectRequest
- * uses to build both the 201 erasure and the 202 export response.
+ * fromModel()'s $downloadUrl parameter defaults to null, which is all
+ * App\Identity\Actions\CreateDataSubjectRequest's own erasure (201) and
+ * export (202) responses ever pass: neither a freshly completed erasure
+ * (no file ever attached) nor a freshly created export (still pending)
+ * has anything to sign yet. GET /v1/data-subject-requests/
+ * {data_subject_request} (task breakdown item 6's own download-URL half)
+ * is the one caller that passes a real signed URL, computed from the
+ * model's own medialibrary attachment once it exists.
  */
 #[MapName(SnakeCaseMapper::class)]
 class DataSubjectRequestData extends Data
@@ -35,7 +37,7 @@ class DataSubjectRequestData extends Data
         public string $createdAt,
     ) {}
 
-    public static function fromModel(DataSubjectRequest $request): self
+    public static function fromModel(DataSubjectRequest $request, ?string $downloadUrl = null): self
     {
         return new self(
             $request->id,
@@ -46,7 +48,7 @@ class DataSubjectRequestData extends Data
             $request->completed_at !== null
                 ? CarbonImmutable::instance($request->completed_at)->utc()->format('Y-m-d\TH:i:s\Z')
                 : null,
-            null,
+            $downloadUrl,
             CarbonImmutable::instance($request->created_at)->utc()->format('Y-m-d\TH:i:s\Z'),
         );
     }

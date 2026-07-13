@@ -96,6 +96,28 @@ it('denies a capability the acting membership role does not hold', function () {
     }, $user->id);
 })->throws(MissingCapabilityException::class);
 
+it('passes authorizeAny when the acting membership holds the second listed capability, not the first', function () {
+    $user = memberWithCapabilities([Capability::CustomersExport]);
+
+    app(TenantTransaction::class)->asTenant(CG_TENANT, function () use ($user): void {
+        Auth::guard('staff')->setUser($user);
+
+        app(CapabilityGate::class)->authorizeAny(Capability::CustomersErase, Capability::CustomersExport);
+    }, $user->id);
+
+    expect(true)->toBeTrue();
+});
+
+it('denies authorizeAny naming the first listed capability when the acting membership holds neither', function () {
+    $user = memberWithCapabilities([Capability::EventsView]);
+
+    app(TenantTransaction::class)->asTenant(CG_TENANT, function () use ($user): void {
+        Auth::guard('staff')->setUser($user);
+
+        app(CapabilityGate::class)->authorizeAny(Capability::CustomersErase, Capability::CustomersExport);
+    }, $user->id);
+})->throws(MissingCapabilityException::class, 'customers.erase');
+
 it('carries the missing_capability error code', function () {
     $exception = MissingCapabilityException::for(Capability::RolesManage);
 

@@ -97,4 +97,22 @@ return [
 
     'reset_token_ttl_minutes' => (int) env('STAFF_PASSWORD_RESET_TOKEN_TTL_MINUTES', 60),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Data Subject Export Download URL
+    |--------------------------------------------------------------------------
+    |
+    | How long GET /v1/data-subject-requests/{data_subject_request}'s
+    | signed download_url stays valid (stage-12 plan, Endpoints: "a
+    | time-limited signed URL to the medialibrary attachment"), passed
+    | straight to Spatie\MediaLibrary\MediaCollections\Models\Media::
+    | getTemporaryUrl(), mirroring config/reporting.php's identical
+    | export_download_url_ttl_minutes precedent for GET /v1/exports/
+    | {export}/download rather than sharing that Reporting-owned config
+    | key across contexts.
+    |
+    */
+
+    'data_subject_export_download_url_ttl_minutes' => (int) env('DATA_SUBJECT_EXPORT_DOWNLOAD_URL_TTL_MINUTES', 15),
+
 ];

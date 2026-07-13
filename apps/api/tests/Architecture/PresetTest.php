@@ -47,6 +47,7 @@ use App\Identity\Exceptions\CustomerAlreadyClaimedException;
 use App\Identity\Exceptions\CustomerEmailTakenException;
 use App\Identity\Exceptions\CustomerNotFoundException;
 use App\Identity\Exceptions\DataSubjectRequestAlreadyOpenException;
+use App\Identity\Exceptions\DataSubjectRequestNotFoundException;
 use App\Identity\Exceptions\InvalidCredentialsException;
 use App\Identity\Exceptions\InvalidMembershipScopeException;
 use App\Identity\Exceptions\InvalidRefreshTokenException;
@@ -343,6 +344,7 @@ arch()->preset()->laravel()->ignoring([
     CustomerAlreadyAnonymizedException::class,
     CustomerNotFoundException::class,
     DataSubjectRequestAlreadyOpenException::class,
+    DataSubjectRequestNotFoundException::class,
     ClaimTokenInvalidException::class,
     ClaimTokenExpiredException::class,
     PasswordResetTokenInvalidException::class,

@@ -10,6 +10,7 @@ use App\EventCatalog\Models\Venue;
 use App\Identity\Capability;
 use App\Identity\Enums\MembershipScope;
 use App\Identity\Models\Customer;
+use App\Identity\Models\DataSubjectRequest;
 use App\Identity\Models\Membership;
 use App\Identity\Models\Role;
 use App\Identity\Support\ClaimToken;
@@ -837,6 +838,22 @@ function contractCustomer(Tenant $tenant, array $attributes = []): Customer
         $tenant->id,
         fn () => Customer::factory()->create(['tenant_id' => $tenant->id, ...$attributes]),
     );
+}
+
+/**
+ * @param  array<string, mixed>  $attributes
+ */
+function contractSeedDataSubjectRequest(Tenant $tenant, array $attributes = []): string
+{
+    $userId = app(TenantTransaction::class)->asPlatform(fn () => User::factory()->create()->id);
+    $customerId = $attributes['customer_id'] ?? contractCustomer($tenant)->id;
+
+    return app(TenantTransaction::class)->asTenant($tenant->id, fn (): string => DataSubjectRequest::factory()->create([
+        'tenant_id' => $tenant->id,
+        'customer_id' => $customerId,
+        'requested_by_user_id' => $userId,
+        ...$attributes,
+    ])->id);
 }
 
 /**
@@ -3199,6 +3216,68 @@ function documentedResponseExercisers(): array
                 'type' => 'not_a_real_type',
             ], [
                 'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['customers.erase']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        // Stage-12 plan, Endpoints "GET /v1/data-subject-requests/
+        // {data_subject_request}" and "GET /v1/data-subject-requests"
+        // (task breakdown item 6): available to either customers.erase or
+        // customers.export, so contractVenueBearer's own generic-
+        // capabilities parameter is reused the same way the POST
+        // exercisers above reuse it.
+        'get /v1/data-subject-requests/{data_subject_request} 200' => function (): TestResponse {
+            $tenant = contractTenant();
+            $requestId = contractSeedDataSubjectRequest($tenant);
+
+            return test()->getJson('/v1/data-subject-requests/'.$requestId, [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['customers.export']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/data-subject-requests/{data_subject_request} 401' => function (): TestResponse {
+            return test()->getJson('/v1/data-subject-requests/'.Str::uuid7());
+        },
+        'get /v1/data-subject-requests/{data_subject_request} 403' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->getJson('/v1/data-subject-requests/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/data-subject-requests/{data_subject_request} 404' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->getJson('/v1/data-subject-requests/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['customers.export']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/data-subject-requests 200' => function (): TestResponse {
+            $tenant = contractTenant();
+            contractSeedDataSubjectRequest($tenant);
+
+            return test()->getJson('/v1/data-subject-requests', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['customers.export']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/data-subject-requests 400' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->getJson('/v1/data-subject-requests?filter[bogus]=1', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['customers.export']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/data-subject-requests 401' => function (): TestResponse {
+            return test()->getJson('/v1/data-subject-requests');
+        },
+        'get /v1/data-subject-requests 403' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->getJson('/v1/data-subject-requests', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']),
                 'X-Tenant-Id' => $tenant->id,
             ]);
         },

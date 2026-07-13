@@ -1258,6 +1258,140 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ValidationProblem'
+  /v1/data-subject-requests:
+    get:
+      operationId: listDataSubjectRequests
+      summary: List data subject requests for the acting tenant
+      description: >-
+        Tenant admin surface: Passport staff bearer plus X-Tenant-Id
+        membership validation (stage-12 plan, Endpoints; task breakdown
+        item 6). Available to either customers.erase or customers.export,
+        not both: a caller who can only act on one type still needs to
+        see the requests they can act on. Page pagination with the
+        standard Laravel paginator envelope; download_url is always null
+        in this list (GET /v1/data-subject-requests/{data_subject_
+        request} is the one documented way to fetch a real signed URL).
+        Allowed query-builder parameters are filter[customer_id],
+        filter[type], filter[status] (exact) and sort in (created_at,
+        -created_at); unknown filters or sorts are rejected with 400
+        invalid_query_parameter, never ignored.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          style: deepObject
+          explode: true
+          description: >-
+            Allowed filters: filter[customer_id], filter[type],
+            filter[status] (exact match).
+          schema:
+            type: object
+            properties:
+              customer_id:
+                type: string
+              type:
+                type: string
+              status:
+                type: string
+            additionalProperties:
+              type: string
+        - name: sort
+          in: query
+          required: false
+          description: 'Allowed sorts: created_at, -created_at.'
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: One page of data subject requests visible in the acting tenant.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataSubjectRequestPage'
+        '400':
+          description: Unknown filter or sort parameter.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/InvalidQueryParameterProblem'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, or the acting membership
+            holds neither customers.erase nor customers.export.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
+  /v1/data-subject-requests/{data_subject_request}:
+    parameters:
+      - name: data_subject_request
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getDataSubjectRequest
+      summary: Fetch a data subject request
+      description: >-
+        Tenant admin surface: Passport staff bearer plus X-Tenant-Id
+        membership validation (stage-12 plan, Endpoints; task breakdown
+        item 6). Available to either customers.erase or customers.export.
+        For a completed export, download_url is a time-limited signed URL
+        to the medialibrary attachment; before completion, and for every
+        erasure request (which never attaches a file), it is null.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The data subject request.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataSubjectRequest'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, or the acting membership
+            holds neither customers.erase nor customers.export.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
+        '404':
+          description: >-
+            Unknown or cross-tenant data subject request id (code
+            request.not_found); RLS makes the cross-tenant case
+            indistinguishable from absence.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
   /v1/auth/customer/claim:
     post:
       operationId: requestCustomerClaim
@@ -12249,11 +12383,14 @@ components:
       type: object
       description: >-
         One data subject request lifecycle record (stage-12 plan,
-        Endpoints "DataSubjectRequestData"). download_url stays null on
-        this response for both types: an erasure never attaches a file,
-        and a completed export's signed download URL is computed by GET
-        /v1/data-subject-requests/{data_subject_request} (task breakdown
-        item 6's own download-URL half), not by this create response.
+        Endpoints "DataSubjectRequestData"), shared by the create
+        response, GET /v1/data-subject-requests/{data_subject_request},
+        and each row of GET /v1/data-subject-requests. download_url is
+        always null on the create response and in the list (an erasure
+        never attaches a file, and a freshly created export is still
+        pending); only GET /v1/data-subject-requests/{data_subject_
+        request} computes a real time-limited signed URL, and only once
+        the request is a completed export.
       required:
         - id
         - customer_id
@@ -12308,3 +12445,25 @@ components:
               type: string
               enum: [customer_already_anonymized, data_subject_request_already_open]
       unevaluatedProperties: false
+    DataSubjectRequestPage:
+      type: object
+      description: >-
+        Laravel standard paginator envelope (data, links, meta) per
+        docs/api-conventions.md, mirroring RolePage's own shape (stage-12
+        plan, Endpoints "GET /v1/data-subject-requests").
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataSubjectRequest'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageLink'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+      additionalProperties: false
