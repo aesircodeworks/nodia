@@ -779,7 +779,7 @@ Check-in is its own client application, separate from the admin portal: an offli
 
 - Capability-based authorization (section 5.3) evaluated on every request.
 - MFA mandatory for platform staff and financially privileged tenant roles.
-- Append-only activity log (spatie/laravel-activitylog) for all staff actions, all cross-tenant platform operations, and all financial mutations; log rows are never updated or deleted inside the application.
+- Append-only activity log (spatie/laravel-activitylog) for all staff actions, all cross-tenant platform operations, and all financial mutations; log rows are never updated by application code, and are never deleted except by the scheduled retention pruner (section 14.3), which archives rows past their retention window to object storage before removing them from PostgreSQL. No ordinary request path, tenant-scoped or cross-tenant platform, can delete a row; the pruner's delete is a narrowly scoped path restricted to rows past the window it supplies, distinct from the database privileges every other write path uses.
 
 ### 14.3 GDPR and LGPD
 

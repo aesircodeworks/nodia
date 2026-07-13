@@ -19,10 +19,14 @@ use Illuminate\Support\Str;
  *
  * seed() generates fresh row ids on every call rather than reusing fixed
  * constants (CustomerFixture's own pattern): activity_log grants no
- * UPDATE or DELETE privilege to any application role (the append-only
- * guarantee this table exists to prove), so clean() cannot remove the
- * rows a previous test's seed() call inserted, the way every other
- * fixture's clean() does. Reusing a fixed id would collide on the
+ * UPDATE privilege to any role, and DELETE is granted to nodia_platform
+ * only, restricted by a policy to rows past a cutoff the retention
+ * pruning command supplies explicitly (stage-12 plan task breakdown
+ * item 8, 2026_07_13_000062_add_scoped_delete_policy_to_activity_log_
+ * table.php) — rows seeded here at "now" are never past a realistic
+ * cutoff, so clean() still cannot (and need not) remove the rows a
+ * previous test's seed() call inserted, the way every other fixture's
+ * clean() does. Reusing a fixed id would collide on the
  * primary key the second time a test in the same file runs. The returned
  * ids are scoped to the still-shared TenantFixture::TENANT_A/TENANT_B
  * (safe to keep reusing those: this table has no foreign key to tenants,
@@ -70,12 +74,13 @@ final class ActivityLogFixture
 
     public static function clean(): void
     {
-        // No delete: activity_log grants no DELETE privilege to any
-        // application role at all (append-only by construction), and
-        // this table carries no foreign key to tenants (see the
-        // migration's docblock), so leaving rows behind does not block
-        // TenantFixture::clean()'s tenant teardown the way it would for
-        // every other tenant-scoped table.
+        // No delete: fixture rows are seeded at "now", never past the
+        // pruning command's cutoff, so the narrow platform-role delete
+        // path this table now carries (stage-12 task breakdown item 8)
+        // still cannot touch them; this table also carries no foreign
+        // key to tenants (see the migration's docblock), so leaving rows
+        // behind does not block TenantFixture::clean()'s tenant teardown
+        // the way it would for every other tenant-scoped table.
         TenantFixture::clean();
     }
 }
