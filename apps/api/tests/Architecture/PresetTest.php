@@ -151,6 +151,8 @@ use App\Payments\Exceptions\WebhookUnparseableException;
 use App\Payments\Gateways\GatewayPaymentOutcome;
 use App\Payments\Gateways\WebhookKind;
 use App\Payments\PaymentsServiceProvider;
+use App\Reporting\Enums\ExportStatus;
+use App\Reporting\Enums\ExportType;
 use App\Reporting\ReportingServiceProvider;
 use App\Support\Media\Exceptions\MediaNotFoundException;
 use App\Support\Money\CurrencyMismatchException;
@@ -263,6 +265,9 @@ arch()->preset()->security();
 // App\Reporting\Http\Controllers\DailySalesController (stage-11 task-06)
 // is the same story as every other context's own Http\Controllers
 // directory already ignored above, not App\Http\Controllers.
+// ExportType and ExportStatus (stage-11 task-10) are exports' own status
+// and type registries and live with the Reporting context like
+// OrderStatus and PaymentStatus live with theirs, not App\Enums.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -455,4 +460,6 @@ arch()->preset()->laravel()->ignoring([
     ReportingServiceProvider::class,
     'App\Reporting\Models',
     'App\Reporting\Http\Controllers',
+    ExportType::class,
+    ExportStatus::class,
 ]);
