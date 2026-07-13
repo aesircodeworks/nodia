@@ -38,6 +38,24 @@ return Application::configure(basePath: dirname(__DIR__))
         // by webhooks and reconcile mirrored payouts against it
         // (system-design 13).
         $schedule->command('payments:reconcile-payouts')->everyFiveMinutes();
+
+        // Stage-10 plan, task breakdown item 8: admit waiting-room
+        // entrants into checkout at each flagged event's own configured
+        // per-minute rate. Sub-minute cadence so a per-minute admission
+        // rate feels smooth (stage-10 plan Risks "Gatekeeper cadence").
+        // Verified against the pinned Laravel version's own docs
+        // (scheduling.md, "Sub-Minute Scheduled Tasks", Laravel 13.x):
+        // once a sub-minute task is registered, schedule:run keeps
+        // running through the remainder of the minute to invoke it, and
+        // schedule:work (this app's own scheduler-container command,
+        // system-design 16.3) already loops continuously and re-invokes
+        // the scheduler every minute the same way -- no supervised
+        // long-running command fallback is needed. Per-tick work stays
+        // cheap (one Redis SMEMBERS, one batched cross-tenant Postgres
+        // SELECT, one Lua eval per active event), so it runs directly
+        // like every other scheduled command in this file rather than
+        // dispatching a queued job.
+        $schedule->command('onsale:gatekeeper')->everyTenSeconds();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

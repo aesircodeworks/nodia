@@ -7480,7 +7480,8 @@ components:
         plan, Endpoints). id is the entrant's own capability (section
         14.4). position is null once admitted; admission_token and
         admission_expires_at stay null until the gatekeeper admits the
-        entrant (stage-10 plan task breakdown item 8, not yet built).
+        entrant, at which point they are signed at poll-response time
+        from the admitted state (stage-10 plan task breakdown item 8).
       required:
         - id
         - event_id

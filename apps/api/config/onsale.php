@@ -88,8 +88,8 @@ return [
     |
     | The gatekeeper's per-event admission budget when
     | events.on_sale_policy.admission_rate_per_minute is null (stage-10
-    | plan, "events.on_sale_policy (new column, EventCatalog context)").
-    | Not yet consumed: the gatekeeper lands in a later stage-10 task.
+    | plan, "events.on_sale_policy (new column, EventCatalog context)"),
+    | consumed by App\Inventory\Actions\RunGatekeeperTick.
     |
     */
 
@@ -103,8 +103,13 @@ return [
     | HMAC-SHA256 signing for the short-lived X-Admission-Token (stage-10
     | plan, "Admission token"): TTL default 5 minutes, verified
     | statelessly against the current and previous keys so signing keys
-    | rotate without invalidating in-flight tokens. Not yet consumed:
-    | token issuance and verification land in a later stage-10 task.
+    | rotate without invalidating in-flight tokens. App\Inventory\
+    | Support\AdmissionToken issues tokens (App\Inventory\Actions\
+    | GetQueueEntry, on poll, from the admitted Redis state) and verifies
+    | them (a later stage-10 task wires verification into hold
+    | creation); current_key_secret has no safe default and must be set
+    | in every real environment (blank in .env.example, like every other
+    | unset-by-default secret in this file).
     |
     */
 

@@ -44,6 +44,7 @@
         <env name="DB_PASSWORD" value="nodia"/>
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
+        <env name="ONSALE_ADMISSION_TOKEN_SIGNING_KEY" value="test-admission-token-signing-key"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>

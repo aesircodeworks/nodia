@@ -20,8 +20,15 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    Redis::connection()->del(OnSaleQueue::waitingKey($this->tenantId, $this->eventId));
-    Redis::connection()->srem('onsale:active', OnSaleQueue::activeMember($this->tenantId, $this->eventId));
+    $redis = Redis::connection();
+
+    $redis->del(OnSaleQueue::waitingKey($this->tenantId, $this->eventId));
+    $redis->del(OnSaleQueue::admittedKey($this->tenantId, $this->eventId));
+    $redis->srem('onsale:active', OnSaleQueue::activeMember($this->tenantId, $this->eventId));
+
+    foreach ($redis->keys('onsale:{'.$this->tenantId.':'.$this->eventId.'}:budget:*') as $key) {
+        $redis->del($key);
+    }
 });
 
 function cleanupOnSaleQueueEntrant(string $tenantId, string $entrantId): void
@@ -113,4 +120,180 @@ test('waiting and entrant keys embed tenant_id and event_id, and active membersh
         ->toBe("onsale:{$this->tenantId}:entrant:entrant-1")
         ->and(OnSaleQueue::activeMember($this->tenantId, $this->eventId))
         ->toBe("{$this->tenantId}:{$this->eventId}");
+});
+
+/*
+ * Stage-10 plan, TDD sequencing Slice 5 (Unit, first), task breakdown
+ * item 8: the gatekeeper's own admit()/trimAdmitted() Lua-scripted
+ * primitives, isolated from the RunGatekeeperTick action and the
+ * concurrency proof (tests/Concurrency/GatekeeperAdmissionContentionTest
+ * .php) that exercise this same script under real racing processes.
+ */
+
+test('admittedKey and budgetKey embed tenant_id and event_id in the same hash tag as waitingKey', function (): void {
+    expect(OnSaleQueue::admittedKey($this->tenantId, $this->eventId))
+        ->toBe("onsale:{{$this->tenantId}:{$this->eventId}}:admitted")
+        ->and(OnSaleQueue::budgetKey($this->tenantId, $this->eventId, 12345))
+        ->toBe("onsale:{{$this->tenantId}:{$this->eventId}}:budget:12345");
+});
+
+test('intervalId buckets by the current UTC minute', function (): void {
+    $base = now()->startOfMinute();
+
+    expect(OnSaleQueue::intervalId($base))->toBe(OnSaleQueue::intervalId($base->copy()->addSeconds(59)))
+        ->and(OnSaleQueue::intervalId($base))->not->toBe(OnSaleQueue::intervalId($base->copy()->addMinute()));
+});
+
+test('admit pops the earliest arrivals up to the rate, in arrival order', function (): void {
+    $base = now();
+    $entrantIds = [];
+
+    foreach (range(0, 4) as $i) {
+        $entrantId = Str::uuid7()->toString();
+        OnSaleQueue::join($this->tenantId, $this->eventId, $entrantId, $base->copy()->addMilliseconds($i));
+        $entrantIds[] = $entrantId;
+    }
+
+    $admitted = OnSaleQueue::admit($this->tenantId, $this->eventId, 3, $base, 300);
+
+    expect($admitted)->toBe(array_slice($entrantIds, 0, 3))
+        ->and(OnSaleQueue::position($this->tenantId, $this->eventId, $entrantIds[3]))->toBe(1)
+        ->and(OnSaleQueue::position($this->tenantId, $this->eventId, $entrantIds[4]))->toBe(2)
+        ->and(OnSaleQueue::position($this->tenantId, $this->eventId, $entrantIds[0]))->toBeNull();
+
+    foreach ($entrantIds as $entrantId) {
+        cleanupOnSaleQueueEntrant($this->tenantId, $entrantId);
+    }
+});
+
+test('admit returns an empty list when the waiting set is empty', function (): void {
+    expect(OnSaleQueue::admit($this->tenantId, $this->eventId, 5, now(), 300))->toBe([]);
+});
+
+test('per-interval budget arithmetic: repeated admit calls in the same interval share one capped budget', function (): void {
+    // Anchored to a fixed offset into the minute (not bare now()) so
+    // the +5s/+10s ticks below can never cross an interval boundary by
+    // accident of wall-clock timing.
+    $base = now()->startOfMinute()->addSeconds(5);
+    $entrantIds = [];
+
+    foreach (range(0, 4) as $i) {
+        $entrantId = Str::uuid7()->toString();
+        OnSaleQueue::join($this->tenantId, $this->eventId, $entrantId, $base->copy()->addMilliseconds($i));
+        $entrantIds[] = $entrantId;
+    }
+
+    $firstTick = OnSaleQueue::admit($this->tenantId, $this->eventId, 2, $base, 300);
+    $secondTick = OnSaleQueue::admit($this->tenantId, $this->eventId, 2, $base->copy()->addSeconds(5), 300);
+    $thirdTick = OnSaleQueue::admit($this->tenantId, $this->eventId, 2, $base->copy()->addSeconds(10), 300);
+
+    expect($firstTick)->toHaveCount(2)
+        ->and($secondTick)->toBe([])
+        ->and($thirdTick)->toBe([])
+        ->and(OnSaleQueue::position($this->tenantId, $this->eventId, $entrantIds[2]))->toBe(1);
+
+    foreach ($entrantIds as $entrantId) {
+        cleanupOnSaleQueueEntrant($this->tenantId, $entrantId);
+    }
+});
+
+test('a new interval grants a fresh budget', function (): void {
+    $base = now();
+    $entrantIds = [];
+
+    foreach (range(0, 3) as $i) {
+        $entrantId = Str::uuid7()->toString();
+        OnSaleQueue::join($this->tenantId, $this->eventId, $entrantId, $base->copy()->addMilliseconds($i));
+        $entrantIds[] = $entrantId;
+    }
+
+    $firstTick = OnSaleQueue::admit($this->tenantId, $this->eventId, 2, $base, 300);
+    $nextIntervalTick = OnSaleQueue::admit($this->tenantId, $this->eventId, 2, $base->copy()->addMinute(), 300);
+
+    expect($firstTick)->toHaveCount(2)
+        ->and($nextIntervalTick)->toHaveCount(2);
+
+    foreach ($entrantIds as $entrantId) {
+        cleanupOnSaleQueueEntrant($this->tenantId, $entrantId);
+    }
+});
+
+test('a later admit() call in the same interval never retroactively changes an already-seeded budget', function (): void {
+    // Same fixed-offset anchoring as the budget-arithmetic test above.
+    $base = now()->startOfMinute()->addSeconds(5);
+    $entrantIds = [];
+
+    foreach (range(0, 2) as $i) {
+        $entrantId = Str::uuid7()->toString();
+        OnSaleQueue::join($this->tenantId, $this->eventId, $entrantId, $base->copy()->addMilliseconds($i));
+        $entrantIds[] = $entrantId;
+    }
+
+    $firstTick = OnSaleQueue::admit($this->tenantId, $this->eventId, 1, $base, 300);
+    $secondTick = OnSaleQueue::admit($this->tenantId, $this->eventId, 10, $base->copy()->addSeconds(5), 300);
+
+    expect($firstTick)->toHaveCount(1)
+        ->and($secondTick)->toBe([]);
+
+    foreach ($entrantIds as $entrantId) {
+        cleanupOnSaleQueueEntrant($this->tenantId, $entrantId);
+    }
+});
+
+test('admissionExpiry reports the token-lifetime score for an admitted entrant and null for a waiting or unknown one', function (): void {
+    $base = now();
+    $entrantId = Str::uuid7()->toString();
+    OnSaleQueue::join($this->tenantId, $this->eventId, $entrantId, $base);
+
+    expect(OnSaleQueue::admissionExpiry($this->tenantId, $this->eventId, $entrantId))->toBeNull()
+        ->and(OnSaleQueue::admissionExpiry($this->tenantId, $this->eventId, Str::uuid7()->toString()))->toBeNull();
+
+    OnSaleQueue::admit($this->tenantId, $this->eventId, 1, $base, 300);
+
+    $expiry = OnSaleQueue::admissionExpiry($this->tenantId, $this->eventId, $entrantId);
+
+    expect($expiry)->not->toBeNull()
+        ->and($expiry->getTimestamp())->toBe($base->copy()->addSeconds(300)->getTimestamp());
+
+    cleanupOnSaleQueueEntrant($this->tenantId, $entrantId);
+});
+
+test('trimAdmitted removes only admitted entries whose expiry has passed the grace window', function (): void {
+    $base = now();
+    $stale = Str::uuid7()->toString();
+    $fresh = Str::uuid7()->toString();
+
+    OnSaleQueue::join($this->tenantId, $this->eventId, $stale, $base);
+    OnSaleQueue::admit($this->tenantId, $this->eventId, 1, $base, 1);
+
+    $laterInterval = $base->copy()->addMinute();
+    OnSaleQueue::join($this->tenantId, $this->eventId, $fresh, $laterInterval);
+    OnSaleQueue::admit($this->tenantId, $this->eventId, 1, $laterInterval, 600);
+
+    OnSaleQueue::trimAdmitted($this->tenantId, $this->eventId, $base->copy()->addMinutes(2));
+
+    expect(OnSaleQueue::admissionExpiry($this->tenantId, $this->eventId, $stale))->toBeNull()
+        ->and(OnSaleQueue::admissionExpiry($this->tenantId, $this->eventId, $fresh))->not->toBeNull();
+
+    cleanupOnSaleQueueEntrant($this->tenantId, $stale);
+    cleanupOnSaleQueueEntrant($this->tenantId, $fresh);
+});
+
+test('activeMembers parses every tenant_id:event_id pair from the global active set', function (): void {
+    $otherEventId = Str::uuid7()->toString();
+    $entrantId = Str::uuid7()->toString();
+    $otherEntrantId = Str::uuid7()->toString();
+
+    OnSaleQueue::join($this->tenantId, $this->eventId, $entrantId, now());
+    OnSaleQueue::join($this->tenantId, $otherEventId, $otherEntrantId, now());
+
+    $members = OnSaleQueue::activeMembers();
+
+    expect($members)->toContain(['tenant_id' => $this->tenantId, 'event_id' => $this->eventId])
+        ->and($members)->toContain(['tenant_id' => $this->tenantId, 'event_id' => $otherEventId]);
+
+    cleanupOnSaleQueueEntrant($this->tenantId, $entrantId);
+    cleanupOnSaleQueueEntrant($this->tenantId, $otherEntrantId);
+    Redis::connection()->del(OnSaleQueue::waitingKey($this->tenantId, $otherEventId));
+    Redis::connection()->srem('onsale:active', OnSaleQueue::activeMember($this->tenantId, $otherEventId));
 });
