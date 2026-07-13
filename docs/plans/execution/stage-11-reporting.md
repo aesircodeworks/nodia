@@ -348,4 +348,4 @@ Test evidence:
 
 Not run in this task (out of scope per the task's own instruction to skip full lint/analyse/whole-suite per slice; the gate phase after all tasks covers these): the full six-suite run, `pnpm typecheck`/`pnpm build` over `packages/api-client` (no TS changed anyway).
 
-Commits: (recorded after this entry's own commit).
+Commits: 9926ae9 (feat(support): add a per-projection advisory lock to outbox delivery), e4fd507 (feat(reporting): add reporting:rebuild command with --tenant and --verify).
