@@ -1,6 +1,7 @@
 <?php
 
 use App\Support\Problems\ErrorCode;
+use App\Support\Problems\ProblemRenderer;
 
 test('the registry holds exactly the known codes', function () {
     expect(array_map(fn (ErrorCode $code) => $code->value, ErrorCode::cases()))->toBe([
@@ -257,5 +258,27 @@ test('every error code maps to its status, title, and type slug', function (Erro
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {
     foreach (ErrorCode::cases() as $code) {
         expect($code->type())->toBe('/problems/'.str_replace(['.', '_'], '-', $code->value));
+    }
+});
+
+/*
+ * ProblemRenderer::detailFor() is an exhaustive match over ErrorCode with
+ * no default arm, so a code added without its arm throws
+ * UnhandledMatchError the first time that code is rendered generically
+ * rather than producing a problem document. Larastan's match.unhandled
+ * check catches that statically, but it went unnoticed once already
+ * (stage-12 T2 shipped customer_already_anonymized and
+ * data_subject_request_already_open with no arm, fixed in a later commit),
+ * so the invariant is pinned here too: every registered code, not just the
+ * ones some endpoint happens to render today.
+ */
+test('every error code has a problem detail', function () {
+    $detailFor = new ReflectionMethod(ProblemRenderer::class, 'detailFor');
+    $renderer = new ProblemRenderer;
+
+    foreach (ErrorCode::cases() as $code) {
+        expect($detailFor->invoke($renderer, $code))
+            ->toBeString()
+            ->not->toBe('', "Error code [{$code->value}] has no detail arm in ProblemRenderer::detailFor().");
     }
 });
