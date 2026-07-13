@@ -29,7 +29,7 @@ Dependencies are in place: Stage 6 (`CreateHold`, `ReleaseHold`, `CommitHold`, `
 - [x] T6 Queue join and position endpoints, Redis entrant lifecycle, `ChallengeVerifier` with fake and no-op implementations (inventory)
 - [x] T7 Gatekeeper command, admission Lua scripts, budget accounting, signed admission tokens with key rotation (inventory)
 - [x] T8 Admission enforcement on `POST /v1/storefront/holds`, updated OpenAPI error responses (inventory)
-- [ ] T9 Clock-aware Redis read cache in front of the availability and seats endpoints (inventory)
+- [x] T9 Clock-aware Redis read cache in front of the availability and seats endpoints (inventory)
 
 ### Review rounds
 
@@ -286,3 +286,31 @@ Test evidence (all run from `apps/api` against the real PostgreSQL test database
 Commits:
 
 - `9b0f986` feat(inventory): enforce admission tokens on POST /v1/storefront/holds
+
+### T9: Clock-aware Redis read cache for availability and seats (2026-07-13)
+
+Landed TDD Slice 7 (stage-10 plan, task breakdown item 10; independent of T4 through T8, depends only on Stage 6, already landed):
+
+- `App\Inventory\Support\ReadCache` (new): the read-through cache primitive (stage-10 plan, Data model "Redis structures" cache-keys paragraph). `key(tenantId, eventId, kind)` embeds both ids in the same Redis Cluster hash tag `App\Inventory\Support\OnSaleQueue`'s own per-event keys use (`onsale:{tenant_id:event_id}:cache:{kind}`), `kind` distinguishing `availability` from `seats`. `isStale(cachedAt, ttlSeconds, now)` is a pure function (`now > cachedAt + ttl`, an entry exactly at the boundary is still fresh, mirroring `AdmissionToken`'s own exact-instant convention), taking the clock as a parameter rather than reading it internally, the same posture `OnSaleQueue`'s own methods already establish for fake-clock testability. `remember(tenantId, eventId, kind, ttlSeconds, now, compute)` is the read-through primitive: serves the cached payload on a fresh hit with zero calls to `compute`, otherwise calls `compute()`, writes its result, and returns it; an exception from `compute()` propagates without writing anything to the cache, so a nonexistent or unpublished event's `HoldEventNotFoundException` is never cached. `get()`/`put()` are exposed as general-purpose primitives (not test-only): `put()` is what the "cache is never authoritative" feature test uses to poison an entry directly. The Redis key's own TTL is set to the caller's TTL plus a 10-second cleanup grace, garbage collection only, never consulted for freshness (stage-10 plan Risks "Fake clock versus Redis TTL").
+- `App\Inventory\Actions\GetCachedEventAvailability` and `GetCachedStorefrontEventSeats` (new): thin fronting Actions, each injecting the existing Stage 6 Action (`GetEventAvailability`/`GetStorefrontEventSeats`, left entirely unmodified, matching their own docblocks' promise that "a later stage fronts this with a cache without changing the contract") plus `App\Support\Tenancy\TenantContext` for the tenant half of the cache key. Each calls `ReadCache::remember` with its own TTL from `config('onsale.cache.availability_ttl_seconds')`/`.seats_ttl_seconds` (both already scaffolded at their stage-10 default of 2 seconds in T3's `config/onsale.php`, now actually consumed) and `Illuminate\Support\Facades\Date::now()` as the injected clock, then reconstructs the response Data object via `::from()` on the decoded JSON payload (`EventAvailabilityData`/`StorefrontEventSeatMapData`, both plain `#[MapName(SnakeCaseMapper::class)]` laravel-data objects with DataCollectionOf children; round-tripped through `->toArray()` → `json_encode` → `json_decode` → `::from()` and verified equal before writing any test, per the double-loop's contract-first step landing as "no contract change" here since the wire shape is unchanged). `App\Inventory\Http\Controllers\AvailabilityController` and `StorefrontEventSeatController` now depend on the cached Actions instead of the raw Stage 6 ones; nothing else about either controller changed.
+- No Data class or OpenAPI change: the stage-10 plan is explicit that "contracts, shapes, and codes are unchanged from Stage 6", and this task's own TDD sequencing lists no "Contract (first)" step for Slice 7, unlike Slices 1 and 4. `composer types:generate` was not run (no Data class touched, confirmed by the unchanged `packages/api-client/src/generated` diff).
+- `CreateHold` was not touched: it already reads `ticket_type_inventory` directly through its own conditional-UPDATE guard and never called either Stage 6 Action or anything in `App\Inventory\Support\ReadCache`, so "the cache is never written by the hold path" (stage-10 plan Scope) held by construction before this task even started; the mandated "cache can never be authoritative" feature test proves this end to end rather than by inspection alone.
+
+Test evidence (all run from `apps/api` against the real PostgreSQL test database and a real Redis instance):
+
+- `php artisan test --filter=ReadCacheTest`: 7 passed, 18 assertions (unit, run first against no `ReadCache` class to confirm all 7 red with "Class not found", then green after implementation): `isStale` at and past the exact TTL boundary, `key` embedding tenant_id/event_id and differing per kind, `remember` computing once and serving the cached payload without recomputing while fresh, `remember` recomputing once stale against an explicitly advanced clock, `put` priming an entry a later `remember` call serves, and the `availability_ttl_seconds`/`seats_ttl_seconds` config defaults (2 each).
+- `php artisan test --filter=ReadCacheEndpointsTest`: 3 passed, 19 assertions (feature, the three mandated scenarios, run first against the raw Stage 6 controllers to confirm 2 of 3 red — availability and seats convergence failed because there was no cache to serve a stale value at all, always reading live — and the poison test red with "Class ReadCache not found", then green after implementation): availability display converges after cache expiry (primes the cache, creates a hold that changes PostgreSQL, the cache still serves the stale pre-hold value at the same frozen instant inside the TTL, then matches PostgreSQL exactly once `travelTo` passes the TTL); the seats endpoint's status collapse converges the same way (a seat marked `held` directly in the database stays reported `available` inside the TTL, then `unavailable` after); a poisoned availability cache entry claiming `available: 999` is what the read endpoint serves, but a hold request for more than the real quantity (2) still fails with 409 `insufficient_inventory` from `CreateHold`'s own real counter guard, proving the cache can never be authoritative.
+- `php artisan test --filter=AvailabilityEndpointsTest`: 8 passed, 31 assertions (no regression; the existing "recovers availability exactly after a hold expires" test travels 11 minutes forward, far past the 2-second cache TTL, so it already exercised the post-expiry convergence path without needing any change).
+- `php artisan test --filter=EventSeatEndpointsTest`: 13 passed, 59 assertions (no regression).
+- `php artisan test --testsuite=Feature --filter=Inventory`: 93 passed, 404 assertions.
+- `php artisan test --testsuite=Unit --filter=Inventory`: 136 passed, 299 assertions.
+- `php artisan test --testsuite=Architecture`: 40 passed, 97 assertions.
+- `php artisan test --testsuite=Contract`: 435 passed, 2791 assertions (no OpenAPI or wire-shape regression, confirming the "contracts, shapes, and codes are unchanged from Stage 6" requirement held).
+- `./vendor/bin/pint --test` on every changed file: passed.
+- `./vendor/bin/phpstan analyse --memory-limit=1G` on every changed non-test file: 0 errors.
+
+No deviation from a literal reading of the plan or task instructions.
+
+Commits:
+
+- `0605140` feat(inventory): add clock-aware Redis read cache for availability and seats
