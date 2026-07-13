@@ -10,6 +10,7 @@ use App\Identity\Models\Membership;
 use App\Identity\Models\Role;
 use App\Models\User;
 use App\Support\Tenancy\TenantTransaction;
+use App\Support\Testing\RouteAuthorizationCoverage;
 use App\Tenancy\Models\Tenant;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -181,3 +182,30 @@ it('evaluates capability plus tenant context for every capability against every 
     $assertOutcome($probe($homeTenantId), in_array($capability, $homeCapabilities, true));
     $assertOutcome($probe($foreignTenantId), in_array($capability, FOREIGN_ROLE_CAPABILITIES, true));
 })->with(capabilityMatrixCases());
+
+/*
+ * Stage-12 plan, Slice 6 / task breakdown item 14: ties the route
+ * dimension into this file's existing capability-by-role proof rather
+ * than duplicating it as a second, HTTP-driven role x route matrix. The
+ * dataset above already proves, for every Capability::cases() member,
+ * that a role lacking it is denied through the exact evaluation point
+ * every real route reaches it by (RequireCapability middleware or an
+ * in-controller CapabilityGate call, both call
+ * App\Identity\Authorization\CapabilityGate::authorize()); this
+ * assertion is the missing link from
+ * App\Support\Testing\RouteAuthorizationCoverage's route-to-capability
+ * map back to that live registry, so a route entry naming a capability
+ * that no longer exists (typo, rename, removed case) fails here instead
+ * of silently never being deny-proven by the matrix above.
+ */
+it('names only live Capability registry values in the route authorization coverage map', function (): void {
+    $known = array_map(fn (Capability $capability): string => $capability->value, Capability::cases());
+
+    foreach (RouteAuthorizationCoverage::covered() as $route => $value) {
+        foreach (explode('|', $value) as $capability) {
+            expect(in_array($capability, $known, true))->toBeTrue(
+                "Route [{$route}]'s authorization coverage entry names [{$capability}], which is not a live Capability case.",
+            );
+        }
+    }
+});
