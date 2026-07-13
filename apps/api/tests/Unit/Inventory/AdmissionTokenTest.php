@@ -121,12 +121,31 @@ test('issue refuses to sign when the current key secret is unset', function (): 
         ->toThrow(RuntimeException::class);
 });
 
-test('issue refuses to sign when the current key secret is blank', function (): void {
-    config(['onsale.admission_token.current_key_secret' => '']);
+// A whitespace-only secret is as guessable as a blank one, so it is
+// rejected on the same footing rather than silently signing under " ".
+test('issue refuses to sign when the current key secret is blank or whitespace-only', function (string $secret): void {
+    config(['onsale.admission_token.current_key_secret' => $secret]);
 
     expect(fn () => AdmissionToken::issue($this->entrantId, $this->eventId, $this->tenantId, now()->addMinutes(5)))
         ->toThrow(RuntimeException::class);
-});
+})->with(['', ' ', '   ', "\t", "\n"]);
+
+test('verify rejects a token whose key secret is whitespace-only', function (string $secret): void {
+    $now = now();
+    $expiresAtIso = $now->copy()->addMinutes(5)->toIso8601String();
+
+    $forged = 'k2.'.rtrim(strtr(base64_encode((string) json_encode([
+        'entrant_id' => $this->entrantId,
+        'event_id' => $this->eventId,
+        'tenant_id' => $this->tenantId,
+        'expires_at' => $expiresAtIso,
+        'signature' => hash_hmac('sha256', $this->entrantId.'|'.$this->eventId.'|'.$this->tenantId.'|'.$expiresAtIso, $secret),
+    ], JSON_THROW_ON_ERROR)), '+/', '-_'), '=');
+
+    config(['onsale.admission_token.current_key_secret' => $secret]);
+
+    expect(AdmissionToken::verify($forged, $this->eventId, $this->tenantId, $now))->toBeNull();
+})->with([' ', '   ', "\t", "\n"]);
 
 test('verify rejects a token forged under the empty secret when the current key secret is unset', function (): void {
     $now = now();

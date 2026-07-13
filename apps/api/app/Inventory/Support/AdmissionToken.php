@@ -157,7 +157,7 @@ final class AdmissionToken
 
     private static function usableSecret(?string $secret): ?string
     {
-        return $secret === null || $secret === '' ? null : $secret;
+        return $secret === null || trim($secret) === '' ? null : $secret;
     }
 
     private static function base64UrlEncode(string $value): string
