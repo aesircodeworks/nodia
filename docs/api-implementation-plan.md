@@ -28,7 +28,7 @@ Update this table when a stage starts and when it merges.
 | Stage 9: Check-in and Offline Reconciliation | Done |
 | Stage 10: High-Demand On-Sales | Done |
 | Stage 11: Reporting and Exports | Done |
-| Stage 12: Compliance, Operations, Hardening | Not started |
+| Stage 12: Compliance, Operations, Hardening | In progress |
 
 ## Method: the TDD loop
 
