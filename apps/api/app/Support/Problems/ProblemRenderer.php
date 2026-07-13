@@ -222,6 +222,8 @@ class ProblemRenderer
             ErrorCode::QueueEntryNotFound => 'No queue entry has this id for the resolved tenant.',
             ErrorCode::AdmissionRequired => 'This event is flagged high-demand and requires a valid X-Admission-Token header.',
             ErrorCode::AdmissionInvalid => 'The presented X-Admission-Token is not valid for this event, tenant, and time.',
+            ErrorCode::ExportNotReady => 'This export has not completed yet; retry once its status is completed.',
+            ErrorCode::ExportFailed => 'This export failed and has no file to download.',
         };
     }
 }

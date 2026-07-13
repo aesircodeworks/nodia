@@ -29,6 +29,7 @@ use App\Payments\Gateways\FakeGatewayScenarios;
 use App\Payments\Models\Payout;
 use App\Payments\Models\SubmerchantAccount;
 use App\Payments\Support\CircuitBreaker;
+use App\Reporting\Models\Export;
 use App\Support\Money\Money;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
@@ -144,6 +145,13 @@ afterEach(function (): void {
             DB::table('order_items')->where('tenant_id', $tenantId)->delete();
             DB::table('orders')->where('tenant_id', $tenantId)->delete();
             DB::table('promo_codes')->where('tenant_id', $tenantId)->delete();
+
+            // The export exercisers (stage-11 plan, task breakdown item
+            // 16) write exports scoped to a fresh contractHoldTenant()
+            // each; exports.tenant_id carries a real foreign key to
+            // tenants with no cascade, so it must be deleted before this
+            // tenant is deleted below.
+            DB::table('exports')->where('tenant_id', $tenantId)->delete();
 
             // contractEventCoverMedia()'s exercisers (stage-05c plan, task
             // breakdown item 2) write media rows scoped to a fresh event
@@ -4374,6 +4382,131 @@ function documentedResponseExercisers(): array
                 'X-Tenant-Id' => $tenant->id,
             ]);
         },
+        'post /v1/exports 202' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            return test()->postJson('/v1/exports', ['type' => 'orders'], [
+                'Authorization' => 'Bearer '.contractExportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/exports 401' => function (): TestResponse {
+            return test()->postJson('/v1/exports', ['type' => 'orders']);
+        },
+        'post /v1/exports 403' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            return test()->postJson('/v1/exports', ['type' => 'orders'], [
+                'Authorization' => 'Bearer '.contractReportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/exports 422' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            return test()->postJson('/v1/exports', ['type' => 'not_a_real_type'], [
+                'Authorization' => 'Bearer '.contractExportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/exports 200' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            contractSeedExport($tenant);
+
+            return test()->getJson('/v1/exports', [
+                'Authorization' => 'Bearer '.contractExportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/exports 400' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            return test()->getJson('/v1/exports?filter[bogus]=1', [
+                'Authorization' => 'Bearer '.contractExportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/exports 401' => function (): TestResponse {
+            return test()->getJson('/v1/exports');
+        },
+        'get /v1/exports 403' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            return test()->getJson('/v1/exports', [
+                'Authorization' => 'Bearer '.contractReportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/exports/{export} 200' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            $exportId = contractSeedExport($tenant);
+
+            return test()->getJson('/v1/exports/'.$exportId, [
+                'Authorization' => 'Bearer '.contractExportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/exports/{export} 401' => function (): TestResponse {
+            return test()->getJson('/v1/exports/'.Str::uuid7());
+        },
+        'get /v1/exports/{export} 403' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            return test()->getJson('/v1/exports/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.contractReportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/exports/{export} 404' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            return test()->getJson('/v1/exports/'.Str::uuid7(), [
+                'Authorization' => 'Bearer '.contractExportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/exports/{export}/download 200' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            $exportId = contractSeedExport($tenant);
+            contractCompleteExport($tenant, $exportId);
+
+            return test()->getJson('/v1/exports/'.$exportId.'/download', [
+                'Authorization' => 'Bearer '.contractExportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/exports/{export}/download 401' => function (): TestResponse {
+            return test()->getJson('/v1/exports/'.Str::uuid7().'/download');
+        },
+        'get /v1/exports/{export}/download 403' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            return test()->getJson('/v1/exports/'.Str::uuid7().'/download', [
+                'Authorization' => 'Bearer '.contractReportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/exports/{export}/download 404' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            return test()->getJson('/v1/exports/'.Str::uuid7().'/download', [
+                'Authorization' => 'Bearer '.contractExportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/exports/{export}/download 409' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            $exportId = contractSeedExport($tenant);
+
+            return test()->getJson('/v1/exports/'.$exportId.'/download', [
+                'Authorization' => 'Bearer '.contractExportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
     ];
 }
 
@@ -4550,6 +4683,70 @@ function contractSeedEventAttendance(Tenant $tenant, string $eventId, string $ti
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    });
+}
+
+/**
+ * A staff bearer holding reports.export with confirmed MFA, since the
+ * capability is financially privileged (stage-11 plan task-01 journal).
+ */
+function contractExportsBearer(Tenant $tenant): string
+{
+    $user = User::factory()->create();
+
+    $response = test()->postJson('/v1/auth/staff/token', [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    $user->forceFill(['mfa_enabled' => true, 'mfa_confirmed_at' => now()])->save();
+
+    app(TenantTransaction::class)->asTenant($tenant->id, function () use ($user, $tenant): void {
+        Membership::factory()->create([
+            'user_id' => $user->id,
+            'tenant_id' => $tenant->id,
+            'role_id' => Role::factory()->create(['tenant_id' => $tenant->id, 'capabilities' => ['reports.export']])->id,
+            'scope' => MembershipScope::Tenant,
+        ]);
+    });
+
+    /** @var string $token */
+    return $response->json('access_token');
+}
+
+/**
+ * @param  array<string, mixed>  $overrides
+ */
+function contractSeedExport(Tenant $tenant, array $overrides = []): string
+{
+    $userId = app(TenantTransaction::class)->asPlatform(fn () => User::factory()->create()->id);
+
+    return app(TenantTransaction::class)->asTenant($tenant->id, fn (): string => Export::factory()->create([
+        'tenant_id' => $tenant->id,
+        'requested_by_user_id' => $userId,
+        ...$overrides,
+    ])->id);
+}
+
+/**
+ * Drives App\Reporting\Models\Export's own claim/complete transitions
+ * and attaches a real two-line CSV directly (mirroring
+ * ExportLifecycleTest's own completeExport() helper and its docblock's
+ * note on why a header-only file mime-sniffs as text/plain, not
+ * text/csv), so a completed export with a genuinely downloadable file
+ * exists without needing real order/ticket fixtures for this tenant.
+ */
+function contractCompleteExport(Tenant $tenant, string $exportId): void
+{
+    app(TenantTransaction::class)->asTenant($tenant->id, function () use ($exportId): void {
+        Export::claim($exportId);
+
+        $export = Export::query()->findOrFail($exportId);
+        $export->addMediaFromString("id,status\n1,paid\n")
+            ->usingFileName('export.csv')
+            ->toMediaCollection('export_file');
+
+        Export::complete($exportId, 1);
     });
 }
 

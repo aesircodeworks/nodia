@@ -153,6 +153,9 @@ use App\Payments\Gateways\WebhookKind;
 use App\Payments\PaymentsServiceProvider;
 use App\Reporting\Enums\ExportStatus;
 use App\Reporting\Enums\ExportType;
+use App\Reporting\Exceptions\ExportFailedException;
+use App\Reporting\Exceptions\ExportNotFoundException;
+use App\Reporting\Exceptions\ExportNotReadyException;
 use App\Reporting\Exceptions\UnknownExportSourceException;
 use App\Reporting\ReportingServiceProvider;
 use App\Support\Media\Exceptions\MediaNotFoundException;
@@ -272,6 +275,8 @@ arch()->preset()->security();
 // UnknownExportSourceException (stage-11 task-11) lives in
 // App\Reporting\Exceptions, not App\Exceptions, the same story as every
 // other context's own HasErrorCode-adjacent guard exceptions above.
+// ExportNotFoundException, ExportNotReadyException, and
+// ExportFailedException (stage-11 task-13) are the same story.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -467,4 +472,7 @@ arch()->preset()->laravel()->ignoring([
     ExportType::class,
     ExportStatus::class,
     UnknownExportSourceException::class,
+    ExportNotFoundException::class,
+    ExportNotReadyException::class,
+    ExportFailedException::class,
 ]);

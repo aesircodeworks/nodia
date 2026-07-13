@@ -2,6 +2,8 @@
 
 namespace App\Reporting\Enums;
 
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
+
 /**
  * The export lifecycle (stage-11 plan, Data model "exports"). pending is
  * the only starting state; processing is the sole non-terminal
@@ -9,7 +11,10 @@ namespace App\Reporting\Enums;
  * is a conditional UPDATE on App\Reporting\Models\Export guarded on the
  * current status and checked by affected-row count, never
  * read-then-write (data-conventions, stage-11 plan, Data model "exports").
+ * Marked #[TypeScript] as of task 16: App\Reporting\Data\ExportData now
+ * exposes it on the wire.
  */
+#[TypeScript]
 enum ExportStatus: string
 {
     case Pending = 'pending';

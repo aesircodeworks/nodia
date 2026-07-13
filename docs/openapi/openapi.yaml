@@ -6467,6 +6467,261 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/MissingCapabilityProblem'
+  /v1/exports:
+    post:
+      operationId: createExport
+      summary: Request an export
+      description: >-
+        Staff surface under the tenancy.admin group (stage-11 plan,
+        Endpoints; task 16), requiring reports.export rather than the
+        read-only reports.view because export files carry customer PII
+        (system-design 14.2); the mutation is activity-logged with the
+        requesting staff user as causer. type validates against the
+        currently registered App\Reporting\Support\Export\
+        ExportSourceRegistry, not the raw type enum, so which type values
+        are accepted is deployment-dependent on which sources are
+        registered; a syntactically valid but unregistered type fails
+        with the same request.validation_failed code as an unknown
+        string. parameters' own shape (which of event_id, from, to apply,
+        and whether any is prohibited) is likewise decided by the
+        requested type's own registered source. No Idempotency-Key: the
+        header is mandated only for payment and refund creation
+        (api-conventions); a duplicate export is wasteful, not incorrect.
+        Execution is asynchronous: the 202 carries a pending export.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: X-Tenant-Id
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportCreateRequest'
+      responses:
+        '202':
+          description: The pending export.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Export'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing reports.export,
+            or unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
+        '422':
+          description: >-
+            Validation failure: an unknown or unregistered type, or
+            parameters outside the requested type's own rules (code
+            request.validation_failed).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+    get:
+      operationId: listExports
+      summary: List exports for the acting tenant
+      description: >-
+        Reporting export surface behind reports.export (stage-11 plan,
+        Endpoints). Cursor-paginated with a deterministic (created_at,
+        id) order, mirroring GET /v1/ledger-entries. Allowed filters:
+        filter[type], filter[status] (exact); sort in (created_at,
+        -created_at); unknown filter or sort values are rejected with
+        400 invalid_query_parameter, never ignored.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          style: deepObject
+          explode: true
+          description: 'Allowed filters: filter[type], filter[status] (exact match).'
+          schema:
+            type: object
+            properties:
+              type:
+                type: string
+              status:
+                type: string
+            additionalProperties:
+              type: string
+        - name: sort
+          in: query
+          required: false
+          description: 'Allowed sorts: created_at, -created_at.'
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: per_page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: One cursor page of exports.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportCursorPage'
+        '400':
+          description: >-
+            A filter or sort parameter outside the endpoint allowlist
+            (code invalid_query_parameter).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/InvalidQueryParameterProblem'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing reports.export,
+            or unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
+  /v1/exports/{export}:
+    parameters:
+      - name: export
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getExport
+      summary: Fetch an export's status
+      description: >-
+        Reporting export surface behind reports.export (stage-11 plan,
+        Endpoints).
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The export.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Export'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing reports.export,
+            or unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
+        '404':
+          description: >-
+            Unknown or cross-tenant export id (code request.not_found);
+            RLS makes the cross-tenant case indistinguishable from
+            absence.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+  /v1/exports/{export}/download:
+    parameters:
+      - name: export
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: downloadExport
+      summary: Fetch a completed export's download URL
+      description: >-
+        Reporting export surface behind reports.export (stage-11 plan,
+        Endpoints). url is a signed object-storage URL that expires at
+        expires_at; a fresh call mints a new URL with a new expiry.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The download URL and its expiry.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportDownload'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing reports.export,
+            or unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
+        '404':
+          description: >-
+            Unknown or cross-tenant export id (code request.not_found);
+            RLS makes the cross-tenant case indistinguishable from
+            absence.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '409':
+          description: >-
+            The export is still pending or processing (code
+            export_not_ready), or it failed and has no file to download
+            (code export_failed).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ExportDownloadConflictProblem'
 components:
   securitySchemes:
     BearerAuth:
@@ -11751,3 +12006,130 @@ components:
         meta:
           $ref: '#/components/schemas/CursorPageMeta'
       additionalProperties: false
+    ExportParameters:
+      type: object
+      description: >-
+        exports.parameters' own wire shape (stage-11 plan, Data model
+        "exports"; Endpoints "ExportParametersData"). Which fields apply,
+        and whether any is prohibited, is a per-type decision each
+        registered export source makes on its own (for example the
+        ledger_entries type prohibits event_id); this schema documents
+        the full superset every type may draw from, not a fixed
+        requirement.
+      properties:
+        event_id:
+          type: ['string', 'null']
+          format: uuid
+        from:
+          type: ['string', 'null']
+          format: date-time
+        to:
+          type: ['string', 'null']
+          format: date-time
+      additionalProperties: false
+    ExportCreateRequest:
+      type: object
+      description: >-
+        POST /v1/exports request body (stage-11 plan, Endpoints
+        "CreateExportData"). type is validated against the currently
+        registered export sources, not a fixed enum (deployment-dependent
+        set); see the operation description.
+      required:
+        - type
+      properties:
+        type:
+          type: string
+        parameters:
+          $ref: '#/components/schemas/ExportParameters'
+      additionalProperties: false
+    Export:
+      type: object
+      description: >-
+        One export lifecycle record (stage-11 plan, Endpoints
+        "ExportData"). status walks pending, processing, then completed
+        or failed through conditional transitions (T10's exactly-one-
+        worker claim).
+      required:
+        - id
+        - type
+        - status
+        - parameters
+        - row_count
+        - failure_code
+        - completed_at
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        parameters:
+          $ref: '#/components/schemas/ExportParameters'
+        row_count:
+          type: ['integer', 'null']
+        failure_code:
+          type: ['string', 'null']
+        completed_at:
+          type: ['string', 'null']
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    ExportCursorPage:
+      type: object
+      description: >-
+        Cursor-paginated envelope (data, links, meta) for the export list
+        (stage-11 plan, Endpoints).
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Export'
+        links:
+          type: array
+          items: {}
+        meta:
+          $ref: '#/components/schemas/CursorPageMeta'
+      additionalProperties: false
+    ExportDownload:
+      type: object
+      description: >-
+        GET /v1/exports/{export}/download's response (stage-11 plan,
+        Endpoints "ExportDownloadData").
+      required:
+        - url
+        - expires_at
+      properties:
+        url:
+          type: string
+          format: uri
+        expires_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    ExportDownloadConflictProblem:
+      description: >-
+        Problem document for a download attempt against an export that
+        is not yet completed (stage-11 plan, Endpoints: 409
+        export_not_ready while pending or processing, 409 export_failed
+        when failed).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [export_not_ready, export_failed]
+      unevaluatedProperties: false

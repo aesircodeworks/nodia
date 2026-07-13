@@ -126,6 +126,8 @@ enum ErrorCode: string
     case QueueEntryNotFound = 'queue_entry_not_found';
     case AdmissionRequired = 'admission_required';
     case AdmissionInvalid = 'admission_invalid';
+    case ExportNotReady = 'export_not_ready';
+    case ExportFailed = 'export_failed';
 
     public function status(): int
     {
@@ -249,6 +251,8 @@ enum ErrorCode: string
             self::QueueEntryNotFound => 404,
             self::AdmissionRequired => 403,
             self::AdmissionInvalid => 403,
+            self::ExportNotReady => 409,
+            self::ExportFailed => 409,
         };
     }
 
@@ -374,6 +378,8 @@ enum ErrorCode: string
             self::QueueEntryNotFound => 'Queue entry not found',
             self::AdmissionRequired => 'Admission required',
             self::AdmissionInvalid => 'Admission invalid',
+            self::ExportNotReady => 'Export not ready',
+            self::ExportFailed => 'Export failed',
         };
     }
 

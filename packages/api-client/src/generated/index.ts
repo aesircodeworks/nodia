@@ -101,6 +101,10 @@ export type CreateEventData = {
   async_payment_policy?: AsyncPaymentPolicyData;
   on_sale_policy?: OnSalePolicyData;
 };
+export type CreateExportData = {
+  type: ExportType;
+  parameters?: ExportParametersData;
+};
 export type CreateHoldData = {
   event_id: string;
   items: HoldItemInputData[];
@@ -320,7 +324,9 @@ export type ErrorCode =
   | 'challenge_failed'
   | 'queue_entry_not_found'
   | 'admission_required'
-  | 'admission_invalid';
+  | 'admission_invalid'
+  | 'export_not_ready'
+  | 'export_failed';
 export type EventAssignmentData = {
   authorized: boolean;
 };
@@ -386,6 +392,27 @@ export type EventSeatData = {
 };
 export type EventSeatStatus = 'available' | 'held' | 'sold' | 'blocked';
 export type EventStatus = 'draft' | 'published' | 'canceled';
+export type ExportData = {
+  id: string;
+  type: ExportType;
+  status: ExportStatus;
+  parameters: ExportParametersData;
+  row_count: number | null;
+  failure_code: string | null;
+  completed_at: string | null;
+  created_at: string;
+};
+export type ExportDownloadData = {
+  url: string;
+  expires_at: string;
+};
+export type ExportParametersData = {
+  event_id?: string | null;
+  from?: string | null;
+  to?: string | null;
+};
+export type ExportStatus = 'pending' | 'processing' | 'completed' | 'failed';
+export type ExportType = 'orders' | 'tickets' | 'ledger_entries' | 'check_ins';
 export type ExtendHoldData = {
   holdId: string;
   expiresAt: string;
