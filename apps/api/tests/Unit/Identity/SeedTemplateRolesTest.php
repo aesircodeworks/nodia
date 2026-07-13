@@ -75,3 +75,22 @@ it('grants the Finance template every financially privileged capability', functi
         Capability::PayoutsManage->value,
     );
 });
+
+it('grants reports.view and reports.export to Owner and Finance, and only reports.view to Event Manager', function () {
+    $templates = Role::query()->whereNull('tenant_id')->orderBy('name')->pluck('capabilities', 'name');
+
+    expect($templates['Owner'])->toContain(Capability::ReportsView->value, Capability::ReportsExport->value)
+        ->and($templates['Finance'])->toContain(Capability::ReportsView->value, Capability::ReportsExport->value)
+        ->and($templates['Event Manager'])->toContain(Capability::ReportsView->value)
+        ->and($templates['Event Manager'])->not->toContain(Capability::ReportsExport->value);
+});
+
+it('grants neither reporting capability to Box Office or Check-in Agent', function () {
+    $templates = Role::query()->whereNull('tenant_id')->orderBy('name')->pluck('capabilities', 'name');
+
+    foreach (['Box Office', 'Check-in Agent'] as $name) {
+        expect($templates[$name])
+            ->not->toContain(Capability::ReportsView->value)
+            ->not->toContain(Capability::ReportsExport->value);
+    }
+});

@@ -58,6 +58,8 @@ final class SeedTemplateRoles
                 Capability::PromoCodesManage,
                 Capability::CustomersView,
                 Capability::CheckinManage,
+                Capability::ReportsView,
+                Capability::ReportsExport,
             ],
             'Event Manager' => [
                 Capability::EventsView,
@@ -69,6 +71,7 @@ final class SeedTemplateRoles
                 Capability::EventsManageSeating,
                 Capability::PromoCodesManage,
                 Capability::CheckinManage,
+                Capability::ReportsView,
             ],
             'Box Office' => [
                 Capability::EventsView,
@@ -85,6 +88,8 @@ final class SeedTemplateRoles
                 Capability::PayoutsManage,
                 Capability::LedgerView,
                 Capability::CustomersView,
+                Capability::ReportsView,
+                Capability::ReportsExport,
             ],
             'Check-in Agent' => [
                 Capability::EventsView,

@@ -14,7 +14,15 @@ use App\Identity\Capability;
  * (Endpoints, capabilities paragraph). checkin.manage is stage-09's
  * addition (Task breakdown item 1): bypasses the per-event
  * check_in_assignments requirement and manages assignments and signing
- * keys.
+ * keys. reports.view and reports.export are stage-11's addition (Task
+ * breakdown item 2, system-design 5.3): both marked financially
+ * privileged, extending the ledger.view precedent (system-design 7.3
+ * describes report_event_finance as mirroring the ledger's own per-event
+ * gross/fee/commission/net totals) rather than the orders.view precedent
+ * (an unprivileged read of individual order money); reports.export is at
+ * least as sensitive since its ledger_entries source exports those same
+ * ledger rows as a downloadable file, alongside customer PII in the
+ * orders and tickets sources.
  */
 
 it('carries the exact capability registry, no more and no less', function () {
@@ -39,16 +47,18 @@ it('carries the exact capability registry, no more and no less', function () {
         'promo_codes.manage',
         'customers.view',
         'checkin.manage',
+        'reports.view',
+        'reports.export',
     ]);
 });
 
-it('marks exactly orders.refund, payouts.view, payouts.manage, and ledger.view as financially privileged', function () {
+it('marks exactly orders.refund, payouts.view, payouts.manage, ledger.view, reports.view, and reports.export as financially privileged', function () {
     $privileged = array_map(
         fn (Capability $capability): string => $capability->value,
         array_values(array_filter(Capability::cases(), fn (Capability $capability): bool => $capability->isFinanciallyPrivileged())),
     );
 
-    expect($privileged)->toBe(['orders.refund', 'payouts.view', 'payouts.manage', 'ledger.view']);
+    expect($privileged)->toBe(['orders.refund', 'payouts.view', 'payouts.manage', 'ledger.view', 'reports.view', 'reports.export']);
 });
 
 it('marks every other capability as not financially privileged', function (Capability $capability) {

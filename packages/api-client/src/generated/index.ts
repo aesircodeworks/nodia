@@ -34,7 +34,9 @@ export type Capability =
   | 'orders.resend_tickets'
   | 'promo_codes.manage'
   | 'customers.view'
-  | 'checkin.manage';
+  | 'checkin.manage'
+  | 'reports.view'
+  | 'reports.export';
 export type CapabilityData = {
   name: string;
   is_financially_privileged: boolean;
