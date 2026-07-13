@@ -16,7 +16,17 @@ use Illuminate\Support\Facades\Schema;
  * tables, the same posture check_ins already takes on its own event_id
  * and ticket_id columns: a database-level constraint is allowed even
  * though no Eloquent relation ever crosses the context boundary
- * (stage-11 plan, Data model "report_daily_sales" event_id note).
+ * (stage-11 plan, Data model "report_daily_sales" event_id note). Both
+ * cascade on delete, unlike check_ins's restrict: EventCatalog ships no
+ * delete endpoint for events or ticket_types (confirmed at task 5, the
+ * point this table's rows start actually being written by
+ * ProjectDailySales), so the clause never fires in production either
+ * way; cascade is chosen because report_daily_sales rows are written by
+ * every ticket issuance and refund across the whole platform, so a
+ * restrict clause would force every existing purchase-path test fixture
+ * in every other context, not just Reporting's own, to list this table
+ * in its teardown before deleting ticket_types or events, unlike
+ * check_ins rows, which only CheckIn's own tests ever create.
  * unique(tenant_id, event_id, ticket_type_id, sales_date) is the
  * ON CONFLICT DO UPDATE target the ProjectDailySales projector (task 5)
  * upserts against; the plain event_id index backs event-scoped lookups
@@ -32,8 +42,8 @@ return new class extends Migration
         Schema::create('report_daily_sales', function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->foreignUuid('tenant_id')->constrained();
-            $table->foreignUuid('event_id')->constrained();
-            $table->foreignUuid('ticket_type_id')->constrained();
+            $table->foreignUuid('event_id')->constrained()->cascadeOnDelete();
+            $table->foreignUuid('ticket_type_id')->constrained()->cascadeOnDelete();
             $table->date('sales_date');
             $table->integer('tickets_issued_count')->default(0);
             $table->integer('tickets_refunded_count')->default(0);

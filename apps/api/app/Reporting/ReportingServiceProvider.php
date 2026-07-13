@@ -2,6 +2,8 @@
 
 namespace App\Reporting;
 
+use App\Reporting\Jobs\ProjectDailySales;
+use App\Support\Outbox\SubscriberRegistry;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
@@ -19,13 +21,20 @@ use Illuminate\Support\ServiceProvider;
  * Reporting produces no domain events (stage-11 plan, Domain events
  * "Produced": "None. Reporting is a pure consumer"), so unlike every
  * other context's provider this one registers no EventTypeRegistry
- * entries and subscribes no outbox consumers yet; ProjectDailySales
- * (task 5) is the first subscriber this provider will register.
+ * entries; TicketIssued and TicketRefunded are already registered by
+ * App\Orders\OrdersServiceProvider. ProjectDailySales (task 5) is the
+ * first outbox subscriber this provider registers.
  */
 class ReportingServiceProvider extends ServiceProvider
 {
-    public function boot(): void
+    public function boot(SubscriberRegistry $subscribers): void
     {
+        $subscribers->register(
+            ProjectDailySales::NAME,
+            ['TicketIssued', 'TicketRefunded'],
+            $this->app->make(ProjectDailySales::class),
+        );
+
         Route::middleware('tenancy.admin')
             ->prefix('v1')
             ->group(__DIR__.'/Http/routes/admin.php');
