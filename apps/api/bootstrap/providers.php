@@ -9,6 +9,7 @@ use App\Payments\PaymentsServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\HorizonServiceProvider;
 use App\Providers\TypeScriptTransformerServiceProvider;
+use App\Reporting\ReportingServiceProvider;
 use App\Tenancy\TenancyServiceProvider;
 
 return [
@@ -22,4 +23,5 @@ return [
     OrdersServiceProvider::class,
     PaymentsServiceProvider::class,
     CheckInServiceProvider::class,
+    ReportingServiceProvider::class,
 ];

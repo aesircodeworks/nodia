@@ -151,6 +151,7 @@ use App\Payments\Exceptions\WebhookUnparseableException;
 use App\Payments\Gateways\GatewayPaymentOutcome;
 use App\Payments\Gateways\WebhookKind;
 use App\Payments\PaymentsServiceProvider;
+use App\Reporting\ReportingServiceProvider;
 use App\Support\Media\Exceptions\MediaNotFoundException;
 use App\Support\Money\CurrencyMismatchException;
 use App\Support\Outbox\Enums\OutboxDeliveryStatus;
@@ -254,6 +255,11 @@ arch()->preset()->security();
 // (stage-09 task-12) are the same story as the other CheckIn HasErrorCode
 // guard exceptions above: they live in App\CheckIn\Exceptions, not
 // App\Exceptions.
+// App\Reporting\ReportingServiceProvider (stage-11 task-03) is the same
+// story as every other context's own provider already ignored above,
+// not App\Providers. App\Reporting\Models\DailySales (stage-11 task-04)
+// lives with its own bounded context like every other context's Models
+// directory already ignored above, not App\Models.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -443,4 +449,6 @@ arch()->preset()->laravel()->ignoring([
     AssignmentNotFoundException::class,
     CheckInAssignmentEventNotFoundException::class,
     'App\CheckIn\Models',
+    ReportingServiceProvider::class,
+    'App\Reporting\Models',
 ]);
