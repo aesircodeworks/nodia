@@ -9,6 +9,7 @@ use App\Support\Queue\UuidFailedJobProvider;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Queue\Failed\DatabaseUuidFailedJobProvider;
+use Illuminate\Queue\Failed\FailedJobProviderInterface;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\ServiceProvider;
 
@@ -40,6 +41,13 @@ class AppServiceProvider extends ServiceProvider
                 $config['table'],
             );
         });
+
+        // outbox:replay-failed's App\Support\Outbox\OutboxFailedReplay
+        // (stage-12 plan, Slice 5, task breakdown item 11) needs the
+        // failer as a constructor-injected dependency; the framework
+        // only ever binds it under the 'queue.failer' container key
+        // above, never against its own interface.
+        $this->app->bind(FailedJobProviderInterface::class, fn ($app) => $app['queue.failer']);
     }
 
     /**

@@ -16,6 +16,12 @@ use Illuminate\Support\Facades\Date;
  * window; each re-enqueue opens a tenant-scoped write for last_enqueued_at
  * then dispatches ProcessOutboxDelivery again. Processed rows are never
  * re-enqueued.
+ *
+ * findStranded() and reenqueue() are public so App\Support\Outbox\
+ * OutboxFailedReplay (stage-12 plan, Slice 5, task breakdown item 11)
+ * reuses this class's own definition of "stranded" and its own
+ * conditional re-enqueue, rather than a second copy that could drift
+ * from the standing outbox:sweep sweeper's behavior.
  */
 final readonly class OutboxSweeper
 {
@@ -42,7 +48,7 @@ final readonly class OutboxSweeper
     /**
      * @return Collection<int, OutboxDelivery>
      */
-    private function findStranded(): Collection
+    public function findStranded(): Collection
     {
         $graceCutoff = Date::now()->subSeconds(config()->integer('outbox.sweeper_grace_seconds'));
         $stabilityCutoff = Date::now()->subSeconds(config()->integer('outbox.stability_window_seconds'));
@@ -61,7 +67,7 @@ final readonly class OutboxSweeper
         );
     }
 
-    private function reenqueue(OutboxDelivery $delivery): bool
+    public function reenqueue(OutboxDelivery $delivery): bool
     {
         $updated = $this->transactions->asTenant(
             $delivery->tenant_id,
