@@ -5,6 +5,8 @@ namespace App\Reporting;
 use App\Reporting\Jobs\ProjectDailySales;
 use App\Reporting\Jobs\ProjectEventAttendance;
 use App\Reporting\Jobs\ProjectEventFinance;
+use App\Reporting\Support\Export\ExportSourceRegistry;
+use App\Reporting\Support\Export\Sources\OrdersExportSource;
 use App\Support\Outbox\SubscriberRegistry;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -30,10 +32,22 @@ use Illuminate\Support\ServiceProvider;
  * ProjectDailySales (task 5), ProjectEventFinance (task 8), and
  * ProjectEventAttendance (task 11) are the outbox subscribers this
  * provider registers.
+ *
+ * ExportSourceRegistry (task 15) is bound as a singleton here rather
+ * than left to auto-resolution, so the same populated instance answers
+ * every consumer: the future POST /v1/exports validator (task 16) and
+ * App\Reporting\Actions\BuildExport. `orders` is the only source
+ * registered by this task; `tickets` and `ledger_entries` land with task
+ * 12, `check_ins` with or after task 11's attendance projector.
  */
 class ReportingServiceProvider extends ServiceProvider
 {
-    public function boot(SubscriberRegistry $subscribers): void
+    public function register(): void
+    {
+        $this->app->singleton(ExportSourceRegistry::class);
+    }
+
+    public function boot(SubscriberRegistry $subscribers, ExportSourceRegistry $exportSources): void
     {
         $subscribers->register(
             ProjectDailySales::NAME,
@@ -52,6 +66,8 @@ class ReportingServiceProvider extends ServiceProvider
             ['TicketCheckedIn', 'DuplicateScanDetected'],
             $this->app->make(ProjectEventAttendance::class),
         );
+
+        $exportSources->register($this->app->make(OrdersExportSource::class));
 
         Route::middleware('tenancy.admin')
             ->prefix('v1')

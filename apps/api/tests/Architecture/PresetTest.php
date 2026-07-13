@@ -153,6 +153,7 @@ use App\Payments\Gateways\WebhookKind;
 use App\Payments\PaymentsServiceProvider;
 use App\Reporting\Enums\ExportStatus;
 use App\Reporting\Enums\ExportType;
+use App\Reporting\Exceptions\UnknownExportSourceException;
 use App\Reporting\ReportingServiceProvider;
 use App\Support\Media\Exceptions\MediaNotFoundException;
 use App\Support\Money\CurrencyMismatchException;
@@ -268,6 +269,9 @@ arch()->preset()->security();
 // ExportType and ExportStatus (stage-11 task-10) are exports' own status
 // and type registries and live with the Reporting context like
 // OrderStatus and PaymentStatus live with theirs, not App\Enums.
+// UnknownExportSourceException (stage-11 task-11) lives in
+// App\Reporting\Exceptions, not App\Exceptions, the same story as every
+// other context's own HasErrorCode-adjacent guard exceptions above.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -462,4 +466,5 @@ arch()->preset()->laravel()->ignoring([
     'App\Reporting\Http\Controllers',
     ExportType::class,
     ExportStatus::class,
+    UnknownExportSourceException::class,
 ]);
