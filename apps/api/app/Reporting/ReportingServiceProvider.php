@@ -3,6 +3,7 @@
 namespace App\Reporting;
 
 use App\Reporting\Jobs\ProjectDailySales;
+use App\Reporting\Jobs\ProjectEventFinance;
 use App\Support\Outbox\SubscriberRegistry;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -22,8 +23,10 @@ use Illuminate\Support\ServiceProvider;
  * "Produced": "None. Reporting is a pure consumer"), so unlike every
  * other context's provider this one registers no EventTypeRegistry
  * entries; TicketIssued and TicketRefunded are already registered by
- * App\Orders\OrdersServiceProvider. ProjectDailySales (task 5) is the
- * first outbox subscriber this provider registers.
+ * App\Orders\OrdersServiceProvider, PaymentConfirmed and RefundCompleted
+ * by App\Payments\PaymentsServiceProvider. ProjectDailySales (task 5)
+ * and ProjectEventFinance (task 8) are the outbox subscribers this
+ * provider registers.
  */
 class ReportingServiceProvider extends ServiceProvider
 {
@@ -33,6 +36,12 @@ class ReportingServiceProvider extends ServiceProvider
             ProjectDailySales::NAME,
             ['TicketIssued', 'TicketRefunded'],
             $this->app->make(ProjectDailySales::class),
+        );
+
+        $subscribers->register(
+            ProjectEventFinance::NAME,
+            ['PaymentConfirmed', 'RefundCompleted'],
+            $this->app->make(ProjectEventFinance::class),
         );
 
         Route::middleware('tenancy.admin')
