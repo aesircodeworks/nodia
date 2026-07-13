@@ -47,7 +47,8 @@
         },
         "files": [
             "tests/Isolation/Support/helpers.php",
-            "tests/Support/Outbox/helpers.php"
+            "tests/Support/Outbox/helpers.php",
+            "tests/Support/Reporting/helpers.php"
         ]
     },
     "scripts": {

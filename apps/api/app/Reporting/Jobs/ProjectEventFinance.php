@@ -4,11 +4,15 @@ namespace App\Reporting\Jobs;
 
 use App\Payments\Actions\GetPaymentEventFinanceFacts;
 use App\Payments\Data\PaymentEventFinanceFactsData;
+use App\Reporting\Models\EventFinance;
 use App\Reporting\Support\ApplyEventFinanceIncrement;
 use App\Reporting\Support\EventFinanceIncrement;
+use App\Reporting\Support\Rebuild\RebuildableProjection;
 use App\Support\Money\Money;
 use App\Support\Outbox\Models\OutboxEvent;
 use App\Support\Outbox\OutboxSubscriber;
+use App\Support\Outbox\ProjectionLockedSubscriber;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * The finance projection consumer (stage-11 plan, Domain events
@@ -31,8 +35,14 @@ use App\Support\Outbox\OutboxSubscriber;
  * and commission_amount (already policy-resolved at refund creation,
  * Stage 8b), never recomputed. event_id is resolved the same way for
  * both event types, through the same Payments Action.
+ *
+ * Also ProjectionLockedSubscriber and RebuildableProjection (stage-11
+ * plan, task 13): computeIncrement() is the same increment-resolution
+ * logic handle() applies, exposed separately so
+ * App\Reporting\Support\Rebuild\ReportingProjectionRebuilder can drive
+ * it directly (replay-and-write) or fold it in memory (--verify).
  */
-final readonly class ProjectEventFinance implements OutboxSubscriber
+final readonly class ProjectEventFinance implements OutboxSubscriber, ProjectionLockedSubscriber, RebuildableProjection
 {
     public const string NAME = 'project_event_finance';
 
@@ -43,14 +53,43 @@ final readonly class ProjectEventFinance implements OutboxSubscriber
 
     public function handle(OutboxEvent $event): void
     {
-        match ($event->type) {
-            'PaymentConfirmed' => $this->projectPaymentConfirmed($event),
-            'RefundCompleted' => $this->projectRefundCompleted($event),
+        $increment = $this->computeIncrement($event);
+
+        if ($increment !== null) {
+            ($this->applyIncrement)($event->tenant_id, $increment);
+        }
+    }
+
+    public function projectionLockKey(): string
+    {
+        return self::NAME;
+    }
+
+    public function name(): string
+    {
+        return self::NAME;
+    }
+
+    public function modelClass(): string
+    {
+        return EventFinance::class;
+    }
+
+    public function keyColumns(): array
+    {
+        return ['event_id'];
+    }
+
+    public function computeIncrement(OutboxEvent $event): ?EventFinanceIncrement
+    {
+        return match ($event->type) {
+            'PaymentConfirmed' => $this->resolvePaymentConfirmedIncrement($event),
+            'RefundCompleted' => $this->resolveRefundCompletedIncrement($event),
             default => null,
         };
     }
 
-    private function projectPaymentConfirmed(OutboxEvent $event): void
+    private function resolvePaymentConfirmedIncrement(OutboxEvent $event): ?EventFinanceIncrement
     {
         $facts = $this->resolveFacts((string) $event->payload['payment_id']);
 
@@ -60,22 +99,20 @@ final readonly class ProjectEventFinance implements OutboxSubscriber
         // defensive handling of the same class of gap. The row is
         // simply absent until reporting:rebuild (task 13) can retry it.
         if ($facts === null) {
-            return;
+            return null;
         }
 
         $gross = Money::of((int) $event->payload['amount']['amount'], (string) $event->payload['amount']['currency']);
 
-        $increment = EventFinanceIncrement::paymentConfirmed($facts->eventId, $gross, $facts->feeAmount, $facts->commissionAmount);
-
-        ($this->applyIncrement)($event->tenant_id, $increment);
+        return EventFinanceIncrement::paymentConfirmed($facts->eventId, $gross, $facts->feeAmount, $facts->commissionAmount);
     }
 
-    private function projectRefundCompleted(OutboxEvent $event): void
+    private function resolveRefundCompletedIncrement(OutboxEvent $event): ?EventFinanceIncrement
     {
         $facts = $this->resolveFacts((string) $event->payload['payment_id']);
 
         if ($facts === null) {
-            return;
+            return null;
         }
 
         $amount = Money::of((int) $event->payload['amount']['amount'], (string) $event->payload['amount']['currency']);
@@ -84,13 +121,55 @@ final readonly class ProjectEventFinance implements OutboxSubscriber
             (string) $event->payload['commission_amount']['currency'],
         );
 
-        $increment = EventFinanceIncrement::refundCompleted($facts->eventId, $amount, $returnedCommission);
-
-        ($this->applyIncrement)($event->tenant_id, $increment);
+        return EventFinanceIncrement::refundCompleted($facts->eventId, $amount, $returnedCommission);
     }
 
     private function resolveFacts(string $paymentId): ?PaymentEventFinanceFactsData
     {
         return ($this->paymentFacts)([$paymentId])->get($paymentId);
+    }
+
+    public function keyFor(object $increment): array
+    {
+        return ['event_id' => $increment->eventId];
+    }
+
+    public function fold(?array $row, object $increment): array
+    {
+        $row ??= [
+            'orders_paid_count' => 0,
+            'refunds_count' => 0,
+            'gross_amount' => 0,
+            'gateway_fee_amount' => 0,
+            'platform_commission_amount' => 0,
+            'tenant_net_amount' => 0,
+            'refunded_amount' => 0,
+            'currency' => null,
+        ];
+
+        $row['orders_paid_count'] += $increment->ordersPaidCount;
+        $row['refunds_count'] += $increment->refundsCount;
+        $row['gross_amount'] += $increment->grossAmount;
+        $row['gateway_fee_amount'] += $increment->gatewayFeeAmount;
+        $row['platform_commission_amount'] += $increment->platformCommissionAmount;
+        $row['tenant_net_amount'] += $increment->tenantNetAmount;
+        $row['refunded_amount'] += $increment->refundedAmount;
+        $row['currency'] ??= $increment->currency;
+
+        return $row;
+    }
+
+    public function rowFromModel(Model $model): array
+    {
+        return [
+            'orders_paid_count' => (int) $model->getAttribute('orders_paid_count'),
+            'refunds_count' => (int) $model->getAttribute('refunds_count'),
+            'gross_amount' => (int) $model->getAttribute('gross_amount'),
+            'gateway_fee_amount' => (int) $model->getAttribute('gateway_fee_amount'),
+            'platform_commission_amount' => (int) $model->getAttribute('platform_commission_amount'),
+            'tenant_net_amount' => (int) $model->getAttribute('tenant_net_amount'),
+            'refunded_amount' => (int) $model->getAttribute('refunded_amount'),
+            'currency' => (string) $model->getAttribute('currency'),
+        ];
     }
 }
