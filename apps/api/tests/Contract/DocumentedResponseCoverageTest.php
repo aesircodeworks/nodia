@@ -4314,6 +4314,36 @@ function documentedResponseExercisers(): array
                 'X-Tenant-Id' => $tenant->id,
             ]);
         },
+        'get /v1/reports/event-finance 200' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+            ['event' => $event] = contractHoldFixture($tenant);
+
+            contractSeedEventFinance($tenant, $event->id);
+
+            return test()->getJson('/v1/reports/event-finance', [
+                'Authorization' => 'Bearer '.contractReportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/reports/event-finance 400' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            return test()->getJson('/v1/reports/event-finance?filter[bogus]=1', [
+                'Authorization' => 'Bearer '.contractReportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/reports/event-finance 401' => function (): TestResponse {
+            return test()->getJson('/v1/reports/event-finance');
+        },
+        'get /v1/reports/event-finance 403' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            return test()->getJson('/v1/reports/event-finance', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['orders.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
     ];
 }
 
@@ -4446,6 +4476,27 @@ function contractSeedDailySales(Tenant $tenant, string $eventId, string $ticketT
             'tickets_issued_count' => 1,
             'tickets_refunded_count' => 0,
             'gross_amount' => 1000,
+            'refunded_amount' => 0,
+            'currency' => 'USD',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    });
+}
+
+function contractSeedEventFinance(Tenant $tenant, string $eventId): void
+{
+    app(TenantTransaction::class)->asTenant($tenant->id, function () use ($tenant, $eventId): void {
+        DB::table('report_event_finance')->insert([
+            'id' => Str::uuid7()->toString(),
+            'tenant_id' => $tenant->id,
+            'event_id' => $eventId,
+            'orders_paid_count' => 1,
+            'refunds_count' => 0,
+            'gross_amount' => 1000,
+            'gateway_fee_amount' => 30,
+            'platform_commission_amount' => 50,
+            'tenant_net_amount' => 920,
             'refunded_amount' => 0,
             'currency' => 'USD',
             'created_at' => now(),

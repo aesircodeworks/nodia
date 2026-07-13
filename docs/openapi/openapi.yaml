@@ -6311,6 +6311,84 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/MissingCapabilityProblem'
+  /v1/reports/event-finance:
+    get:
+      operationId: listEventFinance
+      summary: List per-event finance summaries for the acting tenant
+      description: >-
+        Reporting dashboard read behind reports.view (stage-11 plan,
+        Endpoints; reports.view is financially privileged, so a confirmed
+        MFA session is required). One row per event, mirroring the
+        ledger's own per-event totals (system-design 7.3): gross, gateway
+        fees, and platform commission are all netted by refunds; refunded
+        is a separate face-value counter (stage-11 plan, Data model
+        "report_event_finance" money semantics note). Cursor-paginated
+        ordered by event_id alone, deterministic because of the table's
+        own unique(tenant_id, event_id) constraint. Allowed filters:
+        filter[event_id] (exact); no sort parameter is documented, so any
+        requested sort is rejected with 400 invalid_query_parameter,
+        never ignored.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          style: deepObject
+          explode: true
+          description: 'Allowed filters: filter[event_id] (exact match).'
+          schema:
+            type: object
+            properties:
+              event_id:
+                type: string
+                format: uuid
+            additionalProperties:
+              type: string
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: per_page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: One cursor page of event finance rows.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventFinanceCursorPage'
+        '400':
+          description: >-
+            A filter or sort parameter outside the endpoint allowlist
+            (code invalid_query_parameter).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/InvalidQueryParameterProblem'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing reports.view, or
+            unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
 components:
   securitySchemes:
     BearerAuth:
@@ -11474,6 +11552,63 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DailySales'
+        links:
+          type: array
+          items: {}
+        meta:
+          $ref: '#/components/schemas/CursorPageMeta'
+      additionalProperties: false
+    EventFinance:
+      type: object
+      description: >-
+        One event's finance totals (stage-11 plan, Endpoints
+        "EventFinanceData"; Data model "report_event_finance"),
+        mirroring the ledger's own per-event totals (system-design 7.3).
+        gross, platform_commission, and tenant_net are all netted by
+        refunds; gateway_fees stays frozen by refunds, since the gateway
+        never returns its fee; refunded is a separate face-value counter.
+      required:
+        - event_id
+        - orders_paid_count
+        - refunds_count
+        - gross
+        - gateway_fees
+        - platform_commission
+        - tenant_net
+        - refunded
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        orders_paid_count:
+          type: integer
+        refunds_count:
+          type: integer
+        gross:
+          $ref: '#/components/schemas/Money'
+        gateway_fees:
+          $ref: '#/components/schemas/Money'
+        platform_commission:
+          $ref: '#/components/schemas/Money'
+        tenant_net:
+          $ref: '#/components/schemas/Money'
+        refunded:
+          $ref: '#/components/schemas/Money'
+      additionalProperties: false
+    EventFinanceCursorPage:
+      type: object
+      description: >-
+        Cursor-paginated envelope (data, links, meta) for the event
+        finance list (stage-11 plan, Endpoints).
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventFinance'
         links:
           type: array
           items: {}

@@ -348,6 +348,16 @@ export type EventData = {
   updated_at: string;
   ticket_types?: TicketTypeData[];
 };
+export type EventFinanceData = {
+  event_id: string;
+  orders_paid_count: number;
+  refunds_count: number;
+  gross: Money;
+  gateway_fees: Money;
+  platform_commission: Money;
+  tenant_net: Money;
+  refunded: Money;
+};
 export type EventMediaListData = {
   collection: string | null;
 };
