@@ -17,7 +17,9 @@ use App\Payments\Gateways\SubmerchantRegistrationRequest;
 use App\Payments\Gateways\WebhookKind;
 use App\Support\Money\Money;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Str;
+use Tests\Support\Payments\FakeGatewaySignature;
 
 /*
  * Stage-08a plan, Slice 1: adapter conformance and FakeGateway scenario
@@ -118,17 +120,45 @@ it('emits confirmation webhooks whose signature the adapter verifies', function 
 it('rejects a webhook with a tampered signature and persists nothing about it', function (): void {
     $delivery = $this->gateway->confirmationWebhook('fake_abc', Money::of(363, 'BRL'));
 
-    expect(fn () => $this->gateway->parseWebhook($delivery->body, ['X-Fake-Signature' => 'bogus']))
+    expect(fn () => $this->gateway->parseWebhook($delivery->body, [...$delivery->headers, 'X-Fake-Signature' => 'bogus']))
         ->toThrow(WebhookSignatureInvalidException::class)
         ->and(fn () => $this->gateway->parseWebhook($delivery->body, []))
         ->toThrow(WebhookSignatureInvalidException::class);
 });
 
-it('rejects a validly signed body that carries no gateway event id', function (): void {
-    $body = json_encode(['type' => 'payment.confirmed']);
-    $headers = ['X-Fake-Signature' => hash_hmac('sha256', $body, config('payments.gateways.fake.webhook_secret'))];
+it('rejects a signature whose timestamp sits outside the freshness window, and accepts one inside it', function (): void {
+    $this->freezeTime();
 
-    expect(fn () => $this->gateway->parseWebhook($body, $headers))
+    $body = $this->gateway->confirmationWebhook('fake_abc', Money::of(363, 'BRL'))->body;
+    $tolerance = config()->integer('payments.gateways.fake.webhook_tolerance_seconds');
+
+    $stale = FakeGatewaySignature::headersFor($body, timestamp: Date::now()->getTimestamp() - $tolerance - 1);
+    $fresh = FakeGatewaySignature::headersFor($body, timestamp: Date::now()->getTimestamp() - $tolerance);
+
+    expect(fn () => $this->gateway->parseWebhook($body, $stale))
+        ->toThrow(WebhookSignatureInvalidException::class)
+        ->and($this->gateway->parseWebhook($body, $fresh)->gatewayEventId)->not->toBe('');
+});
+
+it('rejects a signature the timestamp header does not cover, so a fresh timestamp cannot be pasted onto an old signature', function (): void {
+    $this->freezeTime();
+
+    $body = $this->gateway->confirmationWebhook('fake_abc', Money::of(363, 'BRL'))->body;
+    $backdated = FakeGatewaySignature::headersFor($body, timestamp: Date::now()->getTimestamp() - 3600);
+
+    $pasted = [
+        'X-Fake-Timestamp' => (string) Date::now()->getTimestamp(),
+        'X-Fake-Signature' => $backdated['X-Fake-Signature'],
+    ];
+
+    expect(fn () => $this->gateway->parseWebhook($body, $pasted))
+        ->toThrow(WebhookSignatureInvalidException::class);
+});
+
+it('rejects a validly signed body that carries no gateway event id', function (): void {
+    $body = (string) json_encode(['type' => 'payment.confirmed']);
+
+    expect(fn () => $this->gateway->parseWebhook($body, FakeGatewaySignature::headersFor($body)))
         ->toThrow(WebhookUnparseableException::class);
 });
 

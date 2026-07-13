@@ -194,18 +194,22 @@ function harnessPurchase(array $fixture, string $scenario): ?array
     $paymentId = $paymentResponse->json('id');
 
     if ($scenario === 'async_confirm') {
+        $delivery = app(FakeGateway::class)->confirmationWebhook('fake_'.$paymentId, Money::of(300, 'USD'));
+
         test()->call('POST', '/v1/webhooks/fake', [], [], [], [
             'CONTENT_TYPE' => 'application/json',
             'HTTP_ACCEPT' => 'application/json',
-            'HTTP_X_FAKE_SIGNATURE' => ($delivery = app(FakeGateway::class)->confirmationWebhook('fake_'.$paymentId, Money::of(300, 'USD')))->headers['X-Fake-Signature'],
+            ...$delivery->serverHeaders(),
         ], $delivery->body)->assertStatus(200);
     }
 
     if ($scenario === 'async_decline') {
+        $delivery = app(FakeGateway::class)->failureWebhook('fake_'.$paymentId, 'insufficient_funds');
+
         test()->call('POST', '/v1/webhooks/fake', [], [], [], [
             'CONTENT_TYPE' => 'application/json',
             'HTTP_ACCEPT' => 'application/json',
-            'HTTP_X_FAKE_SIGNATURE' => ($delivery = app(FakeGateway::class)->failureWebhook('fake_'.$paymentId, 'insufficient_funds'))->headers['X-Fake-Signature'],
+            ...$delivery->serverHeaders(),
         ], $delivery->body)->assertStatus(200);
     }
 
@@ -233,7 +237,7 @@ function harnessDeliverRefundWebhook(FakeWebhookDelivery $delivery)
     return test()->call('POST', '/v1/webhooks/fake', [], [], [], [
         'CONTENT_TYPE' => 'application/json',
         'HTTP_ACCEPT' => 'application/json',
-        'HTTP_X_FAKE_SIGNATURE' => $delivery->headers['X-Fake-Signature'],
+        ...$delivery->serverHeaders(),
     ], $delivery->body);
 }
 

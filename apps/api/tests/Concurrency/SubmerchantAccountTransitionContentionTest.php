@@ -69,7 +69,7 @@ it('lets exactly one of a racing webhook and refresh win the transition', functi
             app(IngestGatewayWebhook::class)(
                 app(FakeGateway::class),
                 $delivery->body,
-                ['X-Fake-Signature' => $delivery->headers['X-Fake-Signature']],
+                $delivery->headers,
             );
 
             return 'webhook';
@@ -128,7 +128,7 @@ it('never regresses a completed onboarding when a stale webhook races a confirmi
             app(IngestGatewayWebhook::class)(
                 app(FakeGateway::class),
                 $delivery->body,
-                ['X-Fake-Signature' => $delivery->headers['X-Fake-Signature']],
+                $delivery->headers,
             );
 
             return 'stale_webhook';

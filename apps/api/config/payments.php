@@ -12,13 +12,16 @@ return [
     | async method; the fee is deterministic basis points so tests can
     | assert the exact persisted fee_amount. The webhook secret signs the
     | emitter's payloads and verifies inbound ones; any non-empty value
-    | works because no external party ever calls this gateway.
+    | works because no external party ever calls this gateway. The
+    | tolerance is the freshness window a signature's timestamp must fall
+    | within, so a captured delivery cannot be replayed indefinitely.
     |
     */
 
     'gateways' => [
         'fake' => [
             'webhook_secret' => env('FAKE_GATEWAY_WEBHOOK_SECRET', 'fake-gateway-secret'),
+            'webhook_tolerance_seconds' => (int) env('FAKE_GATEWAY_WEBHOOK_TOLERANCE_SECONDS', 300),
             'fee_bps' => (int) env('FAKE_GATEWAY_FEE_BPS', 250),
             'currencies' => ['BRL', 'USD'],
             'split_support' => (bool) env('FAKE_GATEWAY_SPLIT_SUPPORT', false),

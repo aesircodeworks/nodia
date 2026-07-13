@@ -6,6 +6,7 @@ use App\Support\Money\Money;
 use App\Support\Tenancy\TenantTransaction;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\MigratedDatabase;
+use Tests\Support\Payments\FakeGatewaySignature;
 use Tests\Support\PostgresTestDatabase;
 
 /*
@@ -31,12 +32,11 @@ function postWebhook(FakeWebhookDelivery $delivery, string $gateway = 'fake', ?s
     $server = [
         'CONTENT_TYPE' => 'application/json',
         'HTTP_ACCEPT' => 'application/json',
+        ...$delivery->serverHeaders(),
     ];
 
-    $effective = $signature ?? $delivery->headers['X-Fake-Signature'] ?? null;
-
-    if ($effective !== null) {
-        $server['HTTP_X_FAKE_SIGNATURE'] = $effective;
+    if ($signature !== null) {
+        $server['HTTP_X_FAKE_SIGNATURE'] = $signature;
     }
 
     return test()->call('POST', '/v1/webhooks/'.$gateway, [], [], [], $server, $delivery->body);
@@ -80,10 +80,8 @@ describe('POST /v1/webhooks/{gateway}', function (): void {
     });
 
     it('rejects a validly signed body with no gateway event id as 422', function (): void {
-        $body = json_encode(['type' => 'payment.confirmed']);
-        $delivery = new FakeWebhookDelivery($body, [
-            'X-Fake-Signature' => hash_hmac('sha256', $body, config('payments.gateways.fake.webhook_secret')),
-        ]);
+        $body = (string) json_encode(['type' => 'payment.confirmed']);
+        $delivery = new FakeWebhookDelivery($body, FakeGatewaySignature::headersFor($body));
 
         $response = postWebhook($delivery);
 

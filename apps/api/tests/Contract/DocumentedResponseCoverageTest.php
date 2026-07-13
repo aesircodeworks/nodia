@@ -50,6 +50,7 @@ use PragmaRX\Google2FA\Google2FA;
 use Spatie\MediaLibrary\MediaCollections\Models\Media as SpatieMedia;
 use Tests\Support\MigratedDatabase;
 use Tests\Support\OpenApiSpec;
+use Tests\Support\Payments\FakeGatewaySignature;
 use Tests\Support\PostgresTestDatabase;
 use Tests\Support\TotpCodes;
 
@@ -3887,17 +3888,20 @@ function documentedResponseExercisers(): array
         'post /v1/webhooks/{gateway} 401' => function (): TestResponse {
             $delivery = app(FakeGateway::class)->confirmationWebhook('fake_contract_ref', Money::of(125, 'USD'));
 
-            return contractPostWebhook('fake', $delivery->body, 'bogus');
+            return contractPostWebhook('fake', $delivery->body, [
+                ...$delivery->headers,
+                'X-Fake-Signature' => 'bogus',
+            ]);
         },
         'post /v1/webhooks/{gateway} 404' => function (): TestResponse {
             $delivery = app(FakeGateway::class)->confirmationWebhook('fake_contract_ref', Money::of(125, 'USD'));
 
-            return contractPostWebhook('stripe', $delivery->body, $delivery->headers['X-Fake-Signature']);
+            return contractPostWebhook('stripe', $delivery->body, $delivery->headers);
         },
         'post /v1/webhooks/{gateway} 422' => function (): TestResponse {
             $body = (string) json_encode(['type' => 'payment.confirmed']);
 
-            return contractPostWebhook('fake', $body, hash_hmac('sha256', $body, config()->string('payments.gateways.fake.webhook_secret')));
+            return contractPostWebhook('fake', $body, FakeGatewaySignature::headersFor($body));
         },
         'post /v1/submerchant-accounts 201' => function (): TestResponse {
             ['tenant' => $tenant] = contractPaymentTenant();
@@ -4725,13 +4729,15 @@ function contractInitiatePayment(array $order, array $body, ?string $key): TestR
 /**
  * @return TestResponse<JsonResponse>
  */
-function contractPostWebhook(string $gateway, string $body, string $signature): TestResponse
+function contractPostWebhook(string $gateway, string $body, array $headers): TestResponse
 {
-    return test()->call('POST', '/v1/webhooks/'.$gateway, [], [], [], [
-        'CONTENT_TYPE' => 'application/json',
-        'HTTP_ACCEPT' => 'application/json',
-        'HTTP_X_FAKE_SIGNATURE' => $signature,
-    ], $body);
+    $server = ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json'];
+
+    foreach ($headers as $name => $value) {
+        $server['HTTP_'.str_replace('-', '_', strtoupper($name))] = $value;
+    }
+
+    return test()->call('POST', '/v1/webhooks/'.$gateway, [], [], [], $server, $body);
 }
 
 /**

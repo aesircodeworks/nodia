@@ -11,6 +11,7 @@ use App\Payments\Exceptions\WebhookSignatureInvalidException;
 use App\Payments\Exceptions\WebhookUnparseableException;
 use App\Support\Money\Money;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Str;
 
 /**
@@ -26,6 +27,14 @@ final class FakeGateway implements GatewayAdapter
     public const IDENTIFIER = 'fake';
 
     private const SIGNATURE_HEADER = 'X-Fake-Signature';
+
+    /**
+     * The signature covers "{timestamp}.{body}", the shape real gateways
+     * sign (system-design 7.4), so a captured delivery cannot be replayed
+     * once its timestamp falls outside the configured tolerance and a
+     * caller cannot backdate one without the secret.
+     */
+    private const TIMESTAMP_HEADER = 'X-Fake-Timestamp';
 
     private readonly SubmerchantStatusMap $submerchantStatusMap;
 
@@ -117,8 +126,19 @@ final class FakeGateway implements GatewayAdapter
     public function parseWebhook(string $body, array $headers): ParsedWebhook
     {
         $signature = $this->headerValue($headers, self::SIGNATURE_HEADER);
+        $timestamp = $this->headerValue($headers, self::TIMESTAMP_HEADER);
 
-        if ($signature === null || ! hash_equals($this->signatureFor($body), $signature)) {
+        if ($signature === null || $timestamp === null || ! ctype_digit($timestamp)) {
+            throw WebhookSignatureInvalidException::forGateway($this->identifier);
+        }
+
+        if (! hash_equals($this->signatureFor($timestamp, $body), $signature)) {
+            throw WebhookSignatureInvalidException::forGateway($this->identifier);
+        }
+
+        $age = abs(Date::now()->getTimestamp() - (int) $timestamp);
+
+        if ($age > config()->integer('payments.gateways.fake.webhook_tolerance_seconds')) {
             throw WebhookSignatureInvalidException::forGateway($this->identifier);
         }
 
@@ -389,13 +409,17 @@ final class FakeGateway implements GatewayAdapter
     private function sign(array $payload): FakeWebhookDelivery
     {
         $body = json_encode($payload, JSON_UNESCAPED_SLASHES);
+        $timestamp = (string) Date::now()->getTimestamp();
 
-        return new FakeWebhookDelivery($body, [self::SIGNATURE_HEADER => $this->signatureFor($body)]);
+        return new FakeWebhookDelivery($body, [
+            self::TIMESTAMP_HEADER => $timestamp,
+            self::SIGNATURE_HEADER => $this->signatureFor($timestamp, $body),
+        ]);
     }
 
-    private function signatureFor(string $body): string
+    private function signatureFor(string $timestamp, string $body): string
     {
-        return hash_hmac('sha256', $body, (string) config('payments.gateways.fake.webhook_secret'));
+        return hash_hmac('sha256', $timestamp.'.'.$body, (string) config('payments.gateways.fake.webhook_secret'));
     }
 
     /**

@@ -152,7 +152,7 @@ function financeCompletedRefund(string $tenantId, string $eventId, int $amount, 
     test()->call('POST', '/v1/webhooks/fake', [], [], [], [
         'CONTENT_TYPE' => 'application/json',
         'HTTP_ACCEPT' => 'application/json',
-        'HTTP_X_FAKE_SIGNATURE' => $delivery->headers['X-Fake-Signature'],
+        ...$delivery->serverHeaders(),
     ], $delivery->body)->assertStatus(200);
 
     $event = app(TenantTransaction::class)->asTenant(

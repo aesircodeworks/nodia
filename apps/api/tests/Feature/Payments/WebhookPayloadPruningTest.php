@@ -99,7 +99,7 @@ it('keeps the row and its gateway event id after pruning so a duplicate webhook 
     $first = test()->call('POST', '/v1/webhooks/fake', [], [], [], [
         'CONTENT_TYPE' => 'application/json',
         'HTTP_ACCEPT' => 'application/json',
-        'HTTP_X_FAKE_SIGNATURE' => $delivery->headers['X-Fake-Signature'],
+        ...$delivery->serverHeaders(),
     ], $delivery->body);
     $first->assertStatus(200);
 
@@ -121,7 +121,7 @@ it('keeps the row and its gateway event id after pruning so a duplicate webhook 
     $second = test()->call('POST', '/v1/webhooks/fake', [], [], [], [
         'CONTENT_TYPE' => 'application/json',
         'HTTP_ACCEPT' => 'application/json',
-        'HTTP_X_FAKE_SIGNATURE' => $delivery->headers['X-Fake-Signature'],
+        ...$delivery->serverHeaders(),
     ], $delivery->body);
     $second->assertStatus(200);
 
