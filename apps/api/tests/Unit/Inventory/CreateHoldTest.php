@@ -1,5 +1,6 @@
 <?php
 
+use App\EventCatalog\Data\OnSalePolicyData;
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Models\Event;
 use App\EventCatalog\Models\TicketType;
@@ -7,12 +8,16 @@ use App\Identity\Models\Customer;
 use App\Inventory\Actions\CreateHold;
 use App\Inventory\Data\CreateHoldData;
 use App\Inventory\Data\HoldData;
+use App\Inventory\Exceptions\AdmissionInvalidException;
+use App\Inventory\Exceptions\AdmissionRequiredException;
 use App\Inventory\Exceptions\HoldEventNotFoundException;
 use App\Inventory\Exceptions\InsufficientHoldInventoryException;
 use App\Inventory\Exceptions\SalesWindowClosedException;
 use App\Inventory\Exceptions\TicketTypeNotInEventException;
 use App\Inventory\Models\Hold;
+use App\Inventory\Models\PurchaseCounter;
 use App\Inventory\Models\TicketTypeInventory;
+use App\Inventory\Support\AdmissionToken;
 use App\Support\Outbox\Models\OutboxEvent;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
@@ -347,4 +352,144 @@ it('records a HoldCreated outbox row with the complete envelope', function () {
             'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 2]],
             'seat_ids' => [],
         ]);
+});
+
+/*
+ * Stage-10 plan, TDD sequencing Slice 6 (Unit, first), task breakdown
+ * item 9: the admission enforcement check runs before any inventory
+ * statement, so no counter mutation happens on any denial path.
+ */
+it('throws AdmissionRequiredException before any inventory or counter statement for a flagged event with no token', function () {
+    $event = createHoldTestEvent($this->tenantId, ['on_sale_policy' => new OnSalePolicyData(highDemand: true)]);
+    $ticketType = createHoldTestTicketType($this->tenantId, $event->id, 10, ['max_per_customer' => 2]);
+    $customerId = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => Customer::factory()->create(['tenant_id' => $this->tenantId])->id,
+    );
+
+    $data = CreateHoldData::from([
+        'event_id' => $event->id,
+        'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+    ]);
+
+    $invoke = fn () => app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(CreateHold::class)($data, $customerId, null),
+    );
+
+    expect($invoke)->toThrow(AdmissionRequiredException::class);
+
+    $inventory = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => TicketTypeInventory::query()->where('ticket_type_id', $ticketType->id)->first(),
+    );
+
+    expect($inventory->held)->toBe(0);
+
+    $holdExists = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => Hold::query()->where('event_id', $event->id)->exists(),
+    );
+
+    expect($holdExists)->toBeFalse();
+
+    $counterExists = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => PurchaseCounter::query()->where('customer_id', $customerId)->exists(),
+    );
+
+    expect($counterExists)->toBeFalse();
+});
+
+it('throws AdmissionInvalidException before any inventory statement for a malformed admission token', function () {
+    $event = createHoldTestEvent($this->tenantId, ['on_sale_policy' => new OnSalePolicyData(highDemand: true)]);
+    $ticketType = createHoldTestTicketType($this->tenantId, $event->id, 10);
+
+    $data = CreateHoldData::from([
+        'event_id' => $event->id,
+        'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+    ]);
+
+    $invoke = fn () => app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(CreateHold::class)($data, null, 'not-a-valid-token'),
+    );
+
+    expect($invoke)->toThrow(AdmissionInvalidException::class);
+
+    $inventory = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => TicketTypeInventory::query()->where('ticket_type_id', $ticketType->id)->first(),
+    );
+
+    expect($inventory->held)->toBe(0);
+});
+
+it('throws AdmissionInvalidException before any inventory statement for a token issued for a different event', function () {
+    $event = createHoldTestEvent($this->tenantId, ['on_sale_policy' => new OnSalePolicyData(highDemand: true)]);
+    $ticketType = createHoldTestTicketType($this->tenantId, $event->id, 10);
+
+    $token = AdmissionToken::issue((string) Str::uuid7(), (string) Str::uuid7(), $this->tenantId, now()->addMinutes(5));
+
+    $data = CreateHoldData::from([
+        'event_id' => $event->id,
+        'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+    ]);
+
+    $invoke = fn () => app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(CreateHold::class)($data, null, $token),
+    );
+
+    expect($invoke)->toThrow(AdmissionInvalidException::class);
+
+    $inventory = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => TicketTypeInventory::query()->where('ticket_type_id', $ticketType->id)->first(),
+    );
+
+    expect($inventory->held)->toBe(0);
+});
+
+it('does not require an admission token for an unflagged event', function () {
+    $event = createHoldTestEvent($this->tenantId);
+    $ticketType = createHoldTestTicketType($this->tenantId, $event->id, 10);
+
+    $data = CreateHoldData::from([
+        'event_id' => $event->id,
+        'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+    ]);
+
+    $result = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(CreateHold::class)($data, null, null),
+    );
+
+    expect($result)->toBeInstanceOf(HoldData::class);
+});
+
+it('admits a hold on a flagged event when the admission token is valid', function () {
+    $event = createHoldTestEvent($this->tenantId, ['on_sale_policy' => new OnSalePolicyData(highDemand: true)]);
+    $ticketType = createHoldTestTicketType($this->tenantId, $event->id, 10);
+
+    $token = AdmissionToken::issue((string) Str::uuid7(), $event->id, $this->tenantId, now()->addMinutes(5));
+
+    $data = CreateHoldData::from([
+        'event_id' => $event->id,
+        'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+    ]);
+
+    $result = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => app(CreateHold::class)($data, null, $token),
+    );
+
+    expect($result)->toBeInstanceOf(HoldData::class);
+
+    $inventory = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => TicketTypeInventory::query()->where('ticket_type_id', $ticketType->id)->first(),
+    );
+
+    expect($inventory->held)->toBe(1);
 });

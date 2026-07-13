@@ -307,7 +307,9 @@ export type ErrorCode =
   | 'queue_not_active'
   | 'challenge_required'
   | 'challenge_failed'
-  | 'queue_entry_not_found';
+  | 'queue_entry_not_found'
+  | 'admission_required'
+  | 'admission_invalid';
 export type EventAssignmentData = {
   authorized: boolean;
 };

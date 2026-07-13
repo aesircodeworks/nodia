@@ -1,5 +1,6 @@
 <?php
 
+use App\EventCatalog\Data\OnSalePolicyData;
 use App\EventCatalog\Enums\EventStatus;
 use App\EventCatalog\Models\Event;
 use App\EventCatalog\Models\Seat;
@@ -15,9 +16,11 @@ use App\Inventory\Models\EventSeat;
 use App\Inventory\Models\Hold;
 use App\Inventory\Models\PurchaseCounter;
 use App\Inventory\Models\TicketTypeInventory;
+use App\Inventory\Support\AdmissionToken;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Support\MigratedDatabase;
@@ -670,6 +673,172 @@ describe('POST /v1/storefront/holds purchase limits', function (): void {
             ->assertStatus(204);
 
         expect(holdPurchaseCounterQuantity($tenant->id, $customerId, $ticketType->id))->toBe(0);
+    });
+});
+
+/**
+ * @param  array<string, mixed>  $attributes
+ */
+function holdFlaggedEvent(string $tenantId, array $attributes = []): Event
+{
+    return holdEvent($tenantId, ['on_sale_policy' => new OnSalePolicyData(highDemand: true), ...$attributes]);
+}
+
+function holdAdmissionToken(string $eventId, string $tenantId, ?CarbonInterface $expiresAt = null): string
+{
+    return AdmissionToken::issue((string) Str::uuid7(), $eventId, $tenantId, $expiresAt ?? now()->addMinutes(5));
+}
+
+/*
+ * Stage-10 plan, TDD sequencing Slice 6 (Feature, first, mandated), task
+ * breakdown item 9: admission enforcement on POST /v1/storefront/holds
+ * for events flagged on_sale_policy.high_demand.
+ */
+describe('POST /v1/storefront/holds admission enforcement', function (): void {
+    it('returns admission_required for a flagged event with no X-Admission-Token header', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdFlaggedEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10);
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+        ])
+            ->assertStatus(403)
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'admission_required');
+    });
+
+    it('returns admission_invalid for a token issued for a different event', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdFlaggedEvent($tenant->id);
+        $otherEvent = holdFlaggedEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10);
+
+        $token = holdAdmissionToken($otherEvent->id, $tenant->id);
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+        ], ['X-Admission-Token' => $token])
+            ->assertStatus(403)
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'admission_invalid');
+    });
+
+    it('returns admission_invalid for a token issued for a different tenant', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        ['tenant' => $otherTenant] = holdTenant();
+        $event = holdFlaggedEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10);
+
+        $token = holdAdmissionToken($event->id, $otherTenant->id);
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+        ], ['X-Admission-Token' => $token])
+            ->assertStatus(403)
+            ->assertJsonPath('code', 'admission_invalid');
+    });
+
+    it('returns admission_invalid for a token with a tampered (bad-signature) payload', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdFlaggedEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10);
+
+        $token = holdAdmissionToken($event->id, $tenant->id);
+        [$keyId, $encoded] = explode('.', $token, 2);
+        $tampered = $keyId.'.'.strrev($encoded);
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+        ], ['X-Admission-Token' => $tampered])
+            ->assertStatus(403)
+            ->assertJsonPath('code', 'admission_invalid');
+    });
+
+    it('returns admission_invalid for an unknown key id', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdFlaggedEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10);
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+        ], ['X-Admission-Token' => 'unknown-key-id.'.base64_encode('not even json')])
+            ->assertStatus(403)
+            ->assertJsonPath('code', 'admission_invalid');
+    });
+
+    it('returns admission_invalid for a token expired on the fake clock', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdFlaggedEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10);
+
+        $now = now();
+        $this->travelTo($now);
+        $token = holdAdmissionToken($event->id, $tenant->id, $now->copy()->addMinutes(5));
+
+        $this->travelTo($now->copy()->addMinutes(5));
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+        ], ['X-Admission-Token' => $token])
+            ->assertStatus(403)
+            ->assertJsonPath('code', 'admission_invalid');
+    });
+
+    it('leaves the Stage 6 happy path unchanged with a valid admission token', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdFlaggedEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10);
+
+        $token = holdAdmissionToken($event->id, $tenant->id);
+
+        $response = $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 2]],
+        ], ['X-Admission-Token' => $token]);
+
+        $response->assertStatus(201)->assertConformsToOpenApi();
+        expect($response->json('event_id'))->toBe($event->id);
+    });
+
+    it('requires no token for an unflagged event', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10);
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+        ])->assertStatus(201);
+    });
+
+    it('activates enforcement on the next request once high_demand is flipped on an existing event', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10);
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+        ])->assertStatus(201);
+
+        app(TenantTransaction::class)->asTenant(
+            $tenant->id,
+            fn () => Event::query()->findOrFail($event->id)->update(['on_sale_policy' => new OnSalePolicyData(highDemand: true)]),
+        );
+
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
+        ])
+            ->assertStatus(403)
+            ->assertJsonPath('code', 'admission_required');
     });
 });
 

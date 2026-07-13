@@ -18,14 +18,19 @@ use Illuminate\Http\Response;
  * Guest checkout means no authentication is required; customer_id is
  * derived from an optional customer bearer token, never trusted from the
  * request body (system-design 14.4, CreateHoldData's own docblock).
+ * store() also forwards the raw X-Admission-Token header, when present,
+ * to App\Inventory\Actions\CreateHold, which decides whether the
+ * resolved event actually requires it (stage-10 plan, Endpoints "POST
+ * /v1/storefront/holds").
  */
 class HoldController
 {
     public function store(Request $request, CreateHoldData $data, CreateHold $createHold): JsonResponse
     {
         $customerId = $request->user('customer')?->getAuthIdentifier();
+        $admissionToken = $request->headers->get('X-Admission-Token');
 
-        return response()->json($createHold($data, is_string($customerId) ? $customerId : null), 201);
+        return response()->json($createHold($data, is_string($customerId) ? $customerId : null, $admissionToken), 201);
     }
 
     public function show(string $hold): HoldData

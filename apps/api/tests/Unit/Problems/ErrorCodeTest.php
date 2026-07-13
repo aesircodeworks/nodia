@@ -121,6 +121,8 @@ test('the registry holds exactly the known codes', function () {
         'challenge_required',
         'challenge_failed',
         'queue_entry_not_found',
+        'admission_required',
+        'admission_invalid',
     ]);
 });
 
@@ -240,6 +242,8 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'challenge_required' => [ErrorCode::ChallengeRequired, 403, 'Challenge required', '/problems/challenge-required'],
     'challenge_failed' => [ErrorCode::ChallengeFailed, 403, 'Challenge failed', '/problems/challenge-failed'],
     'queue_entry_not_found' => [ErrorCode::QueueEntryNotFound, 404, 'Queue entry not found', '/problems/queue-entry-not-found'],
+    'admission_required' => [ErrorCode::AdmissionRequired, 403, 'Admission required', '/problems/admission-required'],
+    'admission_invalid' => [ErrorCode::AdmissionInvalid, 403, 'Admission invalid', '/problems/admission-invalid'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

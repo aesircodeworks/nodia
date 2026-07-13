@@ -11,6 +11,8 @@ use App\Inventory\Data\HoldItemInputData;
 use App\Inventory\Enums\EventSeatStatus;
 use App\Inventory\Enums\HoldStatus;
 use App\Inventory\Events\HoldCreated;
+use App\Inventory\Exceptions\AdmissionInvalidException;
+use App\Inventory\Exceptions\AdmissionRequiredException;
 use App\Inventory\Exceptions\CustomerRequiredException;
 use App\Inventory\Exceptions\HoldEventNotFoundException;
 use App\Inventory\Exceptions\InsufficientHoldInventoryException;
@@ -23,6 +25,7 @@ use App\Inventory\Models\EventSeat;
 use App\Inventory\Models\Hold;
 use App\Inventory\Models\HoldItem;
 use App\Inventory\Models\TicketTypeInventory;
+use App\Inventory\Support\AdmissionToken;
 use App\Inventory\Support\PurchaseCounters;
 use App\Support\Outbox\OutboxRecorder;
 use App\Support\Tenancy\TenantContext;
@@ -69,6 +72,22 @@ use Spatie\LaravelData\Optional;
  * persisted on the hold item as counted_quantity, zero for an unlimited
  * ticket type, so release and expiry can reverse exactly what this
  * transaction recorded regardless of any later policy change.
+ *
+ * Admission enforcement (stage-10 plan, Endpoints "POST
+ * /v1/storefront/holds"; task breakdown item 9): for an event whose
+ * on_sale_policy.high_demand is true, assertAdmitted runs first, right
+ * after the event resolves and strictly before assertHoldable's own
+ * per-item loop, so no inventory or counter statement runs on any
+ * denial path. A missing header throws admission_required; a present
+ * but invalid one (wrong event, wrong tenant, bad signature, unknown
+ * key ID, or expired against the injected clock, all checked
+ * statelessly by App\Inventory\Support\AdmissionToken::verify against
+ * the current and previous signing keys) throws admission_invalid. The
+ * check is stateless and does not consume the token: it stays valid for
+ * its full TTL so a buyer whose hold attempt fails can retry with the
+ * hold-endpoint retry posture (stage-10 plan, Admission token: "It
+ * remains valid for its full TTL... abuse within the TTL is bounded by
+ * the hold-creation rate tier and the purchase limits").
  */
 final class CreateHold
 {
@@ -80,13 +99,15 @@ final class CreateHold
         private readonly ResolveEventForHold $resolveEvent,
     ) {}
 
-    public function __invoke(CreateHoldData $data, ?string $customerId): HoldData
+    public function __invoke(CreateHoldData $data, ?string $customerId, ?string $admissionToken = null): HoldData
     {
         $tenantId = $this->tenantContext->tenantId();
 
         $event = ($this->resolveEvent)($data->eventId) ?? throw HoldEventNotFoundException::forId($data->eventId);
 
         $now = Date::now();
+
+        $this->assertAdmitted($event, $tenantId, $admissionToken, $now);
 
         foreach ($data->items as $item) {
             $this->assertHoldable($event, $item, $now, $customerId);
@@ -210,6 +231,33 @@ final class CreateHold
             ->all();
 
         throw SeatUnavailableException::forSeats(array_values(array_diff($seatIds, $claimed)));
+    }
+
+    /**
+     * The admission gate (stage-10 plan, Endpoints "POST
+     * /v1/storefront/holds"): a no-op unless the event is flagged
+     * on_sale_policy.high_demand. AdmissionToken::verify does not
+     * distinguish which check failed (unknown key ID, bad signature,
+     * wrong event, wrong tenant, or expired), so every one of those
+     * renders the same admission_invalid problem; a missing header
+     * renders admission_required instead, distinguished here rather
+     * than folded into verify() since "no token presented" and "token
+     * presented but invalid" are different rows in the plan's own
+     * failure table.
+     */
+    private function assertAdmitted(HoldableEventData $event, string $tenantId, ?string $admissionToken, CarbonInterface $now): void
+    {
+        if (! $event->onSalePolicy->highDemand) {
+            return;
+        }
+
+        if ($admissionToken === null || $admissionToken === '') {
+            throw AdmissionRequiredException::forEvent($event->id);
+        }
+
+        if (AdmissionToken::verify($admissionToken, $event->id, $tenantId, $now) === null) {
+            throw AdmissionInvalidException::forEvent($event->id);
+        }
     }
 
     private function assertHoldable(HoldableEventData $event, HoldItemInputData $item, CarbonInterface $now, ?string $customerId): void

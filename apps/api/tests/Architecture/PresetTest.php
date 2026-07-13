@@ -73,6 +73,8 @@ use App\Identity\Mail\StaffInvitationMail;
 use App\Inventory\Enums\EventSeatStatus;
 use App\Inventory\Enums\HoldStatus;
 use App\Inventory\Enums\QueueEntryStatus;
+use App\Inventory\Exceptions\AdmissionInvalidException;
+use App\Inventory\Exceptions\AdmissionRequiredException;
 use App\Inventory\Exceptions\ChallengeFailedException;
 use App\Inventory\Exceptions\ChallengeRequiredException;
 use App\Inventory\Exceptions\CustomerRequiredException;
@@ -359,6 +361,8 @@ arch()->preset()->laravel()->ignoring([
     ChallengeRequiredException::class,
     ChallengeFailedException::class,
     QueueEntryNotFoundException::class,
+    AdmissionRequiredException::class,
+    AdmissionInvalidException::class,
     MissingTenantHeaderException::class,
     InvalidTenantHeaderException::class,
     TenantAccessDeniedException::class,

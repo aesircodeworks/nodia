@@ -4284,7 +4284,22 @@ paths:
         guests. seat_ids is a flat, top-level list, partitioned
         positionally across the requires_seat items in the order they
         appear in items: each such item's own quantity claims the next
-        slice. expires_at is 10 minutes from creation.
+        slice. expires_at is 10 minutes from creation. For an event whose
+        on_sale_policy.high_demand is true, a valid X-Admission-Token
+        header is required and is checked before any inventory or
+        counter statement runs (stage-10 plan, Endpoints "POST
+        /v1/storefront/holds").
+      parameters:
+        - name: X-Admission-Token
+          in: header
+          required: false
+          schema:
+            type: string
+          description: >-
+            The signed admission token issued by GET
+            /v1/storefront/queue-entries/{entry} on admission. Required
+            only for events flagged on_sale_policy.high_demand; ignored
+            otherwise.
       requestBody:
         required: true
         content:
@@ -4301,6 +4316,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Hold'
+        '403':
+          description: >-
+            The resolved event is flagged on_sale_policy.high_demand and
+            the request carries no X-Admission-Token header (code
+            admission_required), or the presented token's signature,
+            event, tenant, or expiry does not check out (code
+            admission_invalid), stage-10 plan.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/HoldAdmissionProblem'
         '404':
           description: >-
             The given event_id does not resolve to a published event for
@@ -10216,6 +10242,30 @@ components:
             code:
               type: string
               enum: [hold_not_releasable]
+      unevaluatedProperties: false
+    HoldAdmissionProblem:
+      description: >-
+        Problem document for POST /v1/storefront/holds when the resolved
+        event is flagged on_sale_policy.high_demand: no X-Admission-Token
+        header was presented at all (code admission_required), or the
+        presented token's signature, event, tenant, or expiry does not
+        check out against the current or previous signing key (code
+        admission_invalid, stage-10 plan Endpoints; verification does not
+        distinguish which check failed, so every failure renders this
+        same code).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - oneOf:
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum: [admission_required]
+            - type: object
+              properties:
+                code:
+                  type: string
+                  enum: [admission_invalid]
       unevaluatedProperties: false
     HoldCreateUnprocessableProblem:
       description: >-

@@ -124,6 +124,8 @@ enum ErrorCode: string
     case ChallengeRequired = 'challenge_required';
     case ChallengeFailed = 'challenge_failed';
     case QueueEntryNotFound = 'queue_entry_not_found';
+    case AdmissionRequired = 'admission_required';
+    case AdmissionInvalid = 'admission_invalid';
 
     public function status(): int
     {
@@ -245,6 +247,8 @@ enum ErrorCode: string
             self::ChallengeRequired => 403,
             self::ChallengeFailed => 403,
             self::QueueEntryNotFound => 404,
+            self::AdmissionRequired => 403,
+            self::AdmissionInvalid => 403,
         };
     }
 
@@ -368,6 +372,8 @@ enum ErrorCode: string
             self::ChallengeRequired => 'Challenge required',
             self::ChallengeFailed => 'Challenge failed',
             self::QueueEntryNotFound => 'Queue entry not found',
+            self::AdmissionRequired => 'Admission required',
+            self::AdmissionInvalid => 'Admission invalid',
         };
     }
 

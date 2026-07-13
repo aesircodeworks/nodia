@@ -220,6 +220,8 @@ class ProblemRenderer
             ErrorCode::ChallengeRequired => 'This event requires a challenge_response to join its waiting room.',
             ErrorCode::ChallengeFailed => 'The supplied challenge_response was rejected.',
             ErrorCode::QueueEntryNotFound => 'No queue entry has this id for the resolved tenant.',
+            ErrorCode::AdmissionRequired => 'This event is flagged high-demand and requires a valid X-Admission-Token header.',
+            ErrorCode::AdmissionInvalid => 'The presented X-Admission-Token is not valid for this event, tenant, and time.',
         };
     }
 }

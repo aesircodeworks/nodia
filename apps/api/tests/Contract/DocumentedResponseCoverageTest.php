@@ -611,14 +611,16 @@ function contractHoldTenant(): array
 /**
  * A published event with one GA ticket type and its ticket_type_inventory
  * counter row, scoped to the given contractHoldTenant() (stage-06 plan,
- * task breakdown item 4).
+ * task breakdown item 4). $eventAttributes merges over the factory's own
+ * defaults, e.g. a flagged on_sale_policy (stage-10 plan).
  *
+ * @param  array<string, mixed>  $eventAttributes
  * @return array{event: Event, ticketType: TicketType}
  */
-function contractHoldFixture(Tenant $tenant, int $quantity = 10): array
+function contractHoldFixture(Tenant $tenant, int $quantity = 10, array $eventAttributes = []): array
 {
-    return app(TenantTransaction::class)->asTenant($tenant->id, function () use ($tenant, $quantity): array {
-        $event = Event::factory()->create(['tenant_id' => $tenant->id, 'status' => EventStatus::Published]);
+    return app(TenantTransaction::class)->asTenant($tenant->id, function () use ($tenant, $quantity, $eventAttributes): array {
+        $event = Event::factory()->create(['tenant_id' => $tenant->id, 'status' => EventStatus::Published, ...$eventAttributes]);
         $ticketType = TicketType::factory()->create(['tenant_id' => $tenant->id, 'event_id' => $event->id]);
 
         TicketTypeInventory::factory()->create([
@@ -2906,6 +2908,22 @@ function documentedResponseExercisers(): array
             return test()->postJson('http://'.$host.'/v1/storefront/holds', [
                 'event_id' => $event->id,
                 'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 2]],
+            ]);
+        },
+        // Stage-10 plan, TDD sequencing Slice 6, task breakdown item 9:
+        // a flagged event with no X-Admission-Token header (code
+        // admission_required); admission_invalid is the same
+        // HoldAdmissionProblem oneOf branch, already covered at the
+        // Feature level (tests/Feature/Inventory/HoldEndpointsTest.php).
+        'post /v1/storefront/holds 403' => function (): TestResponse {
+            ['tenant' => $tenant, 'host' => $host] = contractHoldTenant();
+            ['event' => $event, 'ticketType' => $ticketType] = contractHoldFixture($tenant, eventAttributes: [
+                'on_sale_policy' => new OnSalePolicyData(highDemand: true),
+            ]);
+
+            return test()->postJson('http://'.$host.'/v1/storefront/holds', [
+                'event_id' => $event->id,
+                'items' => [['ticket_type_id' => $ticketType->id, 'quantity' => 1]],
             ]);
         },
         'get /v1/storefront/holds/{hold} 200' => function (): TestResponse {
