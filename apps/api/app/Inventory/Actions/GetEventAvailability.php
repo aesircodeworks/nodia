@@ -19,8 +19,11 @@ use Illuminate\Support\Facades\Date;
  * touches App\EventCatalog\Models\Event or TicketType directly
  * (system-design 3.1 boundary rule): a nonexistent or unpublished event
  * id renders the same event_not_found code either way. Database-backed
- * and authoritative; a later stage fronts this with a cache without
- * changing the contract (stage-06 plan, Endpoints).
+ * and authoritative; App\Inventory\Actions\GetCachedEventAvailability
+ * fronts this with a clock-aware Redis read cache without changing the
+ * contract (stage-10 plan, Endpoints, task breakdown item 10). Nothing
+ * on the hold-creation path calls this cache, so it stays the sole
+ * source of truth GetCachedEventAvailability falls back to on a miss.
  */
 final class GetEventAvailability
 {

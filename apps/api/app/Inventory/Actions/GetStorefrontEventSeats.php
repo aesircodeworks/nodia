@@ -19,6 +19,10 @@ use App\Inventory\Models\EventSeat;
  * Seat metadata composition goes through
  * App\EventCatalog\Actions\ResolveSeatsById rather than any join against
  * Catalog's own seats table (system-design 3.1 boundary rule).
+ * Database-backed and authoritative;
+ * App\Inventory\Actions\GetCachedStorefrontEventSeats fronts this with a
+ * clock-aware Redis read cache without changing the contract (stage-10
+ * plan, Endpoints, task breakdown item 10).
  */
 final class GetStorefrontEventSeats
 {

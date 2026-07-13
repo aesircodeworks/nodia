@@ -131,8 +131,9 @@ return [
     | browse traffic never touches the inventory tables during an
     | on-sale"). Freshness is judged against cached_at plus this TTL
     | through the framework clock, never a bare Redis TTL (stage-10 plan
-    | Risks "Fake clock versus Redis TTL"). Not yet consumed: the read
-    | cache lands in a later stage-10 task.
+    | Risks "Fake clock versus Redis TTL"). Consumed by
+    | App\Inventory\Actions\GetCachedEventAvailability and
+    | GetCachedStorefrontEventSeats (task breakdown item 10).
     |
     */
 
