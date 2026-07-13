@@ -11,12 +11,13 @@ use Spatie\LaravelData\Mappers\SnakeCaseMapper;
 /**
  * POST /v1/customers/{customer}/data-subject-requests request body
  * (stage-12 plan, Endpoints "CreateDataSubjectRequestData: type"). type
- * validates against erasure only for now, not the raw DataSubjectRequestType
- * enum: export requests wait on the assembler and queued job (Slice 2,
- * task 6), mirroring App\Reporting\Data\CreateExportData's own
- * registered-types restriction. A syntactically valid "export" therefore
- * fails with the same request.validation_failed code as an unknown
- * string until that task widens the allowlist.
+ * validates explicitly against the full DataSubjectRequestType enum via
+ * Rule::in() rather than relying on the property's own enum cast to
+ * reject an unknown value, mirroring App\Reporting\Data\
+ * CreateExportData's own registered-types restriction: erasure and
+ * export are both accepted now that Slice 2 (task 6) lands the export
+ * assembler and queued job, so the allowlist covers every case the enum
+ * itself declares.
  */
 #[MapName(SnakeCaseMapper::class)]
 class CreateDataSubjectRequestData extends Data
@@ -31,7 +32,10 @@ class CreateDataSubjectRequestData extends Data
     public static function rules(): array
     {
         return [
-            'type' => ['required', Rule::in([DataSubjectRequestType::Erasure->value])],
+            'type' => ['required', Rule::in([
+                DataSubjectRequestType::Erasure->value,
+                DataSubjectRequestType::Export->value,
+            ])],
         ];
     }
 }

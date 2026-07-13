@@ -46,3 +46,16 @@ foreach ($contexts as $context) {
         ->expect('App\Support\Outbox')
         ->not->toUse("App\\{$context}\\Models");
 }
+
+// App\Identity\Actions\BuildDataSubjectExport reads Orders, Payments, and
+// CheckIn facts only through those contexts' own cursor-paginated Actions
+// (stage-12 plan, Slice 2 Unit: "the assembler imports no Orders, Payments,
+// or CheckIn models"). The generic "only the {context} context uses its own
+// Models" rule above already forbids this structurally; this assertion
+// names the specific boundary the assembler must respect, mirroring the
+// Support Outbox assertion's own explicit style.
+foreach (['Orders', 'Payments', 'CheckIn'] as $context) {
+    arch("Identity does not import {$context} models")
+        ->expect('App\Identity')
+        ->not->toUse("App\\{$context}\\Models");
+}

@@ -245,10 +245,10 @@ it('returns 404 for a customer of another tenant', function () {
         ->assertJsonPath('code', 'request.not_found');
 });
 
-it('rejects an unaccepted type with request.validation_failed', function () {
+it('rejects an unknown type with request.validation_failed', function () {
     $customer = erasureCustomer($this->tenantId);
 
-    $this->postJson('/v1/customers/'.$customer->id.'/data-subject-requests', ['type' => 'export'], [
+    $this->postJson('/v1/customers/'.$customer->id.'/data-subject-requests', ['type' => 'not_a_real_type'], [
         'Authorization' => 'Bearer '.erasureBearer($this->tenantId),
         'X-Tenant-Id' => $this->tenantId,
     ])

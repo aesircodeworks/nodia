@@ -1173,14 +1173,16 @@ paths:
         Tenant admin surface: Passport staff bearer plus X-Tenant-Id
         membership validation (stage-12 plan, Endpoints). The capability
         required depends on the requested type (customers.erase for
-        erasure, customers.export for export); type currently accepts
-        erasure only, since export waits on its own assembler and queued
-        job (Slice 2). Erasure runs synchronously inside the request:
-        single-row anonymization (name, email, and password overwritten
-        or nulled, anonymized_at stamped), revocation of the customer's
-        outstanding access and refresh tokens, and exactly one
-        CustomerAnonymized event, all in the same transaction, so the
-        response always carries status completed.
+        erasure, customers.export for export). Erasure runs synchronously
+        inside the request: single-row anonymization (name, email, and
+        password overwritten or nulled, anonymized_at stamped),
+        revocation of the customer's outstanding access and refresh
+        tokens, and exactly one CustomerAnonymized event, all in the same
+        transaction, so the response always carries status completed.
+        Export (Slice 2) returns status pending and transitions to
+        processing, then completed or failed, in a queued job that
+        assembles a per-tenant document covering the customer's profile,
+        orders, tickets, payments, refunds, and check-ins.
       security:
         - BearerAuth: []
       parameters:
@@ -1199,6 +1201,17 @@ paths:
       responses:
         '201':
           description: The completed erasure request.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataSubjectRequest'
+        '202':
+          description: >-
+            The pending export request; a queued job assembles the
+            document and transitions the request to completed or failed.
           headers:
             X-Correlation-Id:
               $ref: '#/components/headers/XCorrelationId'
@@ -1239,8 +1252,8 @@ paths:
                 $ref: '#/components/schemas/DataSubjectRequestConflictProblem'
         '422':
           description: >-
-            Request validation failed: an unknown or not-yet-accepted type
-            (code request.validation_failed).
+            Request validation failed: an unknown type (code
+            request.validation_failed).
           content:
             application/problem+json:
               schema:
@@ -12225,7 +12238,7 @@ components:
       description: >-
         POST /v1/customers/{customer}/data-subject-requests request body
         (stage-12 plan, Endpoints "CreateDataSubjectRequestData"). type
-        currently accepts erasure only; see the operation description.
+        accepts erasure or export; see the operation description.
       required:
         - type
       properties:
@@ -12236,8 +12249,11 @@ components:
       type: object
       description: >-
         One data subject request lifecycle record (stage-12 plan,
-        Endpoints "DataSubjectRequestData"). download_url is null unless
-        a completed export attaches a file (Slice 2).
+        Endpoints "DataSubjectRequestData"). download_url stays null on
+        this response for both types: an erasure never attaches a file,
+        and a completed export's signed download URL is computed by GET
+        /v1/data-subject-requests/{data_subject_request} (task breakdown
+        item 6's own download-URL half), not by this create response.
       required:
         - id
         - customer_id

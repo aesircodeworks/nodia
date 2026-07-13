@@ -3125,10 +3125,12 @@ function documentedResponseExercisers(): array
             ]);
         },
         // Stage-12 plan, Endpoints "POST /v1/customers/{customer}/data-
-        // subject-requests": erasure only until Slice 2 (task 6) lands
-        // export; contractVenueBearer's own generic-capabilities
+        // subject-requests": contractVenueBearer's own generic-capabilities
         // parameter is reused here the same way the customers.view
-        // exercisers above reuse it.
+        // exercisers above reuse it. Queue::fake() (this file's own
+        // beforeEach) keeps the 202 exerciser from actually running
+        // App\Identity\Jobs\BuildDataSubjectExportJob, mirroring every
+        // other queued-job exerciser in this file.
         'post /v1/customers/{customer}/data-subject-requests 201' => function (): TestResponse {
             $tenant = contractTenant();
             $customer = contractCustomer($tenant, ['password' => 'password']);
@@ -3137,6 +3139,17 @@ function documentedResponseExercisers(): array
                 'type' => 'erasure',
             ], [
                 'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['customers.erase']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/customers/{customer}/data-subject-requests 202' => function (): TestResponse {
+            $tenant = contractTenant();
+            $customer = contractCustomer($tenant);
+
+            return test()->postJson('/v1/customers/'.$customer->id.'/data-subject-requests', [
+                'type' => 'export',
+            ], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['customers.export']),
                 'X-Tenant-Id' => $tenant->id,
             ]);
         },
@@ -3183,7 +3196,7 @@ function documentedResponseExercisers(): array
             $customer = contractCustomer($tenant);
 
             return test()->postJson('/v1/customers/'.$customer->id.'/data-subject-requests', [
-                'type' => 'export',
+                'type' => 'not_a_real_type',
             ], [
                 'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['customers.erase']),
                 'X-Tenant-Id' => $tenant->id,

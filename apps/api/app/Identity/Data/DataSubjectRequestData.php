@@ -14,11 +14,12 @@ use Spatie\LaravelData\Mappers\SnakeCaseMapper;
  * The data subject request lifecycle wire shape (stage-12 plan, Endpoints
  * "DataSubjectRequestData: id, customer_id, type, status,
  * requested_by_user_id, completed_at, download_url, created_at").
- * download_url stays null unconditionally until Slice 2 (task 6) wires
- * the export attachment: no data subject request this task creates ever
- * reaches a state where a file exists, since only erasure is accepted
- * (App\Identity\Data\CreateDataSubjectRequestData) and erasure attaches
- * nothing.
+ * download_url stays null unconditionally on this Data class: an erasure
+ * never attaches a file, and a completed export's signed download URL is
+ * computed by the GET /v1/data-subject-requests/{data_subject_request}
+ * endpoint (task breakdown item 6's own download-URL half), not by
+ * fromModel() here, which App\Identity\Actions\CreateDataSubjectRequest
+ * uses to build both the 201 erasure and the 202 export response.
  */
 #[MapName(SnakeCaseMapper::class)]
 class DataSubjectRequestData extends Data

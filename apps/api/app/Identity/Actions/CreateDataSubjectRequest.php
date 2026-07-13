@@ -5,39 +5,47 @@ namespace App\Identity\Actions;
 use App\Identity\Enums\DataSubjectRequestStatus;
 use App\Identity\Enums\DataSubjectRequestType;
 use App\Identity\Exceptions\DataSubjectRequestAlreadyOpenException;
+use App\Identity\Jobs\BuildDataSubjectExportJob;
 use App\Identity\Models\Customer;
 use App\Identity\Models\DataSubjectRequest;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\UniqueConstraintViolationException;
-use LogicException;
+use Illuminate\Support\Facades\DB;
 
 /**
  * POST /v1/customers/{customer}/data-subject-requests (stage-12 plan,
- * Endpoints; task breakdown item 3). Creates the auditable request row,
- * claims it (pending to processing, the same exactly-one-worker transition
- * every other data_subject_requests caller uses), and drives it to
- * completion. Erasure runs synchronously inside this same request's
- * ambient tenant transaction (App\Tenancy\Http\Middleware\
- * ResolveTenantFromHeader), so no explicit failure handling is needed
- * here: if AnonymizeCustomer's own conditional UPDATE finds the customer
- * already anonymized, the thrown exception unwinds this whole transaction
- * (App\Tenancy\Http\Middleware\TransactsRequests), leaving neither the
- * request row this call just inserted nor any outbox row behind, which is
- * exactly "a failed request records nothing" (stage-12 plan, Slice 1
- * Feature tests). The data_subject_requests_open_per_customer_idx partial
- * unique index is the concurrent-submission guard for the request row
- * itself, translated here by index name rather than a read-then-write
+ * Endpoints; task breakdown items 3 and 6). Creates the auditable
+ * request row, then drives each type down its own path. The
+ * data_subject_requests_open_per_customer_idx partial unique index is
+ * the concurrent-submission guard for the request row itself for both
+ * types, translated here by index name rather than a read-then-write
  * existence check (CLAUDE.md), mirroring App\Identity\Actions\CreateRole's
  * own precedent.
  *
- * The export arm below is unreachable today: App\Identity\Data\
- * CreateDataSubjectRequestData restricts the incoming type to erasure
- * only until Slice 2 (task 6) lands the export assembler and queued job,
- * mirroring App\Reporting\Data\CreateExportData's own registered-types
- * restriction. It stays written out, not collapsed to erasure-only logic,
- * so the match stays exhaustive over DataSubjectRequestType and the
- * LogicException documents the gap rather than silently mishandling a
- * value that reaches here some other way.
+ * Erasure claims the row (pending to processing) and runs synchronously
+ * inside this same request's ambient tenant transaction (App\Tenancy\
+ * Http\Middleware\ResolveTenantFromHeader), so no explicit failure
+ * handling is needed: if AnonymizeCustomer's own conditional UPDATE
+ * finds the customer already anonymized, the thrown exception unwinds
+ * this whole transaction (App\Tenancy\Http\Middleware\
+ * TransactsRequests), leaving neither the request row this call just
+ * inserted nor any outbox row behind, which is exactly "a failed request
+ * records nothing" (stage-12 plan, Slice 1 Feature tests).
+ *
+ * Export leaves the row pending and defers dispatching
+ * App\Identity\Jobs\BuildDataSubjectExportJob to this request's
+ * transaction commit, exactly mirroring App\Reporting\Actions\
+ * CreateExport's own DB::afterCommit() posture for the identical
+ * reason: the request's own ambient transaction has not committed yet,
+ * and App\Support\Tenancy\TenantTransaction::run() rejects a nested
+ * tenant transaction, which is exactly what the job's own
+ * asPlatform()/asTenant() bootstrap would attempt if it ran
+ * synchronously (QUEUE_CONNECTION=sync in every test and dev
+ * environment in this codebase) before this request's transaction has
+ * committed. The job itself claims the row (pending to processing) once
+ * it runs, so the response returned here always carries status pending
+ * for export, tracking the row's real state rather than the eventual
+ * one (stage-12 plan, Endpoints: "Export returns 202 with pending").
  */
 final readonly class CreateDataSubjectRequest
 {
@@ -64,15 +72,27 @@ final readonly class CreateDataSubjectRequest
             throw $e;
         }
 
+        return match ($type) {
+            DataSubjectRequestType::Erasure => $this->runErasure($customer, $request),
+            DataSubjectRequestType::Export => $this->dispatchExport($request),
+        };
+    }
+
+    private function runErasure(Customer $customer, DataSubjectRequest $request): DataSubjectRequest
+    {
         DataSubjectRequest::claim($request->id);
 
-        match ($type) {
-            DataSubjectRequestType::Erasure => ($this->anonymize)($customer, $request->id),
-            DataSubjectRequestType::Export => throw new LogicException('Data subject export requests are not implemented yet.'),
-        };
+        ($this->anonymize)($customer, $request->id);
 
         DataSubjectRequest::complete($request->id);
 
         return $request->refresh();
+    }
+
+    private function dispatchExport(DataSubjectRequest $request): DataSubjectRequest
+    {
+        DB::afterCommit(static fn () => BuildDataSubjectExportJob::dispatch($request->id));
+
+        return $request;
     }
 }
