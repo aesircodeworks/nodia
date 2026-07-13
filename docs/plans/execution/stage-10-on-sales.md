@@ -253,4 +253,4 @@ Deviation from a literal reading of the task instructions: none beyond the two L
 
 Commits:
 
-- (pending)
+- `dc5450e` feat(inventory): add gatekeeper, admission Lua scripts, and signed admission tokens
