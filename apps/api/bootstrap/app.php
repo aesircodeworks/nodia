@@ -63,6 +63,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // sweepers above use.
         $schedule->command('webhooks:prune-payloads')->daily();
         $schedule->command('data-subject-requests:prune-exports')->daily();
+
+        // Stage-12 plan, Slice 3, task breakdown item 9: the activity
+        // log archive-then-prune command, same day-scale cadence as
+        // the two pruners above.
+        $schedule->command('activity-log:archive')->daily();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

@@ -67,4 +67,22 @@ return [
 
     'export_attachment_days' => (int) env('RETENTION_EXPORT_ATTACHMENT_DAYS', 7),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Archive Segment Disk
+    |--------------------------------------------------------------------------
+    |
+    | The disk (config/filesystems.php) the archive-then-prune commands
+    | (App\Support\Archive\Actions\ArchiveActivityLog, task breakdown
+    | item 9; the outbox archiver, task breakdown item 10) upload
+    | NDJSON segments to before deleting the source rows. Defaults to
+    | the generic S3-compatible 's3' disk (any S3-compatible store;
+    | MinIO for development, system-design 15.3), distinct from the
+    | medialibrary-managed 'media' disk, which serves public-visibility
+    | tenant assets, not archival manifests verified by checksum.
+    |
+    */
+
+    'archive_disk' => env('RETENTION_ARCHIVE_DISK', 's3'),
+
 ];

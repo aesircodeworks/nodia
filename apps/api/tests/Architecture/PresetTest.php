@@ -164,6 +164,7 @@ use App\Reporting\Exceptions\ExportNotFoundException;
 use App\Reporting\Exceptions\ExportNotReadyException;
 use App\Reporting\Exceptions\UnknownExportSourceException;
 use App\Reporting\ReportingServiceProvider;
+use App\Support\Archive\Enums\ArchiveSegmentSource;
 use App\Support\Media\Exceptions\MediaNotFoundException;
 use App\Support\Money\CurrencyMismatchException;
 use App\Support\Outbox\Enums\OutboxDeliveryStatus;
@@ -287,6 +288,13 @@ arch()->preset()->security();
 // are data_subject_requests' own type and status registries and live
 // with the Identity context like MembershipScope and MembershipAccessOutcome
 // live with theirs, not App\Enums.
+// App\Support\Archive\Models\ArchiveSegment (stage-12 task-09) is the same
+// story as App\Support\Audit\Models\ActivityLogEntry and App\Support\
+// Outbox\Models: infrastructure with no single owning bounded context,
+// since segments span every tenant, so it lives under App\Support rather
+// than App\Models. ArchiveSegmentSource is archive_segments' own source
+// registry and lives with that infrastructure rather than App\Enums, the
+// same story as OutboxDeliveryStatus above.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -491,4 +499,6 @@ arch()->preset()->laravel()->ignoring([
     ExportFailedException::class,
     DataSubjectRequestType::class,
     DataSubjectRequestStatus::class,
+    'App\Support\Archive\Models',
+    ArchiveSegmentSource::class,
 ]);

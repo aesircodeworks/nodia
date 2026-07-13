@@ -18,7 +18,8 @@ it('ships config/retention.php with the stage-12 default windows', function (): 
         ->and(config()->integer('retention.webhook_payload_days'))->toBe(90)
         ->and(config()->integer('retention.activity_log_days'))->toBe(400)
         ->and(config()->integer('retention.outbox_archival_days'))->toBe(180)
-        ->and(config()->integer('retention.export_attachment_days'))->toBe(7);
+        ->and(config()->integer('retention.export_attachment_days'))->toBe(7)
+        ->and(config()->string('retention.archive_disk'))->toBe('s3');
 });
 
 it('reads every window from config so tests can override them', function (): void {
@@ -78,4 +79,18 @@ it('schedules data-subject-requests:prune-exports daily', function (): void {
 
     expect($prune)->not->toBeNull()
         ->and($prune->expression)->toBe('0 0 * * *');
+});
+
+it('schedules activity-log:archive daily', function (): void {
+    Artisan::all();
+
+    $events = collect(app(Schedule::class)->events());
+
+    $archive = $events->first(
+        fn ($event): bool => is_string($event->command)
+            && str_contains($event->command, 'activity-log:archive'),
+    );
+
+    expect($archive)->not->toBeNull()
+        ->and($archive->expression)->toBe('0 0 * * *');
 });
