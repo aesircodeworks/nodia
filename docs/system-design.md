@@ -726,7 +726,7 @@ Should an extracted service or throughput ever demand a dedicated broker, the ou
 ### 9.3 Event Types
 
 1. **Tenancy**: TenantCreated, DomainVerified
-2. **Identity**: UserInvited, UserRoleChanged, CustomerRegistered
+2. **Identity**: UserInvited, UserRoleChanged, CustomerRegistered, CustomerAnonymized
 3. **Catalog**: EventCreated, EventUpdated, EventPublished, EventCanceled
 4. **Inventory**: HoldCreated, HoldExpired, HoldReleased
 5. **Orders**: OrderCreated, TicketIssued, TicketCanceled, TicketRefunded

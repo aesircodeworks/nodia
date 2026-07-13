@@ -125,6 +125,8 @@ test('the registry holds exactly the known codes', function () {
         'admission_invalid',
         'export_not_ready',
         'export_failed',
+        'customer_already_anonymized',
+        'data_subject_request_already_open',
     ]);
 });
 
@@ -248,6 +250,8 @@ test('every error code maps to its status, title, and type slug', function (Erro
     'admission_invalid' => [ErrorCode::AdmissionInvalid, 403, 'Admission invalid', '/problems/admission-invalid'],
     'export_not_ready' => [ErrorCode::ExportNotReady, 409, 'Export not ready', '/problems/export-not-ready'],
     'export_failed' => [ErrorCode::ExportFailed, 409, 'Export failed', '/problems/export-failed'],
+    'customer_already_anonymized' => [ErrorCode::CustomerAlreadyAnonymized, 409, 'Customer already anonymized', '/problems/customer-already-anonymized'],
+    'data_subject_request_already_open' => [ErrorCode::DataSubjectRequestAlreadyOpen, 409, 'Data subject request already open', '/problems/data-subject-request-already-open'],
 ]);
 
 test('the type slug is derived mechanically from the code, dots and underscores to dashes', function () {

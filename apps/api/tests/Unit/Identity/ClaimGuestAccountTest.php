@@ -94,3 +94,29 @@ it('throws claim_token_invalid for a customer id that does not resolve under the
 
     expect($invoke)->toThrow(ClaimTokenInvalidException::class);
 });
+
+/**
+ * Stage-12 plan, Slice 1 Feature tests: "the guest-claim flow rejects the
+ * anonymized customer." An anonymized customer also carries a null
+ * password (App\Identity\Actions\AnonymizeCustomer nulls it as part of
+ * erasure), so without this check the password-only guard above would
+ * treat it exactly like a genuine unclaimed guest.
+ */
+it('throws claim_token_invalid for an anonymized customer, even though its password is also null', function (): void {
+    $anonymized = app(TenantTransaction::class)->asTenant(
+        CGA_TENANT,
+        fn () => Customer::factory()->create([
+            'tenant_id' => CGA_TENANT,
+            'password' => null,
+            'anonymized_at' => now(),
+        ]),
+    );
+    $token = ClaimToken::issue($anonymized->id);
+
+    $invoke = fn () => app(TenantTransaction::class)->asTenant(
+        CGA_TENANT,
+        fn () => app(ClaimGuestAccount::class)(new ConfirmClaimData($token, 'a-new-password')),
+    );
+
+    expect($invoke)->toThrow(ClaimTokenInvalidException::class);
+});

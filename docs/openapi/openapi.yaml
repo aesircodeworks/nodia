@@ -1158,6 +1158,93 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ValidationProblem'
+  /v1/customers/{customer}/data-subject-requests:
+    parameters:
+      - name: customer
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: createDataSubjectRequest
+      summary: Create an erasure or export request for a customer
+      description: >-
+        Tenant admin surface: Passport staff bearer plus X-Tenant-Id
+        membership validation (stage-12 plan, Endpoints). The capability
+        required depends on the requested type (customers.erase for
+        erasure, customers.export for export); type currently accepts
+        erasure only, since export waits on its own assembler and queued
+        job (Slice 2). Erasure runs synchronously inside the request:
+        single-row anonymization (name, email, and password overwritten
+        or nulled, anonymized_at stamped), revocation of the customer's
+        outstanding access and refresh tokens, and exactly one
+        CustomerAnonymized event, all in the same transaction, so the
+        response always carries status completed.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: X-Tenant-Id
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDataSubjectRequestRequest'
+      responses:
+        '201':
+          description: The completed erasure request.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataSubjectRequest'
+        '401':
+          description: Missing, invalid, or expired bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedProblem'
+        '403':
+          description: >-
+            No membership in the asserted tenant, missing the capability
+            the requested type requires (customers.erase or
+            customers.export), or unconfirmed mandated MFA.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/MissingCapabilityProblem'
+        '404':
+          description: No customer is visible with this id in the acting tenant.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/NotFoundProblem'
+        '409':
+          description: >-
+            The customer is already anonymized (code
+            customer_already_anonymized), or an open request of this type
+            already exists for the customer (code
+            data_subject_request_already_open).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/DataSubjectRequestConflictProblem'
+        '422':
+          description: >-
+            Request validation failed: an unknown or not-yet-accepted type
+            (code request.validation_failed).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
   /v1/auth/customer/claim:
     post:
       operationId: requestCustomerClaim
@@ -12132,4 +12219,76 @@ components:
             code:
               type: string
               enum: [export_not_ready, export_failed]
+      unevaluatedProperties: false
+    CreateDataSubjectRequestRequest:
+      type: object
+      description: >-
+        POST /v1/customers/{customer}/data-subject-requests request body
+        (stage-12 plan, Endpoints "CreateDataSubjectRequestData"). type
+        currently accepts erasure only; see the operation description.
+      required:
+        - type
+      properties:
+        type:
+          type: string
+      additionalProperties: false
+    DataSubjectRequest:
+      type: object
+      description: >-
+        One data subject request lifecycle record (stage-12 plan,
+        Endpoints "DataSubjectRequestData"). download_url is null unless
+        a completed export attaches a file (Slice 2).
+      required:
+        - id
+        - customer_id
+        - type
+        - status
+        - requested_by_user_id
+        - completed_at
+        - download_url
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [erasure, export]
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        requested_by_user_id:
+          type: string
+          format: uuid
+        completed_at:
+          type: ['string', 'null']
+          format: date-time
+        download_url:
+          type: ['string', 'null']
+          format: uri
+        created_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    DataSubjectRequestConflictProblem:
+      description: >-
+        Problem document for POST /v1/customers/{customer}/data-subject-
+        requests when the customer is already anonymized (code
+        customer_already_anonymized) or an open request of the requested
+        type already exists for the customer, surfaced from the partial
+        unique index rather than a 500 (code
+        data_subject_request_already_open).
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            code:
+              type: string
+              enum: [customer_already_anonymized, data_subject_request_already_open]
       unevaluatedProperties: false

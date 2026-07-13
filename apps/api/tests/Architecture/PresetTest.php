@@ -42,8 +42,11 @@ use App\Identity\Enums\MembershipAccessOutcome;
 use App\Identity\Enums\MembershipScope;
 use App\Identity\Exceptions\ClaimTokenExpiredException;
 use App\Identity\Exceptions\ClaimTokenInvalidException;
+use App\Identity\Exceptions\CustomerAlreadyAnonymizedException;
 use App\Identity\Exceptions\CustomerAlreadyClaimedException;
 use App\Identity\Exceptions\CustomerEmailTakenException;
+use App\Identity\Exceptions\CustomerNotFoundException;
+use App\Identity\Exceptions\DataSubjectRequestAlreadyOpenException;
 use App\Identity\Exceptions\InvalidCredentialsException;
 use App\Identity\Exceptions\InvalidMembershipScopeException;
 use App\Identity\Exceptions\InvalidRefreshTokenException;
@@ -337,6 +340,9 @@ arch()->preset()->laravel()->ignoring([
     TenantMismatchException::class,
     CustomerEmailTakenException::class,
     CustomerAlreadyClaimedException::class,
+    CustomerAlreadyAnonymizedException::class,
+    CustomerNotFoundException::class,
+    DataSubjectRequestAlreadyOpenException::class,
     ClaimTokenInvalidException::class,
     ClaimTokenExpiredException::class,
     PasswordResetTokenInvalidException::class,

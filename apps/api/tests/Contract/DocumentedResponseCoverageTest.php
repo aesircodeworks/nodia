@@ -169,6 +169,12 @@ afterEach(function (): void {
             DB::table('hold_items')->where('tenant_id', $tenantId)->delete();
             DB::table('holds')->where('tenant_id', $tenantId)->delete();
 
+            // The data subject request exercisers (stage-12 plan, task
+            // breakdown item 3) write data_subject_requests referencing
+            // customers with no cascade, so they go ahead of the customers
+            // delete below.
+            DB::table('data_subject_requests')->where('tenant_id', $tenantId)->delete();
+
             // The customer token/registration/claim exercisers (task
             // breakdown item 13) create customers rows scoped to a fresh
             // contractCustomerTenant() each; customers carries no
@@ -3115,6 +3121,71 @@ function documentedResponseExercisers(): array
 
             return test()->getJson('/v1/customers', [
                 'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        // Stage-12 plan, Endpoints "POST /v1/customers/{customer}/data-
+        // subject-requests": erasure only until Slice 2 (task 6) lands
+        // export; contractVenueBearer's own generic-capabilities
+        // parameter is reused here the same way the customers.view
+        // exercisers above reuse it.
+        'post /v1/customers/{customer}/data-subject-requests 201' => function (): TestResponse {
+            $tenant = contractTenant();
+            $customer = contractCustomer($tenant, ['password' => 'password']);
+
+            return test()->postJson('/v1/customers/'.$customer->id.'/data-subject-requests', [
+                'type' => 'erasure',
+            ], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['customers.erase']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/customers/{customer}/data-subject-requests 401' => function (): TestResponse {
+            $tenant = contractTenant();
+            $customer = contractCustomer($tenant);
+
+            return test()->postJson('/v1/customers/'.$customer->id.'/data-subject-requests', ['type' => 'erasure']);
+        },
+        'post /v1/customers/{customer}/data-subject-requests 403' => function (): TestResponse {
+            $tenant = contractTenant();
+            $customer = contractCustomer($tenant);
+
+            return test()->postJson('/v1/customers/'.$customer->id.'/data-subject-requests', [
+                'type' => 'erasure',
+            ], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['events.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/customers/{customer}/data-subject-requests 404' => function (): TestResponse {
+            $tenant = contractTenant();
+
+            return test()->postJson('/v1/customers/'.Str::uuid7().'/data-subject-requests', [
+                'type' => 'erasure',
+            ], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['customers.erase']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/customers/{customer}/data-subject-requests 409' => function (): TestResponse {
+            $tenant = contractTenant();
+            $customer = contractCustomer($tenant, ['anonymized_at' => now()]);
+
+            return test()->postJson('/v1/customers/'.$customer->id.'/data-subject-requests', [
+                'type' => 'erasure',
+            ], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['customers.erase']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'post /v1/customers/{customer}/data-subject-requests 422' => function (): TestResponse {
+            $tenant = contractTenant();
+            $customer = contractCustomer($tenant);
+
+            return test()->postJson('/v1/customers/'.$customer->id.'/data-subject-requests', [
+                'type' => 'export',
+            ], [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['customers.erase']),
                 'X-Tenant-Id' => $tenant->id,
             ]);
         },

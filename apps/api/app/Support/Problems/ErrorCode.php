@@ -128,6 +128,8 @@ enum ErrorCode: string
     case AdmissionInvalid = 'admission_invalid';
     case ExportNotReady = 'export_not_ready';
     case ExportFailed = 'export_failed';
+    case CustomerAlreadyAnonymized = 'customer_already_anonymized';
+    case DataSubjectRequestAlreadyOpen = 'data_subject_request_already_open';
 
     public function status(): int
     {
@@ -253,6 +255,8 @@ enum ErrorCode: string
             self::AdmissionInvalid => 403,
             self::ExportNotReady => 409,
             self::ExportFailed => 409,
+            self::CustomerAlreadyAnonymized => 409,
+            self::DataSubjectRequestAlreadyOpen => 409,
         };
     }
 
@@ -380,6 +384,8 @@ enum ErrorCode: string
             self::AdmissionInvalid => 'Admission invalid',
             self::ExportNotReady => 'Export not ready',
             self::ExportFailed => 'Export failed',
+            self::CustomerAlreadyAnonymized => 'Customer already anonymized',
+            self::DataSubjectRequestAlreadyOpen => 'Data subject request already open',
         };
     }
 

@@ -46,6 +46,7 @@ class IdentityServiceProvider extends ServiceProvider
         $this->app->make(EventTypeRegistry::class)->register('UserInvited');
         $this->app->make(EventTypeRegistry::class)->register('UserRoleChanged');
         $this->app->make(EventTypeRegistry::class)->register('CustomerRegistered');
+        $this->app->make(EventTypeRegistry::class)->register('CustomerAnonymized');
 
         CapabilityGate::register();
 

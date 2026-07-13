@@ -36,7 +36,9 @@ export type Capability =
   | 'customers.view'
   | 'checkin.manage'
   | 'reports.view'
-  | 'reports.export';
+  | 'reports.export'
+  | 'customers.erase'
+  | 'customers.export';
 export type CapabilityData = {
   name: string;
   is_financially_privileged: boolean;
@@ -88,6 +90,9 @@ export type ConfirmMfaData = {
 export type ConfirmPasswordResetData = {
   token: string;
   password: string;
+};
+export type CreateDataSubjectRequestData = {
+  type: DataSubjectRequestType;
 };
 export type CreateEventData = {
   name: Record<string, string>;
@@ -199,6 +204,18 @@ export type DailySalesData = {
   gross: Money;
   refunded: Money;
 };
+export type DataSubjectRequestData = {
+  id: string;
+  customer_id: string;
+  type: DataSubjectRequestType;
+  status: DataSubjectRequestStatus;
+  requested_by_user_id: string;
+  completed_at: string | null;
+  download_url: string | null;
+  created_at: string;
+};
+export type DataSubjectRequestStatus = 'pending' | 'processing' | 'completed' | 'failed';
+export type DataSubjectRequestType = 'erasure' | 'export';
 export type DisableMfaData = {
   code: string;
 };
@@ -326,7 +343,9 @@ export type ErrorCode =
   | 'admission_required'
   | 'admission_invalid'
   | 'export_not_ready'
-  | 'export_failed';
+  | 'export_failed'
+  | 'customer_already_anonymized'
+  | 'data_subject_request_already_open';
 export type EventAssignmentData = {
   authorized: boolean;
 };
