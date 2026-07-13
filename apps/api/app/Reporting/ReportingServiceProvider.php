@@ -3,6 +3,7 @@
 namespace App\Reporting;
 
 use App\Reporting\Jobs\ProjectDailySales;
+use App\Reporting\Jobs\ProjectEventAttendance;
 use App\Reporting\Jobs\ProjectEventFinance;
 use App\Support\Outbox\SubscriberRegistry;
 use Illuminate\Support\Facades\Route;
@@ -24,8 +25,10 @@ use Illuminate\Support\ServiceProvider;
  * other context's provider this one registers no EventTypeRegistry
  * entries; TicketIssued and TicketRefunded are already registered by
  * App\Orders\OrdersServiceProvider, PaymentConfirmed and RefundCompleted
- * by App\Payments\PaymentsServiceProvider. ProjectDailySales (task 5)
- * and ProjectEventFinance (task 8) are the outbox subscribers this
+ * by App\Payments\PaymentsServiceProvider, TicketCheckedIn and
+ * DuplicateScanDetected by App\CheckIn\CheckInServiceProvider.
+ * ProjectDailySales (task 5), ProjectEventFinance (task 8), and
+ * ProjectEventAttendance (task 11) are the outbox subscribers this
  * provider registers.
  */
 class ReportingServiceProvider extends ServiceProvider
@@ -42,6 +45,12 @@ class ReportingServiceProvider extends ServiceProvider
             ProjectEventFinance::NAME,
             ['PaymentConfirmed', 'RefundCompleted'],
             $this->app->make(ProjectEventFinance::class),
+        );
+
+        $subscribers->register(
+            ProjectEventAttendance::NAME,
+            ['TicketCheckedIn', 'DuplicateScanDetected'],
+            $this->app->make(ProjectEventAttendance::class),
         );
 
         Route::middleware('tenancy.admin')
