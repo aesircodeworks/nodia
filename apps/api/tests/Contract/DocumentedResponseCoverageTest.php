@@ -4344,6 +4344,36 @@ function documentedResponseExercisers(): array
                 'X-Tenant-Id' => $tenant->id,
             ]);
         },
+        'get /v1/reports/attendance 200' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+            ['event' => $event, 'ticketType' => $ticketType] = contractHoldFixture($tenant);
+
+            contractSeedEventAttendance($tenant, $event->id, $ticketType->id);
+
+            return test()->getJson('/v1/reports/attendance', [
+                'Authorization' => 'Bearer '.contractReportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/reports/attendance 400' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            return test()->getJson('/v1/reports/attendance?filter[bogus]=1', [
+                'Authorization' => 'Bearer '.contractReportsBearer($tenant),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
+        'get /v1/reports/attendance 401' => function (): TestResponse {
+            return test()->getJson('/v1/reports/attendance');
+        },
+        'get /v1/reports/attendance 403' => function (): TestResponse {
+            ['tenant' => $tenant] = contractHoldTenant();
+
+            return test()->getJson('/v1/reports/attendance', [
+                'Authorization' => 'Bearer '.contractVenueBearer($tenant, ['orders.view']),
+                'X-Tenant-Id' => $tenant->id,
+            ]);
+        },
     ];
 }
 
@@ -4499,6 +4529,24 @@ function contractSeedEventFinance(Tenant $tenant, string $eventId): void
             'tenant_net_amount' => 920,
             'refunded_amount' => 0,
             'currency' => 'USD',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    });
+}
+
+function contractSeedEventAttendance(Tenant $tenant, string $eventId, string $ticketTypeId): void
+{
+    app(TenantTransaction::class)->asTenant($tenant->id, function () use ($tenant, $eventId, $ticketTypeId): void {
+        DB::table('report_event_attendance')->insert([
+            'id' => Str::uuid7()->toString(),
+            'tenant_id' => $tenant->id,
+            'event_id' => $eventId,
+            'ticket_type_id' => $ticketTypeId,
+            'checked_in_count' => 1,
+            'duplicate_scan_count' => 0,
+            'first_scan_at' => now(),
+            'last_scan_at' => now(),
             'created_at' => now(),
             'updated_at' => now(),
         ]);

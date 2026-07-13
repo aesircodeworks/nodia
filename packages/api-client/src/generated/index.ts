@@ -324,6 +324,14 @@ export type ErrorCode =
 export type EventAssignmentData = {
   authorized: boolean;
 };
+export type EventAttendanceData = {
+  event_id: string;
+  ticket_type_id: string;
+  checked_in_count: number;
+  duplicate_scan_count: number;
+  first_scan_at: string | null;
+  last_scan_at: string | null;
+};
 export type EventAvailabilityData = {
   event_id: string;
   ticket_types: TicketTypeAvailabilityData[];
