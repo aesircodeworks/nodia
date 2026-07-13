@@ -27,7 +27,7 @@ Update this table when a stage starts and when it merges.
 | Stage 8d: Real Gateway Adapter (gated on ADR) | In progress |
 | Stage 9: Check-in and Offline Reconciliation | Done |
 | Stage 10: High-Demand On-Sales | Done |
-| Stage 11: Reporting and Exports | Not started |
+| Stage 11: Reporting and Exports | In progress |
 | Stage 12: Compliance, Operations, Hardening | Not started |
 
 ## Method: the TDD loop
