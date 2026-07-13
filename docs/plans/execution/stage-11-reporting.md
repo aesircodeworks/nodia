@@ -28,8 +28,8 @@ Dependencies are in place: Stage 4 (`SubscriberRegistry`, `OutboxReplay` with th
 - [x] T4 GET `/v1/reports/daily-sales` with Data classes, policy, OpenAPI, TypeScript (reporting)
 - [x] T5 `report_event_finance` migration plus `ProjectEventFinance` and the Payments row-facts Action (reporting, payments)
 - [x] T6 GET `/v1/reports/event-finance` (reporting)
-- [ ] T7 `report_event_attendance` migration plus `ProjectEventAttendance` (reporting)
-- [ ] T8 GET `/v1/reports/attendance` (reporting)
+- [x] T7 `report_event_attendance` migration plus `ProjectEventAttendance` (reporting)
+- [x] T8 GET `/v1/reports/attendance` (reporting)
 - [ ] T9 `reporting:rebuild` command with `--tenant`, `--verify`, and the advisory lock shared with the projectors (reporting)
 - [ ] T10 `exports` table, model, enums, and the conditional claim transition (reporting)
 - [ ] T11 `ExportSource` registry, streaming CSV writer, `BuildExport` action and job, and the four sources (reporting)
@@ -276,3 +276,36 @@ Deviations from the plan: none in scope or approach. `GetTicketTypeIds` (Orders)
 Not run in this task (out of scope per the task's own instruction to skip full lint/analyse/whole-suite per slice; the gate phase after all tasks covers these): the full six-suite run, `pnpm typecheck`/`pnpm build` over `packages/api-client`.
 
 Commits: 6b2b7ec (feat(reporting): add report_event_attendance table), 2c84690 (feat(orders): add bulk ticket-to-ticket-type lookup for reporting projectors), cac587c (feat(reporting): project event attendance from TicketCheckedIn and DuplicateScanDetected).
+
+## T8: GET /v1/reports/attendance endpoint
+
+2026-07-13 06:52 -03
+
+Landed stage-11 plan task breakdown item 12, the Endpoints table row for attendance, and TDD sequencing Slice 6 in full (same pattern as Slices 2 and 4, T4 and T6).
+
+What landed:
+
+- `App\Reporting\Data\EventAttendanceData`: `event_id`, `ticket_type_id`, `checked_in_count`, `duplicate_scan_count`, `first_scan_at`, `last_scan_at`. `fromModel()` follows `DailySalesData`'s and `EventFinanceData`'s own precedent (laravel-data's magical creation). `first_scan_at`/`last_scan_at` are nullable ISO 8601 UTC strings, formatted the same way `App\Payments\Data\PayoutData` formats its own nullable `executed_at`/`reconciled_at` (`CarbonImmutable::instance(...)->utc()->format('Y-m-d\TH:i:s\Z')`, guarded by a null check), the first nullable-timestamp Data property in the Reporting context. No hidden `id` tiebreak property: `report_event_attendance`'s own `unique(tenant_id, event_id, ticket_type_id)` constraint makes the pair `(event_id, ticket_type_id)` fully deterministic under RLS tenant scoping, and both columns are already real wire fields, unlike `report_daily_sales`, whose own unique constraint needs a fourth column (`sales_date`) that isn't itself unique per event and ticket type. `event_id` and `ticket_type_id` stay snake_case in the PHP constructor for the same cursor-column-name-matching reason `DailySalesData`'s `sales_date` and `EventFinanceData`'s `event_id` do.
+- `App\Reporting\Http\Controllers\EventAttendanceController::index()`: `Spatie\QueryBuilder\QueryBuilder` over `EventAttendance::class` with `AllowedFilter::exact('event_id')` only (the plan's own Endpoints table row names no sort); `->allowedSorts()` called with no arguments, mirroring `EventFinanceController`'s own no-sort-allowed posture; `orderBy('event_id')->orderBy('ticket_type_id')` (a two-column order, not the single-column order `EventFinanceController` uses, since one event has many ticket types here); `cursorPaginate(min($request->integer('per_page', 15), 100))`.
+- `App\Reporting\Http\routes\admin.php`: `Route::get('/reports/attendance', ...)` added to the same `RequireCapability::class.':'.Capability::ReportsView->value` group as daily-sales and event-finance.
+- `docs/openapi/openapi.yaml`: the `GET /v1/reports/attendance` path (200/400/401/403, no new codes) plus `EventAttendance` and `EventAttendanceCursorPage` component schemas, inserted directly after the event-finance path and its schemas; `first_scan_at`/`last_scan_at` documented as nullable `date-time` strings. The 403 response reuses `MissingCapabilityProblem`, matching the sibling endpoints.
+- `tests/Contract/DocumentedResponseCoverageTest.php`: `contractSeedEventAttendance()` helper (mirroring `contractSeedDailySales()`/`contractSeedEventFinance()`) plus the four `get /v1/reports/attendance {200,400,401,403}` exercisers, reusing `contractReportsBearer()` and `contractHoldFixture()`.
+- No Architecture-suite exemption needed: `'App\Reporting\Http\Controllers'` was already added to `tests/Architecture/PresetTest.php`'s `ignoring()` list in T4, and it already covers this new controller in the same namespace.
+- `composer -d apps/api run types:generate`: `EventAttendanceData` regenerated into `packages/api-client/src/generated/index.ts` and the manifest; diff is exactly the new six-field `EventAttendanceData` type, nothing else moved.
+- Also corrected the T7 checklist row above, which had landed with real commits (`6b2b7ec`, `2c84690`, `cac587c`) but was left unchecked in the previous entry; checked off alongside T8 here since both are now genuinely done.
+
+Test evidence:
+
+- `tests/Feature/Reporting/EventAttendanceReadTest.php` written first (11 cases): the 200 envelope and wire shape (snake_case, ISO 8601 UTC timestamps, exact-keys assertion); a case for nullable `first_scan_at`/`last_scan_at` rendering as JSON `null` for a duplicate-only cell; cursor pagination in `(event_id, ticket_type_id)` order across a page boundary; the `event_id` filter; unknown filter and unknown sort each rejected with `invalid_query_parameter`; 401 with no bearer; 403 without `reports.view`; the Stage 3 `missing_tenant_header` and `tenant_access_denied` cases (not contract-checked, same reasoning as the sibling tests); never leaking another tenant's row. Confirmed red first: ran the full file against the merged T7 codebase (no controller, route, or Data class yet) and got 404 on every case (401/400/403 cases resolved to 404 too, before route registration existed) before implementing.
+- `tests/Isolation/EventAttendanceEndpointIsolationTest.php` (new, endpoint-level, mirroring `EventFinanceEndpointIsolationTest`): a tenant B bearer holding `reports.view` sees tenant B's own row on `GET /v1/reports/attendance` and never tenant A's, run under the downgraded `nodia_isolation` connection, built on the existing `ReportEventAttendanceFixture` (T7).
+- `./vendor/bin/pest tests/Feature/Reporting/EventAttendanceReadTest.php tests/Isolation/EventAttendanceEndpointIsolationTest.php tests/Isolation/ReportEventAttendanceIsolationTest.php` — 21 tests, 21 passed, 63 assertions (scoped verification per the task).
+- `./vendor/bin/pest tests/Contract` — 449 tests, 449 passed, 2881 assertions (all four new exercisers green; `RouteSpecDriftTest`, `ResponseSchemaStrictnessTest`, `OpenApiDocumentValidityTest`, and `DocumentedResponseCoverageTest` all pass over the new path and schemas). Run in isolation from `tests/Architecture` after a combined `tests/Contract tests/Architecture` run produced one unrelated failure (`post /v1/events/{event}/media 201`: `SQLSTATE[23505] duplicate key value violates unique constraint "users_email_unique"`, a Faker email collision inside a pre-existing media test, no reference to `reports/attendance` anywhere in the trace); re-ran `tests/Contract` alone and it was fully green, confirming the failure was a flaky, unrelated Faker collision and not caused by this task's change.
+- `./vendor/bin/pest tests/Architecture` — 40 tests, 40 passed, 97 assertions (run separately per the above; also green as part of the combined run before the unrelated flake).
+- Broader scoped verification beyond the task's own minimum: `./vendor/bin/pest tests/Feature/Reporting tests/Isolation tests/Unit/Reporting` — 403 tests, 403 passed, 935 assertions.
+- Pint (`--dirty --test`) and Larastan (`--memory-limit=1G`, scoped to the two new/changed `app/Reporting` files plus the route file) both clean.
+
+Deviations from the plan: none in scope. Two design choices, flagged rather than silently taken: (1) ordering the cursor by the pair `(event_id, ticket_type_id)` rather than `event_id` alone, unlike `EventFinanceController`, because `report_event_attendance`'s own `unique(tenant_id, event_id, ticket_type_id)` constraint needs both columns for determinism (one event has many ticket types), whereas `report_event_finance`'s `unique(tenant_id, event_id)` needed only one; (2) the nullable-timestamp formatting pattern borrowed from `PayoutData` rather than invented fresh, since it is the established precedent for this exact shape (nullable ISO 8601 UTC string from a nullable `Carbon` model attribute) elsewhere in the codebase.
+
+Not run in this task (out of scope per the task's own instruction to skip full lint/analyse/whole-suite per slice; the gate phase after all tasks covers these): the full six-suite run, `pnpm typecheck`/`pnpm build` over `packages/api-client`.
+
+Commits: 9e6c6c0 (feat(reporting): add GET /v1/reports/attendance endpoint).
