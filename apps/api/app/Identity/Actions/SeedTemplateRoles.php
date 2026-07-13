@@ -60,6 +60,8 @@ final class SeedTemplateRoles
                 Capability::CheckinManage,
                 Capability::ReportsView,
                 Capability::ReportsExport,
+                Capability::CustomersErase,
+                Capability::CustomersExport,
             ],
             'Event Manager' => [
                 Capability::EventsView,

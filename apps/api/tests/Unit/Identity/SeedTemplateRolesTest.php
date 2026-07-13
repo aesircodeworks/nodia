@@ -94,3 +94,15 @@ it('grants neither reporting capability to Box Office or Check-in Agent', functi
             ->not->toContain(Capability::ReportsExport->value);
     }
 });
+
+it('grants customers.erase and customers.export to Owner only', function () {
+    $templates = Role::query()->whereNull('tenant_id')->orderBy('name')->pluck('capabilities', 'name');
+
+    expect($templates['Owner'])->toContain(Capability::CustomersErase->value, Capability::CustomersExport->value);
+
+    foreach (['Box Office', 'Check-in Agent', 'Event Manager', 'Finance'] as $name) {
+        expect($templates[$name])
+            ->not->toContain(Capability::CustomersErase->value)
+            ->not->toContain(Capability::CustomersExport->value);
+    }
+});

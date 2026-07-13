@@ -22,7 +22,11 @@ use App\Identity\Capability;
  * (an unprivileged read of individual order money); reports.export is at
  * least as sensitive since its ledger_entries source exports those same
  * ledger rows as a downloadable file, alongside customer PII in the
- * orders and tickets sources.
+ * orders and tickets sources. customers.erase and customers.export are
+ * stage-12's addition (Data model "data_subject_requests", Endpoints):
+ * gating the erasure and export data subject request flows
+ * respectively. Neither is money-shaped, so neither is financially
+ * privileged.
  */
 
 it('carries the exact capability registry, no more and no less', function () {
@@ -49,6 +53,8 @@ it('carries the exact capability registry, no more and no less', function () {
         'checkin.manage',
         'reports.view',
         'reports.export',
+        'customers.erase',
+        'customers.export',
     ]);
 });
 
@@ -75,4 +81,6 @@ it('marks every other capability as not financially privileged', function (Capab
     Capability::SeatMapsManage,
     Capability::EventsManageSeating,
     Capability::CheckinManage,
+    Capability::CustomersErase,
+    Capability::CustomersExport,
 ]);

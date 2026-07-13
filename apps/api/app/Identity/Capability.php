@@ -32,6 +32,8 @@ enum Capability: string
     case CheckinManage = 'checkin.manage';
     case ReportsView = 'reports.view';
     case ReportsExport = 'reports.export';
+    case CustomersErase = 'customers.erase';
+    case CustomersExport = 'customers.export';
 
     /**
      * MFA is mandatory for platform-scope staff and tenant roles that

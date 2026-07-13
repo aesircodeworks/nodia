@@ -36,6 +36,8 @@ use App\EventCatalog\Exceptions\SeatMapVirtualEventException;
 use App\EventCatalog\Exceptions\TicketTypeNotFoundException;
 use App\EventCatalog\Exceptions\VenueNotFoundException;
 use App\Identity\Capability;
+use App\Identity\Enums\DataSubjectRequestStatus;
+use App\Identity\Enums\DataSubjectRequestType;
 use App\Identity\Enums\MembershipAccessOutcome;
 use App\Identity\Enums\MembershipScope;
 use App\Identity\Exceptions\ClaimTokenExpiredException;
@@ -277,6 +279,10 @@ arch()->preset()->security();
 // other context's own HasErrorCode-adjacent guard exceptions above.
 // ExportNotFoundException, ExportNotReadyException, and
 // ExportFailedException (stage-11 task-13) are the same story.
+// DataSubjectRequestType and DataSubjectRequestStatus (stage-12 task-01)
+// are data_subject_requests' own type and status registries and live
+// with the Identity context like MembershipScope and MembershipAccessOutcome
+// live with theirs, not App\Enums.
 arch()->preset()->laravel()->ignoring([
     ErrorCode::class,
     Capability::class,
@@ -475,4 +481,6 @@ arch()->preset()->laravel()->ignoring([
     ExportNotFoundException::class,
     ExportNotReadyException::class,
     ExportFailedException::class,
+    DataSubjectRequestType::class,
+    DataSubjectRequestStatus::class,
 ]);
