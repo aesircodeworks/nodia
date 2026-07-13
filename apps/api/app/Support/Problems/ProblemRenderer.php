@@ -224,6 +224,8 @@ class ProblemRenderer
             ErrorCode::AdmissionInvalid => 'The presented X-Admission-Token is not valid for this event, tenant, and time.',
             ErrorCode::ExportNotReady => 'This export has not completed yet; retry once its status is completed.',
             ErrorCode::ExportFailed => 'This export failed and has no file to download.',
+            ErrorCode::CustomerAlreadyAnonymized => 'This customer has already been anonymized.',
+            ErrorCode::DataSubjectRequestAlreadyOpen => 'An open data subject request of this type already exists for this customer.',
         };
     }
 }
