@@ -29,7 +29,7 @@ Stage 8d is still In progress and gated on the launch-gateway ADR. Per the stage
 - [x] T1 `data_subject_requests` migration, model, enums, conditional status transitions (identity)
 - [x] T2 `AnonymizeCustomer`, `CustomerAnonymized`, erasure endpoint, registry update (identity, docs)
 - [x] T3 Orders `CustomerAnonymized` consumer scrubbing `attendee_name` (orders)
-- [ ] T4 Reporting `CustomerAnonymized` consumer (reporting)
+- [x] T4 Reporting `CustomerAnonymized` consumer (reporting)
 - [ ] T5 Data subject export assembler and queued job (identity)
 - [ ] T6 Export download URL plus list and show endpoints (identity)
 - [ ] T7 `config/retention.php`, webhook payload pruner, export attachment pruner, scheduler (payments, identity)
@@ -134,3 +134,28 @@ Test evidence:
 - No Data class changed, so `composer -d apps/api run types:generate` was not run (nothing to regenerate).
 
 Deviation from the plan: none. The consumer scrubs to a fixed constant rather than a per-customer derived value (unlike `AnonymizationPlaceholder` for the customer row itself); this is a judgment call, not a deviation, since the plan's own idempotence reasoning ("overwriting a placeholder with the same placeholder is a no-op") only requires a stable value, and `attendee_name` has no uniqueness constraint for a derived value to satisfy.
+
+## T4: Reporting CustomerAnonymized consumer
+
+2026-07-13 16:04 -03
+
+Landed stage-12 plan Domain events "Consumed" and task breakdown item 5: the Reporting subscriber for Identity's `CustomerAnonymized`. Inspected Stage 11's three read models before writing anything (`report_daily_sales`, `report_event_finance`, `report_event_attendance` migrations and their owning models): every column across all three is `tenant_id`/`event_id`/`ticket_type_id` (identifiers), a count, a money `*_amount` column, `sales_date`/`first_scan_at`/`last_scan_at` (dates/timestamps), or `currency`/`created_at`/`updated_at`. No name, email, or any other customer-identifying field was denormalized. This forced the no-op shape the plan names as acceptable ("If Stage 11's read models carry no PII, the subscriber is still registered with a no-op assertion test"), not the scrubbing shape Orders (T3) landed.
+
+What landed:
+
+- `App\Reporting\Jobs\ScrubReportingPii`: an `OutboxSubscriber` whose `handle()` body is intentionally empty (see class docblock), registered against `CustomerAnonymized` all the same, so a future PII-carrying read model inherits the registration, the outbox plumbing, and the duplicate-delivery guarantee already in place, needing only an implementation.
+- `App\Reporting\ReportingServiceProvider::boot()`: registered `ScrubReportingPii::NAME` against `['CustomerAnonymized']` in the `SubscriberRegistry`, alongside the three existing Reporting projectors.
+- `tests/Feature/Reporting/CustomerAnonymizedConsumerTest.php`, mirroring `tests/Feature/Orders/CustomerAnonymizedConsumerTest.php`'s structure for the parts that carry over: subscriber-registration assertion; a duplicate-delivery test running the same outbox event id through `ProcessOutboxDelivery::handle()` twice and asserting exactly one `processed` row in `outbox_deliveries` (required regardless of which of the two shapes the codebase landed in, per the task); and the no-op assertion test the plan calls for in place of a scrub test — `Schema::getColumnListing()` against all three read-model tables, asserted against a PII-name-pattern blocklist (`name`, `email`, `phone`, `address`, `document`, `dob`, `birth`), so a future migration that adds a column matching any of those patterns fails this test immediately and points at `ScrubReportingPii` as the place to implement the scrub, rather than the obligation going unnoticed. The `CustomerAnonymized` event itself is produced by driving the real `AnonymizeCustomer` Action inside an explicit `DB::transaction()`, the same posture T3's Orders test and `LedgerProjectionTest.php` already use.
+
+Test evidence:
+
+- Confirmed red first: ran the new test file before `ScrubReportingPii` existed. The registration and duplicate-delivery cases failed with `Class "App\Reporting\Jobs\ScrubReportingPii" not found`; the PII-column assertion test passed immediately (as expected, since it asserts a true fact about the already-migrated schema, not a class that doesn't exist yet).
+- Green after implementation: `./vendor/bin/pest tests/Feature/Reporting/CustomerAnonymizedConsumerTest.php` — 3 tests, 3 passed, 247 assertions.
+- `php artisan test --testsuite=Architecture` (context-boundary guard) — 40 tests, 40 passed.
+- Scoped regression on the touched directory (`ReportingServiceProvider` is shared): `./vendor/bin/pest tests/Feature/Reporting tests/Unit/Reporting` — 125 tests, 125 passed, 775 assertions.
+- `./vendor/bin/pint --test` and `./vendor/bin/phpstan analyse --memory-limit=1G` on the two changed `app/` files: both pass with zero errors.
+- No Data class changed, so `composer -d apps/api run types:generate` was not run (nothing to regenerate).
+
+Commit: `e473add` (`feat(reporting): register CustomerAnonymized consumer as a no-op`).
+
+Deviation from the plan: none. Per the task's own instruction to note which of the two shapes the codebase forced: the no-op-with-assertion shape, not the scrubbing shape, since Stage 11 denormalized no PII into any of the three read models.
