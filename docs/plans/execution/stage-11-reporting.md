@@ -349,3 +349,33 @@ Test evidence:
 Not run in this task (out of scope per the task's own instruction to skip full lint/analyse/whole-suite per slice; the gate phase after all tasks covers these): the full six-suite run, `pnpm typecheck`/`pnpm build` over `packages/api-client` (no TS changed anyway).
 
 Commits: 9926ae9 (feat(support): add a per-projection advisory lock to outbox delivery), e4fd507 (feat(reporting): add reporting:rebuild command with --tenant and --verify).
+
+## Run: 2026-07-13 (continuation)
+
+- Stage: 11 (docs/plans/stage-11-reporting.md)
+- Date: 2026-07-13
+- Branch: feat/api-implementation
+- Base commit: 22123f5c79f217281dd15a2c26d9513681797a57
+
+### Pre-run verification
+
+Re-verified against the codebase, not the journal alone:
+
+- Landed and confirmed present: `app/Reporting` with `ReportingServiceProvider`, three Data classes (`DailySalesData`, `EventFinanceData`, `EventAttendanceData`), three projector jobs (`ProjectDailySales`, `ProjectEventFinance`, `ProjectEventAttendance`), three models, the `Support/Rebuild` package, and `App\Console\Commands\ReportingRebuildCommand`; migrations `2026_07_13_000056_create_report_daily_sales_table`, `..._000057_create_report_event_finance_table`, `..._000058_create_report_event_attendance_table`; `reports.view` and `reports.export` in `App\Identity\Capability`; the three GET `/v1/reports/*` endpoints with their OpenAPI paths and generated TypeScript; the Feature, Unit, Isolation, and Concurrency tests for all of the above.
+- Not landed: the entire export surface. No `exports` migration, model, or enums; no `ExportSource`, CSV writer, `BuildExport` action or job; no `/v1/exports` routes (the route file's only reference to exports is a `// task 16 (exports).` placeholder comment); no `export_not_ready` or `export_failed` problem codes.
+- Status table in `docs/api-implementation-plan.md` already reads "In progress" for Stage 11; no change needed.
+
+Remaining work is stage-11 plan task breakdown items 14 through 16 (TDD sequencing Slice 8), tracked below as T10 through T12, matching the checklist from the first run.
+
+### Task checklist
+
+- [ ] T10 `exports` table, model, type and status enums, and the conditional claim transition (reporting)
+- [ ] T11 `ExportSource` contract and registry, streaming CSV writer, `BuildExport` action and job, and the `orders` source end to end (reporting)
+- [ ] T12 The remaining export sources: `tickets`, `ledger_entries`, `check_ins`, each over a cursor-paginated Action of the owning context (reporting, orders, payments, checkin)
+- [ ] T13 Export endpoints: create, list, show, download with expiring URL and the new problem codes (reporting)
+
+Plan task breakdown item 15 is split into T11 and T12 so each fits one TDD session: T11 builds the mechanism and proves it end to end on one source, T12 adds the remaining three sources plus the owning-context cursor Actions they need.
+
+### Review rounds
+
+### Decisions and deviations
