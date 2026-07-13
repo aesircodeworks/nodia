@@ -27,7 +27,7 @@ Dependencies are in place: Stage 4 (`SubscriberRegistry`, `OutboxReplay` with th
 - [x] T3 `ProjectDailySales` projector and the Orders bulk ticket lookup Action (reporting, orders)
 - [x] T4 GET `/v1/reports/daily-sales` with Data classes, policy, OpenAPI, TypeScript (reporting)
 - [x] T5 `report_event_finance` migration plus `ProjectEventFinance` and the Payments row-facts Action (reporting, payments)
-- [ ] T6 GET `/v1/reports/event-finance` (reporting)
+- [x] T6 GET `/v1/reports/event-finance` (reporting)
 - [ ] T7 `report_event_attendance` migration plus `ProjectEventAttendance` (reporting)
 - [ ] T8 GET `/v1/reports/attendance` (reporting)
 - [ ] T9 `reporting:rebuild` command with `--tenant`, `--verify`, and the advisory lock shared with the projectors (reporting)
@@ -209,3 +209,34 @@ Deviation from the plan, disclosed in full: the `gross_amount`-nets-down-on-refu
 Not run in this task (out of scope per the task's own instruction to skip full lint/analyse/whole-suite per slice; the gate phase after all tasks covers these): Pint/Larastan over the whole repo, the full six-suite run.
 
 Commits: 1fa698c (feat(orders): add bulk order-to-event lookup for reporting projectors), 75e854a (feat(payments): add payment row-facts lookup for the finance projector), 90377f7 (feat(reporting): project event finance from PaymentConfirmed and RefundCompleted).
+
+## T6: GET /v1/reports/event-finance endpoint
+
+2026-07-13 06:35 -03
+
+Landed stage-11 plan task breakdown item 9, the Endpoints table row for event finance, and TDD sequencing Slice 4 in full (same pattern as Slice 2, T4).
+
+What landed:
+
+- `App\Reporting\Data\EventFinanceData`: `event_id`, `orders_paid_count`, `refunds_count`, `gross`, `gateway_fees`, `platform_commission`, `tenant_net`, `refunded` (all money via the existing `Support\Money` transformers). `fromModel()` follows `DailySalesData`'s own precedent (laravel-data's magical creation, traced directly in T4). No hidden `id` property this time: unlike `report_daily_sales`, `report_event_finance` carries `unique(tenant_id, event_id)`, so a single `orderBy('event_id')` is already fully deterministic under RLS tenant scoping, and `event_id` is already a real wire property, so no extra hidden tiebreak field is needed. `event_id` is kept snake_case in the PHP constructor (not the usual camelCase `eventId`) for the same structural reason `DailySalesData` keeps `sales_date` snake_case: `Illuminate\Pagination\AbstractCursorPaginator::getParametersForItem()` reads the cursor column's value off the transformed Data item by plain PHP property access matching the literal orderBy column name.
+- `App\Reporting\Http\Controllers\EventFinanceController::index()`: `Spatie\QueryBuilder\QueryBuilder` over `EventFinance::class` with `AllowedFilter::exact('event_id')` only (the plan's own Endpoints table row names no sort for this endpoint, unlike daily-sales); `->allowedSorts()` called with no arguments, mirroring `LedgerController::entries`'s own no-sort-allowed posture, so any requested `sort` is rejected with 400 `invalid_query_parameter` rather than silently ignored; `orderBy('event_id')`; `cursorPaginate(min($request->integer('per_page', 15), 100))`.
+- `App\Reporting\Http\routes\admin.php`: `Route::get('/reports/event-finance', ...)` added to the same `RequireCapability::class.':'.Capability::ReportsView->value` group as daily-sales.
+- `docs/openapi/openapi.yaml`: the `GET /v1/reports/event-finance` path (200/400/401/403, no new codes) plus `EventFinance` and `EventFinanceCursorPage` component schemas, inserted directly after the daily-sales path and its schemas. The 403 response reuses `MissingCapabilityProblem`, matching daily-sales.
+- `tests/Contract/DocumentedResponseCoverageTest.php`: `contractSeedEventFinance()` helper (mirroring `contractSeedDailySales()`) plus the four `get /v1/reports/event-finance {200,400,401,403}` exercisers, reusing `contractReportsBearer()` and `contractHoldFixture()` from T4/earlier stages.
+- No Architecture-suite exemption needed: `'App\Reporting\Http\Controllers'` was already added to `tests/Architecture/PresetTest.php`'s `ignoring()` list in T4, and it already covers this new controller in the same namespace.
+- `composer -d apps/api run types:generate`: `EventFinanceData` regenerated into `packages/api-client/src/generated/index.ts` and the manifest; diff is exactly the new eight-field `EventFinanceData` type, nothing else moved.
+
+Test evidence:
+
+- `tests/Feature/Reporting/EventFinanceReadTest.php` written first (10 cases): the 200 envelope and wire shape (snake_case, money objects, exact-keys assertion); cursor pagination in deterministic `event_id` order across a page boundary; the `event_id` filter; unknown filter and unknown sort each rejected with `invalid_query_parameter`; 401 with no bearer; 403 without `reports.view`; the Stage 3 `missing_tenant_header` and `tenant_access_denied` cases (not contract-checked, same reasoning as `DailySalesReadTest`); never leaking another tenant's row. Confirmed red first: ran the full file against the merged T5 codebase (Data class already drafted, but no controller/route yet) and got the expected 404s on every case before adding the controller, route registration, and OpenAPI path.
+- `tests/Isolation/EventFinanceEndpointIsolationTest.php` (new, endpoint-level, mirroring `DailySalesEndpointIsolationTest`): a tenant B bearer holding `reports.view` sees tenant B's own row on `GET /v1/reports/event-finance` and never tenant A's, run under the downgraded `nodia_isolation` connection, built on the existing `ReportEventFinanceFixture` (T5).
+- `./vendor/bin/pest tests/Feature/Reporting/EventFinanceReadTest.php tests/Isolation/EventFinanceEndpointIsolationTest.php tests/Isolation/ReportEventFinanceIsolationTest.php` — 20 tests, 20 passed, 60 assertions.
+- `./vendor/bin/pest tests/Contract tests/Architecture` — 485 tests, 485 passed, 2952 assertions (all four new exercisers green; `RouteSpecDriftTest`, `ResponseSchemaStrictnessTest`, `OpenApiDocumentValidityTest`, and `DocumentedResponseCoverageTest` all pass over the new path and schemas).
+- Broader scoped verification beyond the task's own minimum: `./vendor/bin/pest tests/Feature/Reporting tests/Isolation tests/Unit/Reporting` — 375 tests, 375 passed, 844 assertions.
+- Pint (`--dirty --test`) and Larastan (`--memory-limit=1G`, scoped to the two new/changed `app/Reporting` files plus the route file) both clean.
+
+Deviations from the plan: none in scope. One design choice, flagged rather than silently taken: ordering the cursor solely by `event_id` (no hidden tiebreak `id` property, unlike `DailySalesData`) because `report_event_finance`'s own `unique(tenant_id, event_id)` constraint already guarantees no two rows in one tenant's result set can share an `event_id`, so a second column would add no discriminating power; this mirrors the same reasoning `report_daily_sales` could not use (its own uniqueness needs event_id, ticket_type_id, and sales_date together, and only sales_date is caller-sortable).
+
+Not run in this task (out of scope per the task's own instruction to skip full lint/analyse/whole-suite per slice; the gate phase after all tasks covers these): the full six-suite run, `pnpm typecheck`/`pnpm build` over `packages/api-client`.
+
+Commits: 795cdb7 (feat(reporting): add GET /v1/reports/event-finance endpoint).
