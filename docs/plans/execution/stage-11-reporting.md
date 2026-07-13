@@ -555,3 +555,17 @@ Full quality gates run after Stage 11 implementation work.
 - `pnpm typecheck`: run because the generated api-client types changed within this stage's own commits; all six workspaces clean.
 
 Fix commit: f809e0a (fix(reporting): register export error codes in ErrorCodeTest).
+
+## CI
+
+Mon Jul 13 14:45:40 -03 2026
+
+Branch `feat/api-implementation` pushed to origin at 3302f35 (the stage-11 gate commit; no commits landed after the gate entry, so no scoped local re-runs were needed). All five workflows ran against 3302f35 and every one concluded `success`:
+
+- API — run 29271155111 — success
+- Packages — run 29271155874 — success
+- Checkin — run 29271155615 — success
+- Admin — run 29271155167 — success
+- Storefront — run 29271155198 — success
+
+No red run, so no CI-only defect (missing service container, lint on regenerated output) surfaced beyond what the local gate already covered. Stage 11 is green locally and on CI.
