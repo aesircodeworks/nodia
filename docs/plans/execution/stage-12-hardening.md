@@ -589,4 +589,6 @@ Deliberately **not** amended, and the reader should know why:
 
 Verification: none applicable. No code changed, so no suite, no Larastan, no Pint, no `types:generate` run was warranted, and none is claimed.
 
+Commit: `7f0b753` (`docs: drop the stage 12 smoke suite requirement`), which carries this entry and the three document amendments above. No application code is in it.
+
 Deviation from the plan: material and operator-directed. Task 17 was a planned deliverable of this stage and shipped nothing. The stage plan and the master plan now match that reality rather than carrying an unmet requirement.
