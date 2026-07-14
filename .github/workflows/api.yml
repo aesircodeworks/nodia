@@ -389,3 +389,24 @@ jobs:
         run: |
           git add -N packages/api-client/src/generated
           git diff --exit-code -- packages/api-client/src/generated
+
+  # The api image bakes the source in at build time and nothing else in CI ever
+  # builds it, so a Dockerfile that cannot resolve its dependencies stays broken
+  # silently while the stale image keeps serving. That happened: ext-exif went
+  # missing when medialibrary landed and the image did not build for seven stages.
+  # This job is the guard. It builds only; running the stack is the load job's work.
+  image:
+    name: API Image
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the API image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/api
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
