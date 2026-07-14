@@ -1,0 +1,65 @@
+name: Load
+
+# Manual dispatch only, never per commit. A load run needs the whole Compose
+# stack and takes minutes, and the numbers a shared GitHub runner produces are
+# not comparable to anything. This job exists to prove the scenarios still
+# execute against the current API and that the correctness probes still pass,
+# which is the part that rots silently. The numbers in docs/load-targets.md come
+# from full-profile runs on a recorded machine, not from here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: Scenario to run
+        type: choice
+        default: all
+        options: [all, hold-burst, payment-initiation, waiting-room]
+      profile:
+        description: Load profile (ci is reduced scale; full will be slow and noisy on a shared runner)
+        type: choice
+        default: ci
+        options: [ci, full]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  load:
+    name: Load Scenarios
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Prepare the environment file
+        run: |
+          cp .env.example .env
+          sed -i "s|^APP_KEY=.*|APP_KEY=base64:$(openssl rand -base64 32)|" .env
+
+      - name: Start the stack
+        run: make up
+
+      - name: Migrate
+        run: |
+          docker compose -f infra/compose/docker-compose.yml --env-file "$PWD/.env" \
+            exec -T api php artisan migrate --force
+
+      - name: Run the load scenarios and the correctness probes
+        run: ./infra/load/run.sh --scenario '${{ inputs.scenario }}' --profile '${{ inputs.profile }}'
+
+      - name: Upload the k6 summaries and probe output
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: load-results
+          path: infra/load/results/
+          if-no-files-found: warn
+
+      - name: Dump the API logs on failure
+        if: failure()
+        run: docker compose -f infra/compose/docker-compose.yml --env-file "$PWD/.env" logs api --tail 200

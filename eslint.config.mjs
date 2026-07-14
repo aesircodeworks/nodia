@@ -33,7 +33,8 @@ export const uiConventions = {
           'Hardcoded hex color; use the design tokens from packages/ui (docs/ui-conventions.md).',
       },
       {
-        selector: 'TemplateElement[value.raw=/#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\\b/]',
+        selector:
+          'TemplateElement[value.raw=/#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\\b/]',
         message:
           'Hardcoded hex color; use the design tokens from packages/ui (docs/ui-conventions.md).',
       },
@@ -73,8 +74,27 @@ const eslintConfig = defineConfig([
     ignores: ['**/*.test.{ts,tsx}'],
     ...uiConventions,
   },
+  {
+    // k6 load scenarios (infra/load) execute inside k6's own JavaScript runtime,
+    // not Node: it injects these globals and resolves the `k6/*` imports itself.
+    files: ['infra/load/**/*.js'],
+    languageOptions: {
+      globals: {
+        __ENV: 'readonly',
+        __VU: 'readonly',
+        __ITER: 'readonly',
+      },
+    },
+  },
   eslintConfigPrettier,
-  globalIgnores(['**/dist/**', '**/build/**', '**/.next/**', '**/coverage/**', '**/*.tsbuildinfo']),
+  globalIgnores([
+    '**/dist/**',
+    '**/build/**',
+    '**/.next/**',
+    '**/coverage/**',
+    '**/*.tsbuildinfo',
+    'infra/load/results/**',
+  ]),
 ]);
 
 export default eslintConfig;

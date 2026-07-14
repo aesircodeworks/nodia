@@ -20,3 +20,6 @@ packages/api-client/src/generated/typescript-transformer-manifest.json
 # Tool-managed scaffolding (Spec Kit and Claude Code), not project source
 .claude
 .specify
+
+# Load-run output (k6 summaries and probe dumps), written per run and not committed
+infra/load/results

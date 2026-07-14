@@ -126,6 +126,18 @@ services:
       AWS_USE_PATH_STYLE_ENDPOINT: "true"
 
       OCTANE_SERVER: frankenphp
+
+      # On-sale throttles and the admission-token key, forwarded so a load run
+      # can raise the storefront rate limits without editing this file
+      # (infra/load/run.sh sets them). Every default here is the same value
+      # config/onsale.php already falls back to, so an ordinary `make up` keeps
+      # production behavior.
+      ONSALE_BROWSE_RATE_MAX_ATTEMPTS: ${ONSALE_BROWSE_RATE_MAX_ATTEMPTS:-120}
+      ONSALE_QUEUE_ENTRY_RATE_MAX_ATTEMPTS: ${ONSALE_QUEUE_ENTRY_RATE_MAX_ATTEMPTS:-20}
+      ONSALE_QUEUE_POLL_RATE_MAX_ATTEMPTS: ${ONSALE_QUEUE_POLL_RATE_MAX_ATTEMPTS:-30}
+      ONSALE_HOLD_CREATION_IP_RATE_MAX_ATTEMPTS: ${ONSALE_HOLD_CREATION_IP_RATE_MAX_ATTEMPTS:-10}
+      ONSALE_HOLD_CREATION_CUSTOMER_RATE_MAX_ATTEMPTS: ${ONSALE_HOLD_CREATION_CUSTOMER_RATE_MAX_ATTEMPTS:-20}
+      ONSALE_ADMISSION_TOKEN_SIGNING_KEY: ${ONSALE_ADMISSION_TOKEN_SIGNING_KEY:-}
     ports:
       - "${API_PORT:-8000}:8000"
     healthcheck:
