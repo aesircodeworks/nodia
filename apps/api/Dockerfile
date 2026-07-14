@@ -10,6 +10,7 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
 RUN install-php-extensions \
     bcmath \
+    exif \
     intl \
     pcntl \
     pdo_pgsql \
