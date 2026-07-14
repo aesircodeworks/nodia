@@ -240,10 +240,11 @@ Goal: everything an operator or regulator needs, and the proof the whole surface
 - GDPR and LGPD: anonymize-in-place erasure marking `anonymized_at`, per-tenant data subject export; retention windows for raw webhooks and logs; outbox archival to object storage.
 - Operational commands: replay failed deliveries, reconcile payments, release stuck holds, all support-safe and audited.
 - Security sweep: isolation suite coverage asserted for every endpoint, authorization matrix completeness check, webhook signature negative tests, secret handling review.
-- API-level smoke suite: publish, purchase, async confirmation, check-in, refund, entirely over HTTP against the fake gateway.
 - Load tests focused on hold creation, payment initiation, and waiting room admission, with results recorded. The waiting-room scenario applies once Stage 10 has shipped; an MVP-thinned release records the omission in the load doc and does not count as completing this stage against the full plan.
 
-Exit: the smoke suite is a CI gate; no endpoint lacks isolation and contract coverage; load targets are documented with headroom.
+An API-level smoke suite (publish, purchase, async confirmation, check-in, refund over HTTP against the fake gateway, gated in CI) was a deliverable here and was dropped during the stage; the Stage 8c capstone test already drives that loop over HTTP with the ledger invariant asserted at every step. The reasoning, and what coverage the drop does and does not forgo, is recorded in the stage plan's Scope and non-goals.
+
+Exit: no endpoint lacks isolation and contract coverage; load targets are documented with headroom.
 
 ## Open decisions
 

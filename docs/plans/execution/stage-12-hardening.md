@@ -42,7 +42,7 @@ Stage 8d is still In progress and gated on the launch-gateway ADR. Per the stage
 - [x] T14 Coverage completeness, authorization matrix, and payload PII meta-tests (support)
 - [x] T15 Webhook negative matrix across registered gateways (payments)
 - [x] T16 `env()` architecture test, `.env.example` assertions (support) - scanner arm dropped and the stage plan amended to match, see the entry
-- [ ] T17 Smoke suite and required CI gate (support, ci)
+- [x] T17 Smoke suite and required CI gate (support, ci) - dropped in full, no code landed; the stage plan, the master plan, and the plans README were amended to match, see the entry
 - [ ] T18 Load tooling, `infra/load/` scenarios, `docs/load-targets.md` (ci, docs)
 
 ### Review rounds
@@ -556,3 +556,37 @@ No other document required the gate: the master plan's Stage 12 line and system-
 With the plan amended, T16 is complete against it, and the checklist tick above no longer carries a partial qualification. The substantive fact the amendment does not change, and the reason the deferral bullet says it out loud: nothing has ever scanned this repository's tree or history for committed secrets.
 
 Commit: this entry rides along with the plan amendment it describes, in `docs: drop the stage 12 secret scanner requirement`.
+
+## T17: Smoke suite dropped
+
+2026-07-14 01:00 -03
+
+**No code landed for this task.** The smoke suite and its CI gate were dropped in full at the operator's direction, before any test file, `phpunit.xml` suite, or workflow job was written. This entry records the reasoning and the four documents amended to match; nothing in `apps/api` or `.github` changed.
+
+How the drop came about: the task was planned first (a `tests/Smoke` suite, a seventh `phpunit.xml` testsuite, an `API Smoke` job in `api.yml`, and one scenario chaining tenant creation through refund), and the operator then asked what the suite would actually gain. Two claims were examined against the code.
+
+The first, and the one that decided it: **the smoke suite would have largely re-run a test that already exists.** `tests/Feature/Payments/StageExitCapstoneTest.php` (Stage 8c, task 12) already drives publish, hold, order, async payment initiation, confirmation webhook, refund, and payout entirely over HTTP against the fake gateway, asserting after every money step that ledger debits equal credits per `(reference_type, reference_id, currency)` and that the `tenant_net` balance matches an expectation tracked independently from the payment and refund rows; a second case in the same file covers a declined payment, an expired payment, duplicate webhooks delivered everywhere, and a failed payout that leaves the ledger untouched. Slice 7's scenario is that loop with different setup code.
+
+The second claim was mine, and it was wrong. I had argued the suite's real value was running the outbox on a **real Redis queue** rather than the `sync` queue every existing suite uses (Slice 7's own text says "a real PostgreSQL and Redis stack"), and the operator had chosen that option on my recommendation. Reading `app/Support/Outbox/Jobs/ProcessOutboxDelivery.php` refutes it:
+
+- The job's constructor takes `string $eventId` and `string $subscriber`. Two strings; there is no object graph, no model, no closure, so nothing can fail to serialize when a real queue serializes what `sync` never does.
+- The job establishes its own database context: it loads the envelope through `TenantTransaction::asPlatform()` and runs the effect inside `asTenant($event->tenant_id)`, and its docblock says it does so precisely because "the job cannot set `app.tenant_id` before reading the row." The classic worker bug (a job that silently rides the request middleware's tenant context and breaks off-process) is designed out, and designed out in a way that behaves identically under `sync`.
+
+So swapping the driver would have exercised Laravel's push and pop, not this codebase. The retry and deferral machinery that `sync` genuinely does not reach (`release()`, `attempts()`, `$tries`, the per-subscriber backoff policy from `config/outbox.php`) is never entered by a happy-path scenario, so the gate would have been green and vacuous, the same failure mode T14's own entry warns about for the coverage meta-tests.
+
+What the drop does forgo, stated plainly rather than minimized: the smoke suite would have been the only test chaining the bootstrap endpoints into the flow that consumes their output (`POST /v1/tenants`, `/v1/roles`, `/v1/memberships`, `/v1/events`, `/v1/events/{event}/publish` feeding a hold, an order, a payment), and the only one scanning a real `qr_payload` read off `GET /v1/storefront/orders/{order}/tickets` for an order that was genuinely paid for. `tests/Feature/CheckIn/RecordScanEndpointTest.php` scans fixture-built tickets, so the Orders-to-CheckIn seam is not crossed by any test today. That is real uncovered ground. The judgment taken is that it does not justify a slow, order-dependent scenario that would be the first thing in the suite to flake, and that the coverage is better placed at the deployment layer where roadmap Phase 7 already lists end-to-end smoke tests as its own item. Reinstating an API-level suite later is additive: a `tests/Smoke` directory, a seventh testsuite in `phpunit.xml`, a CI job, and no application code.
+
+Documents amended (verified by grep across `docs/`, not assumed):
+
+- `docs/plans/stage-12-hardening.md`: the smoke suite is removed from Scope and non-goals' delivered list and added to Explicitly deferred with the reasoning above; Slice 7 is marked dropped; task breakdown item 17 records the drop, keeping its number so this journal's task references stay stable; the exit-criteria preamble's quoted stage exit line loses its "the smoke suite is a CI gate" clause; exit criterion 9 records the drop and keeps its number so criteria 10 and 11 keep theirs. Dependencies on Stages 5a through 9 are re-justified against the export assembler, the load scenarios, and the coverage meta-tests, which is what actually needs them now.
+- `docs/api-implementation-plan.md`: the Stage 12 section loses the smoke suite from its deliverables and from its exit line, with a sentence recording the drop and pointing at the stage plan. Left as-is, the master plan would have made the stage unclosable against its own exit line.
+- `docs/plans/README.md`: the Stage 12 summary row drops "smoke suite CI gate".
+
+Deliberately **not** amended, and the reader should know why:
+
+- `docs/roadmap.md` Phase 7 lists "Add end-to-end smoke tests for publish, purchase, email, check-in, and refund" among production hardening. That item is a deployment-layer concern in a later phase, not a Stage 12 API deliverable, and this drop does not discharge it. It is now the only place in the docs that still promises end-to-end smoke coverage, and it is the right place for it.
+- Forward references in earlier stages' plans (`stage-08a` calling its scenario matrix "the seed of Stage 12's smoke suite", and similar lines in `stage-08b`, `stage-08c`, `stage-08d`, `stage-09`, `stage-11`) are left as written. Those plans are the record of what those stages planned at the time; editing them would rewrite history. They are stale as of this entry: no smoke suite exists or will.
+
+Verification: none applicable. No code changed, so no suite, no Larastan, no Pint, no `types:generate` run was warranted, and none is claimed.
+
+Deviation from the plan: material and operator-directed. Task 17 was a planned deliverable of this stage and shipped nothing. The stage plan and the master plan now match that reality rather than carrying an unmet requirement.

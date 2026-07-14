@@ -12,7 +12,6 @@ Delivered by this stage:
 - Outbox archival: rows past the retention window archived to object storage as verifiable segments, deleted from PostgreSQL only after upload verification, with the replay primitive extended to read archived segments so rebuilds still work (system-design 9.1: retained rows double as the replay log).
 - Operational commands, support-safe and audited: replay failed deliveries, reconcile payments, release stuck holds (api-implementation-plan, Stage 12 line). All are dry-run by default, bounded by explicit arguments, and write activity log entries.
 - Security sweep: meta-tests asserting isolation suite coverage for every tenant-scoped endpoint and contract coverage for every route; an authorization matrix completeness check asserting every mutating route maps to a capability; webhook signature negative tests re-run across all registered gateways; secret handling review with an architecture test forbidding `env()` outside `config/` (system-design 14.1, 14.2).
-- API-level smoke suite: publish, purchase, async confirmation, check-in, refund, entirely over HTTP against the fake gateway, as a distinct Pest suite and a required CI gate.
 - Load tests on hold creation, payment initiation, and waiting room admission (system-design 18), with targets and measured headroom recorded in `docs/load-targets.md`. The load tool is selected at slice start against current documentation, per the master plan's tool-selection posture; k6 is the default candidate.
 
 Explicitly deferred:
@@ -22,6 +21,7 @@ Explicitly deferred:
 - Automated erasure of staff (`users`) PII: staff offboarding is an HR process, not a data subject request flow; only `customers` are in scope, matching system-design 14.3.
 - Dedicated secret store integration (Infisical or Vault, system-design 14.1): deployment-time concern under ADR 017's deferred-orchestrator posture; this stage verifies handling discipline (env-only configuration, no secrets in the repo), not the store.
 - Repo secret scanner in CI (gitleaks or equivalent): dropped at the operator's direction during task 16, after the tool was selected but before it was ever run. The two static guards task 16 did land prove the environment is read only in `config/` and that no committed `.env.example` carries a credential; nothing scans the rest of the tree or the git history, so the repository's history has never been checked for a committed secret and no stage artifact claims otherwise. Reinstating a gate later (gitleaks, trufflehog, or GitHub's own push protection and secret scanning, which needs no third-party tool) is additive: it lands as a workflow and a config file, and touches no application code.
+- API-level smoke suite and its CI gate: dropped at the operator's direction during task 17, before any code was written, once the coverage it would actually add was examined against what already exists. `tests/Feature/Payments/StageExitCapstoneTest.php` (Stage 8c) already drives publish, hold, order, async payment, confirmation webhook, refund, and payout over HTTP against the fake gateway, asserting the ledger's debits-equal-credits and `tenant_net` invariants after every money step, with a second case covering declines, expiries, and duplicate webhooks; the smoke suite would have re-run that loop with different setup code. The one rationale that would have justified the duplication, running the outbox on a real Redis queue rather than the `sync` queue every suite uses, does not survive inspection: `ProcessOutboxDelivery` carries two strings (event ID, subscriber name), so nothing can fail to serialize, and it establishes its own database context through `TenantTransaction::asPlatform()` then `asTenant()` precisely because a worker has no request middleware to set `app.tenant_id`. Swapping the queue driver therefore exercises Laravel's push and pop, not this codebase; the retry and deferral machinery that `sync` genuinely does not reach (`release()`, `attempts()`, the per-subscriber backoff policy) is never entered by a happy-path run anyway, so the gate would have been green and vacuous. What the suite alone would have covered is narrower: chaining the bootstrap endpoints into the flow that consumes them, and scanning a real `qr_payload` taken from a genuinely paid order (`tests/Feature/CheckIn/RecordScanEndpointTest.php` scans fixture-built tickets). That cross-context wiring is real but unproven coverage today, and it is bought at the price of a slow, order-dependent test. Reinstating it later is additive: a `tests/Smoke` directory, a seventh `phpunit.xml` testsuite, and a CI job, touching no application code. Roadmap Phase 7 separately lists end-to-end smoke tests as a deployment-layer concern; that item is untouched by this drop and is the natural place for the coverage to land instead.
 - Sentry, OpenTelemetry, dashboards, alerting: roadmap Phase 7 operational rollout, not API surface; the API already logs structured JSON with correlation IDs.
 
 ## Dependencies
@@ -32,12 +32,12 @@ Required from earlier stages (this stage is last; it leans on everything):
 - Stage 2: tenants, RLS bootstrap, sentinel platform tenant, cross-tenant platform role (system-design 4.3), which the archival and pruning commands use for cross-tenant scans. The role grants cross-tenant reads everywhere but writes on Tenancy-owned tables only, so it covers none of the deletes this stage performs; the activity log delete path ships as a migration in task 8, and the outbox archiver deletes in per-tenant transactions under the app role (Slice 4).
 - Stage 3: customers with `anonymized_at` (system-design 8.1), guest claim flow (erasure must block it), capabilities and policies (new `customers.erase` and `customers.export` capabilities), activity log (audit target for commands and erasure).
 - Stage 4: outbox recording, deliveries, sweeper, replay primitive (extended here to read archives), failed-jobs dead letter table (the replay-failed command's target).
-- Stages 5a, 6, 7, 8a, 8b: the full publish, hold, order, payment, refund path the smoke suite drives; the Stage 8a webhook table (pruning target) and reconciliation poller (wrapped by the reconcile command); the Stage 6 hold sweeper and `ReleaseHold` Action (wrapped by the release command).
-- Stage 9: check-in scan endpoints for the smoke suite's door segment.
+- Stages 5a, 6, 7, 8a, 8b: the full publish, hold, order, payment, refund path the export assembler reads and the load scenarios drive; the Stage 8a webhook table (pruning target) and reconciliation poller (wrapped by the reconcile command); the Stage 6 hold sweeper and `ReleaseHold` Action (wrapped by the release command).
+- Stage 9: check-in records, which the data subject export includes and the coverage meta-tests sweep. (Stage 9 was also the smoke suite's door segment; that suite is dropped, see Scope and non-goals.)
 - Stage 10: waiting room admission for the load test's third scenario; if Stage 10 is thinned out per the MVP note in the master plan, that scenario is skipped and the load doc records the omission.
 - Stage 11: reporting read models, which the `CustomerAnonymized` consumer scrubs; `BuildExport`'s cursor-paginated source pattern, reused by the data subject export assembler.
 
-Consumed by later stages: none; launch consumes this stage. The smoke suite and coverage meta-tests become permanent CI gates for all future work.
+Consumed by later stages: none; launch consumes this stage. The coverage meta-tests become permanent CI gates for all future work.
 
 ## Data model
 
@@ -136,7 +136,7 @@ Returns `DataSubjectRequestData`. For a completed export, `download_url` is a ti
 
 Admin list via query-builder with explicit allowlists (api-conventions): `filter[customer_id]`, `filter[type]`, `filter[status]`, `sort=-created_at`. Bounded collection, page pagination, standard paginator envelope.
 
-No other new routes. Operational commands are artisan commands, not endpoints; the smoke and load work adds no API surface. OpenAPI paths for the three routes merge with the routes; `composer types:generate` output for the new Data classes is committed with them.
+No other new routes. Operational commands are artisan commands, not endpoints; the load work adds no API surface. OpenAPI paths for the three routes merge with the routes; `composer types:generate` output for the new Data classes is committed with them.
 
 ## TDD sequencing
 
@@ -205,10 +205,7 @@ Failing tests first (these are meta-tests; each is written to fail against a del
 
 ### Slice 7: smoke suite
 
-Failing tests first:
-
-- A new `Smoke` Pest suite (declared in `phpunit.xml` alongside the existing six) whose single scenario runs entirely over HTTP against the fake gateway with a real PostgreSQL and Redis stack: create tenant and staff, publish a GA event, customer holds inventory, converts to order, initiates an async payment, fake gateway confirms via webhook, tickets issue, confirmation email and PDF jobs run, check-in scans the ticket (first scan wins, second flags duplicate), staff refunds, ledger balances to zero drift across the whole run (the Stage 8b invariant asserted end to end).
-- The suite fails first because the CI gate does not exist; wiring it as a required job is the green step.
+Dropped; see the deferral in Scope and non-goals. The Stage 8c capstone already drives the loop over HTTP with the ledger invariant asserted throughout, and the real-Redis rationale that would have justified re-running it does not survive inspection of `ProcessOutboxDelivery`.
 
 ### Slice 8: load tests
 
@@ -238,7 +235,7 @@ Ordered; each lands green through the full loop and is independently mergeable u
 14. Coverage completeness meta-tests (isolation, contract, authorization) with exemption lists; authorization matrix test; payload PII meta-test (Slice 6 tests, each proven against a seeded gap). Scope: `support`.
 15. Webhook negative matrix re-run across registered gateways. Scope: `payments`.
 16. `env()` architecture test, `.env.example` assertions; fix anything found. Scope: `support`, fixes under their owning scopes. (Originally also a secret scanner in CI, dropped; see the deferral in Scope and non-goals.)
-17. Smoke suite and required CI gate (Slice 7). Scope: `support` for the suite, `ci` for the gate.
+17. Dropped: smoke suite and required CI gate (Slice 7). Nothing lands; the numbering is kept so the execution journal's task references stay stable. See the deferral in Scope and non-goals.
 18. Load tooling selection (documented in the PR description), `infra/load/` scenarios, correctness probes, `docs/load-targets.md` with targets then results, manual CI job. Scope: `ci`; the targets doc is `docs`.
 19. Mark Stage 12 done in the status table. Scope: `docs`.
 
@@ -246,7 +243,7 @@ Tasks 11 through 13 are mutually independent; tasks 14 through 16 can proceed in
 
 ## Exit criteria
 
-The stage exit line, "the smoke suite is a CI gate; no endpoint lacks isolation and contract coverage; load targets are documented with headroom", expands to:
+The stage exit line, amended in task 17 to "no endpoint lacks isolation and contract coverage; load targets are documented with headroom" (it previously opened with "the smoke suite is a CI gate"; the master plan's Stage 12 section carries the same amendment), expands to:
 
 1. Erasure over HTTP anonymizes name, email, and password in place, stamps `anonymized_at`, revokes the customer's outstanding access and refresh tokens (pre-erasure tokens are rejected afterward), blocks subsequent login and guest claim, returns 409 on repeat, and emits exactly one `CustomerAnonymized` event; two racing erasures produce one anonymization (concurrency suite).
 2. Ticket `attendee_name` and any Reporting PII are scrubbed by idempotent consumers after erasure; duplicate delivery causes no error and no second effect.
@@ -256,7 +253,7 @@ The stage exit line, "the smoke suite is a CI gate; no endpoint lacks isolation 
 6. Each of the three operational commands is dry-run by default, bounded by explicit arguments, produces its effect exactly once under races with the standing sweepers, and writes an activity log entry naming the operator.
 7. The coverage meta-tests pass with empty gaps: every `/v1` route has contract coverage, every tenant-scoped route has isolation coverage or a reasoned exemption, every mutating route maps to a capability, and seeding a synthetic uncovered route makes each meta-test fail (proven once during development).
 8. The authorization matrix test denies every capability a role lacks across all routes; webhook signature negatives reject before persistence for every registered gateway; no `env()` outside `config/`; no committed `.env.example` carries a credential.
-9. The Smoke suite runs the full publish, purchase, async confirmation, check-in, refund loop over HTTP against the fake gateway with balanced ledger at the end, and is a required CI check.
+9. Dropped with the smoke suite (task 17), numbering kept so the criteria below keep their numbers. The publish-through-payout loop over HTTP against the fake gateway, with the ledger balanced at every step, remains proven by the Stage 8c capstone; no criterion of this stage rests on a `Smoke` suite.
 10. `docs/load-targets.md` records targets, tool, profiles, and measured results for hold creation, payment initiation, and waiting room admission, each meeting its target with headroom stated; when Stage 10 was thinned per the master plan's MVP note, the admission scenario is recorded as omitted, and this criterion counts as complete for the full API plan only once Stage 10 lands and the scenario is measured; post-run probes show zero oversell and zero duplicate payment effects.
 11. All suites, Larastan, and Pint green; OpenAPI and generated TypeScript committed without drift; system-design 9.3 lists `CustomerAnonymized`; the status table marks Stage 12 done.
 
