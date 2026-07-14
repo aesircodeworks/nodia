@@ -2,6 +2,7 @@ export type AcceptInvitationData = {
   token: string;
   password: string;
 };
+export type ArchiveSegmentSource = 'outbox_events' | 'activity_log';
 export type AssignCheckInUserData = {
   user_id: string;
 };
