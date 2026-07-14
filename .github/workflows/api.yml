@@ -148,9 +148,15 @@ jobs:
         run: |
           cp .env.example .env
           php artisan key:generate
+      # Pest directly, not `composer run test`: Composer kills a script that
+      # outruns its process timeout (300s by default) and the full suite takes
+      # longer than that, so the wrapper can turn a green suite into a failed
+      # job with no failing test to point at.
       - name: Pest
         working-directory: apps/api
-        run: composer run test
+        run: |
+          php artisan config:clear --ansi
+          ./vendor/bin/pest
 
   architecture:
     name: API Architecture
