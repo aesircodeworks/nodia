@@ -41,7 +41,7 @@ Stage 8d is still In progress and gated on the launch-gateway ADR. Per the stage
 - [x] T13 `holds:release-stuck` command with the sweeper-race concurrency test (inventory)
 - [x] T14 Coverage completeness, authorization matrix, and payload PII meta-tests (support)
 - [x] T15 Webhook negative matrix across registered gateways (payments)
-- [x] T16 Secret scanner in CI, `env()` architecture test, `.env.example` assertions (ci) - partial, scanner dropped at operator direction, see the entry
+- [x] T16 `env()` architecture test, `.env.example` assertions (support) - scanner arm dropped and the stage plan amended to match, see the entry
 - [ ] T17 Smoke suite and required CI gate (support, ci)
 - [ ] T18 Load tooling, `infra/load/` scenarios, `docs/load-targets.md` (ci, docs)
 
@@ -544,3 +544,15 @@ Test evidence:
 Commit: `4224ed8` (`test(support): guard environment reads and committed env examples`).
 
 Deviation from the plan, material and operator-directed: **the secret scanner arm of task 16 was dropped and no scan gate exists in CI.** The plan's Slice 6 calls for "a repo secret scanner (tool selected at slice start; gitleaks is the default candidate) runs in CI and fails on findings", and stage exit criterion 8 requires "the secret scan gate is required in CI". Work done before the drop, all of it discarded: gitleaks was selected against current documentation (CLI v8.30.1, MIT licensed, pinned by version and by the release tarball's SHA-256; the `gitleaks/gitleaks-action` wrapper was rejected because it carries a non-MIT license and requires a `GITLEAKS_LICENSE` key for organization-owned repositories, which would have made the gate depend on a third-party signup), and a `.github/workflows/security.yml` was written to run `gitleaks git .` over full history on every pull request with no paths filter, since a credential can be committed into any file and a secret committed then deleted still sits in the history. The operator declined the scanner before it was ever run locally and before `.gitleaks.toml` was written, so **the repository has never been scanned for secrets and this stage carries no evidence that its history is clean**. The workflow file was deleted, not committed. Consequences for whoever closes the stage: exit criterion 8 cannot be met as written, so either the scanner lands later (as gitleaks, as another tool such as trufflehog, or as GitHub's own push protection and secret scanning, which needs no third-party tool) or criterion 8 and the Slice 6 plan text must be amended to drop the requirement deliberately. T16 is ticked in the checklist above as partial with that qualification attached; it is not a clean completion.
+
+### T16 addendum: stage plan amended to drop the scanner
+
+2026-07-13 21:58 -03
+
+The operator directed that the dropped scanner arm be removed from the plan rather than left as an unmet requirement, so `docs/plans/stage-12-hardening.md` was amended in four places: the Scope and non-goals security-sweep bullet and the Slice 6 secret-handling bullet no longer call for a repo secret scan; task breakdown item 16 is now the two static guards alone, with its scope corrected from `ci` to `support` since no CI workflow lands; and exit criterion 8 now reads "no `env()` outside `config/`; no committed `.env.example` carries a credential" in place of "the secret scan gate is required in CI". A new Explicitly deferred bullet records the drop, states plainly that the repository's history has never been scanned for a committed secret, and notes that reinstating a gate later is additive (a workflow and a config file, no application code).
+
+No other document required the gate: the master plan's Stage 12 line and system-design 14.1 and 14.2 name secret handling discipline, not a scanner, so neither needed an edit (verified by grep across `docs/`, not assumed).
+
+With the plan amended, T16 is complete against it, and the checklist tick above no longer carries a partial qualification. The substantive fact the amendment does not change, and the reason the deferral bullet says it out loud: nothing has ever scanned this repository's tree or history for committed secrets.
+
+Commit: this entry rides along with the plan amendment it describes, in `docs: drop the stage 12 secret scanner requirement`.
