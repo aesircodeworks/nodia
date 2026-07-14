@@ -8,6 +8,7 @@
 // on the same top-level ticket-types resource, just from the Inventory
 // context.
 
+use App\Http\Middleware\RecordActivityAudit;
 use App\Http\Middleware\RequireCapability;
 use App\Identity\Capability;
 use App\Inventory\Http\Controllers\EventSeatController;
@@ -23,5 +24,13 @@ Route::middleware(RequireCapability::class.':'.Capability::EventsView->value)->g
 // events.view, since it mutates seat state.
 Route::middleware(RequireCapability::class.':'.Capability::EventsManageSeating->value)->group(function (): void {
     Route::get('/events/{event}/seats', [EventSeatController::class, 'index'])->whereUuid('event');
-    Route::patch('/events/{event}/seats', [EventSeatController::class, 'update'])->whereUuid('event');
+
+    // Blocking, unblocking, and rezoning seats is a staff mutation of seat
+    // state and the inventory counters behind it, so it carries the same
+    // append-only activity-log entry every other tenant-admin mutation does
+    // (system-design 14.2). The GET above stays outside the middleware:
+    // RecordActivityAudit covers mutations, not reads.
+    Route::middleware(RecordActivityAudit::class)->group(function (): void {
+        Route::patch('/events/{event}/seats', [EventSeatController::class, 'update'])->whereUuid('event');
+    });
 });

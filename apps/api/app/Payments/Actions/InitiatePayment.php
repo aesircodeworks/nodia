@@ -140,7 +140,15 @@ final class InitiatePayment
             throw IdempotencyKeyReuseMismatchException::make();
         }
 
-        return new PaymentInitiationResult($existing, replayed: true, declined: false);
+        // A replayed synchronous decline must render the same 402 problem
+        // the first attempt did: the failed payment row committed, so
+        // answering 200 with it would read as success to a client that
+        // timed out on the original request and retried.
+        return new PaymentInitiationResult(
+            $existing,
+            replayed: true,
+            declined: $existing->status === PaymentStatus::Failed,
+        );
     }
 
     /**

@@ -199,6 +199,30 @@ it('resolves same-ticket duplicates first-scan-wins when the earlier scan arrive
         ->and($checkedInEvents)->toBe(1)->and($duplicateEvents)->toBe(1);
 });
 
+it('audits a reconciled batch', function (): void {
+    ['eventId' => $eventId, 'ticketId' => $ticketId] = batchTicket($this->tenantId);
+    batchKey($this->tenantId, $eventId, 'secret-1');
+    $payload = batchPayload($ticketId, $eventId, 0, 'secret-1');
+
+    $this->postJson('/v1/check-in-batches', [
+        'device_id' => 'device-1',
+        'scans' => [['client_scan_id' => (string) Str::uuid7(), 'qr_payload' => $payload, 'scanned_at' => now()->toIso8601String()]],
+    ], batchManageHeaders($this->tenantId))->assertStatus(200);
+
+    $entries = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => DB::table('activity_log')
+            ->where('tenant_id', $this->tenantId)
+            ->where('description', 'like', '%/check-in-batches')
+            ->get()
+            ->all(),
+    );
+
+    expect($entries)->toHaveCount(1)
+        ->and($entries[0]->event)->toBe('mutation')
+        ->and($entries[0]->causer_id)->not->toBeNull();
+});
+
 it('swaps the accepted scan when the earlier-timestamped scan arrives second, without re-recording TicketCheckedIn', function (): void {
     ['eventId' => $eventId, 'ticketId' => $ticketId] = batchTicket($this->tenantId);
     batchKey($this->tenantId, $eventId, 'secret-1');

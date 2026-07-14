@@ -303,6 +303,32 @@ describe('PATCH /v1/events/{event}/seats', function (): void {
         });
     });
 
+    it('records an activity-log entry for a successful seat mutation, and none for a read', function (): void {
+        $tenant = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create());
+        ['event' => $event, 'seatIds' => $seatIds] = seatedEventFixture($tenant->id, 2);
+
+        $headers = [
+            'Authorization' => 'Bearer '.TenantStaff::token($tenant->id, [Capability::EventsManageSeating]),
+            'X-Tenant-Id' => $tenant->id,
+        ];
+
+        $this->getJson('/v1/events/'.$event->id.'/seats', $headers)->assertStatus(200);
+
+        $this->patchJson('/v1/events/'.$event->id.'/seats', [
+            'operations' => [['event_seat_id' => $seatIds[0], 'op' => 'block']],
+        ], $headers)->assertStatus(200);
+
+        $entries = app(TenantTransaction::class)->asTenant(
+            $tenant->id,
+            fn () => DB::table('activity_log')->where('tenant_id', $tenant->id)->get()->all(),
+        );
+
+        expect($entries)->toHaveCount(1)
+            ->and($entries[0]->event)->toBe('mutation')
+            ->and($entries[0]->description)->toContain('PATCH')
+            ->and($entries[0]->causer_id)->not->toBeNull();
+    });
+
     it('rolls back the whole batch and lists offending event_seat_ids on 409 seat_not_modifiable', function (): void {
         $tenant = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create());
         ['event' => $event, 'ticketType' => $ticketType, 'seatIds' => $seatIds] = seatedEventFixture($tenant->id, 2);

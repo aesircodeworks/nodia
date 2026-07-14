@@ -13,6 +13,11 @@ use Spatie\LaravelData\Mappers\SnakeCaseMapper;
  * only place its dot-path validation (items.*.ticket_type_id, etc.) can
  * be declared, mirroring App\EventCatalog\Data\SeatInputData's own
  * precedent.
+ *
+ * The one exception is the cross-item distinct constraint on
+ * ticket_type_id, which lives in CreateHoldData::rules() instead: these
+ * rules run in a per-item validator that cannot see its siblings, so
+ * `distinct` declared here would always pass vacuously.
  */
 #[MapName(SnakeCaseMapper::class)]
 class HoldItemInputData extends Data

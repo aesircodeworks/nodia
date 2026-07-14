@@ -26,6 +26,19 @@ use Spatie\LaravelData\Optional;
  * they appear in items: the first requires_seat item's own quantity
  * claims the first slice, the next requires_seat item's own quantity
  * claims the next slice, and so on.
+ *
+ * One line item per ticket type is the wire contract (a buyer wanting
+ * more of one type raises that item's quantity), so items.*.ticket_type_id
+ * is distinct: hold_items carries a unique(hold_id, ticket_type_id), and a
+ * repeated ticket type would otherwise reach CreateHold as two rows and
+ * surface the constraint violation as a 500 on an otherwise schema-valid
+ * request. It would also mis-slice a seated selection, whose seat
+ * partition is keyed by ticket type id and so keeps only the last repeat's
+ * slice. The rule sits here rather than in HoldItemInputData::rules(),
+ * where the rest of the item's validation lives, because laravel-data runs
+ * a nested Data class's own rules in a per-item validator that cannot see
+ * its siblings: `distinct` is only meaningful on the wildcard path this
+ * parent declares, where the whole items array is in scope.
  */
 #[MapName(SnakeCaseMapper::class)]
 class CreateHoldData extends Data
@@ -49,6 +62,7 @@ class CreateHoldData extends Data
         return [
             'event_id' => ['required', 'uuid'],
             'items' => ['required', 'array', 'min:1'],
+            'items.*.ticket_type_id' => ['distinct'],
             'seat_ids' => ['sometimes', 'array'],
             'seat_ids.*' => ['uuid'],
         ];

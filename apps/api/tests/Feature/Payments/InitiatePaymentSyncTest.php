@@ -143,6 +143,25 @@ function initiatePayment(array $fixture, array $body, ?string $key = null)
     );
 }
 
+/**
+ * The initiation entries only: the fixture's own customer-token POST is
+ * audited too (Identity's customer-auth.php), so a bare count over the
+ * tenant's activity_log would not isolate the financial mutation.
+ *
+ * @return list<object>
+ */
+function paymentAuditEntries(string $tenantId): array
+{
+    return app(TenantTransaction::class)->asTenant($tenantId, fn (): array => array_values(
+        DB::table('activity_log')
+            ->where('tenant_id', $tenantId)
+            ->where('description', 'like', '%/payments')
+            ->orderBy('created_at')
+            ->get()
+            ->all(),
+    ));
+}
+
 describe('POST /v1/storefront/orders/{order}/payments (sync)', function (): void {
     it('pays the order within the initiating request on sync approve', function (): void {
         $fixture = initFixture();
@@ -216,6 +235,66 @@ describe('POST /v1/storefront/orders/{order}/payments (sync)', function (): void
             fn () => Payment::query()->where('order_id', $fixture['orderId'])->count(),
         );
         expect($count)->toBe(1);
+    });
+
+    it('replays the original 402 for a declined payment rather than reporting it as a success', function (): void {
+        $fixture = initFixture();
+        $key = (string) Str::uuid7();
+        $body = ['method' => 'card', 'details' => ['token' => 'tok_decline']];
+
+        $original = initiatePayment($fixture, $body, $key);
+        $original->assertStatus(402)->assertJsonPath('code', 'payment_declined');
+
+        $replay = initiatePayment($fixture, $body, $key);
+
+        $replay->assertStatus(402)->assertConformsToOpenApi();
+        $replay->assertJsonPath('code', 'payment_declined');
+
+        [$count, $order, $payment] = app(TenantTransaction::class)->asTenant($fixture['tenantId'], fn (): array => [
+            Payment::query()->where('order_id', $fixture['orderId'])->count(),
+            Order::query()->findOrFail($fixture['orderId']),
+            Payment::query()->where('order_id', $fixture['orderId'])->firstOrFail(),
+        ]);
+
+        expect($count)->toBe(1)
+            ->and($payment->status)->toBe(PaymentStatus::Failed)
+            ->and($order->status)->toBe(OrderStatus::Pending);
+    });
+
+    it('records a financial activity-log entry for a decline, and nothing further for its replay', function (): void {
+        $fixture = initFixture();
+        $key = (string) Str::uuid7();
+        $body = ['method' => 'card', 'details' => ['token' => 'tok_decline']];
+
+        initiatePayment($fixture, $body, $key)->assertStatus(402);
+        initiatePayment($fixture, $body, $key)->assertStatus(402);
+
+        $entries = paymentAuditEntries($fixture['tenantId']);
+
+        expect($entries)->toHaveCount(1);
+
+        $properties = json_decode((string) $entries[0]->properties, true);
+
+        expect($entries[0]->event)->toBe('mutation')
+            ->and($properties['status'])->toBe('failed')
+            ->and($properties['order_id'])->toBe($fixture['orderId'])
+            ->and($entries[0]->causer_id)->not->toBeNull();
+    });
+
+    it('records a financial activity-log entry for an approved initiation', function (): void {
+        $fixture = initFixture();
+
+        initiatePayment($fixture, ['method' => 'card', 'details' => ['token' => 'tok_approve']], (string) Str::uuid7())
+            ->assertStatus(201);
+
+        $entries = paymentAuditEntries($fixture['tenantId']);
+
+        expect($entries)->toHaveCount(1);
+
+        $properties = json_decode((string) $entries[0]->properties, true);
+
+        expect($properties['status'])->toBe('confirmed')
+            ->and($properties['payment_id'])->not->toBeEmpty();
     });
 
     it('rejects reusing an Idempotency-Key against a different order', function (): void {

@@ -223,6 +223,58 @@ it('rejects a second scan of the same ticket with 409 and persists the duplicate
         ->and($events)->toBe(1);
 });
 
+it('audits the accepted scan and the 409 duplicate alike, and records nothing for a replay', function (): void {
+    ['eventId' => $eventId, 'ticketId' => $ticketId] = recordScanTicket($this->tenantId);
+    recordScanKey($this->tenantId, $eventId, 'secret-1');
+    $payload = recordScanPayload($ticketId, $eventId, 0, 'secret-1');
+    $headers = recordScanManageHeaders($this->tenantId);
+    $replayedScanId = (string) Str::uuid7();
+
+    $this->postJson('/v1/check-ins', [
+        'qr_payload' => $payload,
+        'device_id' => 'device-1',
+        'client_scan_id' => $replayedScanId,
+        'scanned_at' => now()->toIso8601String(),
+    ], $headers)->assertStatus(201);
+
+    // The duplicate commits a check_ins row and its outbox event behind a
+    // 409, which the success-only RecordActivityAudit middleware would
+    // have skipped: it is the scan most worth auditing.
+    $this->postJson('/v1/check-ins', [
+        'qr_payload' => $payload,
+        'device_id' => 'device-2',
+        'client_scan_id' => (string) Str::uuid7(),
+        'scanned_at' => now()->toIso8601String(),
+    ], $headers)->assertStatus(409);
+
+    $this->postJson('/v1/check-ins', [
+        'qr_payload' => $payload,
+        'device_id' => 'device-1',
+        'client_scan_id' => $replayedScanId,
+        'scanned_at' => now()->toIso8601String(),
+    ], $headers)->assertStatus(200);
+
+    $entries = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => DB::table('activity_log')
+            ->where('tenant_id', $this->tenantId)
+            ->where('description', 'like', '%/check-ins')
+            ->orderBy('created_at')
+            ->get()
+            ->all(),
+    );
+
+    expect($entries)->toHaveCount(2);
+
+    $results = array_map(
+        fn (object $entry): string => json_decode((string) $entry->properties, true)['result'],
+        $entries,
+    );
+
+    expect($results)->toBe(['accepted', 'duplicate'])
+        ->and($entries[0]->causer_id)->not->toBeNull();
+});
+
 it('replays the same (device_id, client_scan_id) pair as 200 with the original result and no new writes', function (): void {
     ['eventId' => $eventId, 'ticketId' => $ticketId] = recordScanTicket($this->tenantId);
     recordScanKey($this->tenantId, $eventId, 'secret-1');

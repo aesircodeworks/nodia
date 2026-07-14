@@ -365,6 +365,30 @@ describe('POST /v1/storefront/holds', function (): void {
             ->assertJsonPath('code', 'request.validation_failed');
     });
 
+    it('returns request.validation_failed for the same ticket type repeated across items', function (): void {
+        ['tenant' => $tenant, 'host' => $host] = holdTenant();
+        $event = holdEvent($tenant->id);
+        $ticketType = holdTicketType($tenant->id, $event->id, 10);
+
+        // Without the distinct rule this reaches CreateHold as two rows and
+        // trips hold_items' unique(hold_id, ticket_type_id) as a 500.
+        $this->postJson('http://'.$host.'/v1/storefront/holds', [
+            'event_id' => $event->id,
+            'items' => [
+                ['ticket_type_id' => $ticketType->id, 'quantity' => 1],
+                ['ticket_type_id' => $ticketType->id, 'quantity' => 2],
+            ],
+        ])
+            ->assertStatus(422)
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.validation_failed');
+
+        app(TenantTransaction::class)->asTenant($tenant->id, function () use ($ticketType): void {
+            expect(Hold::query()->count())->toBe(0)
+                ->and(TicketTypeInventory::query()->where('ticket_type_id', $ticketType->id)->value('held'))->toBe(0);
+        });
+    });
+
     it('creates a seated hold, flipping the selected seats to held', function (): void {
         ['tenant' => $tenant, 'host' => $host] = holdTenant();
         $event = holdEvent($tenant->id);
