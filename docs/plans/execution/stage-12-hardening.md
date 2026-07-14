@@ -43,7 +43,7 @@ Stage 8d is still In progress and gated on the launch-gateway ADR. Per the stage
 - [x] T15 Webhook negative matrix across registered gateways (payments)
 - [x] T16 `env()` architecture test, `.env.example` assertions (support) - scanner arm dropped and the stage plan amended to match, see the entry
 - [x] T17 Smoke suite and required CI gate (support, ci) - dropped in full, no code landed; the stage plan, the master plan, and the plans README were amended to match, see the entry
-- [ ] T18 Load tooling, `infra/load/` scenarios, `docs/load-targets.md` (ci, docs)
+- [x] T18 Load tooling, `infra/load/` scenarios, `docs/load-targets.md` (ci, docs) - all three scenarios measured against their targets; unblocking it required fixing an API image that had not built since Stage 5c, see the entry
 
 ### Review rounds
 
@@ -592,3 +592,62 @@ Verification: none applicable. No code changed, so no suite, no Larastan, no Pin
 Commit: `7f0b753` (`docs: drop the stage 12 smoke suite requirement`), which carries this entry and the three document amendments above. No application code is in it.
 
 Deviation from the plan: material and operator-directed. Task 17 was a planned deliverable of this stage and shipped nothing. The stage plan and the master plan now match that reality rather than carrying an unmet requirement.
+
+## T18: Load tooling, scenarios, correctness probes, and load targets
+
+2026-07-14 02:20 -03
+
+Landed stage-12 plan Slice 8 and task breakdown item 18 in full: k6 selected and pinned, three scenarios under `infra/load/`, the correctness probes, a manual-dispatch CI job, and `docs/load-targets.md` with targets written before the first run and measured results recorded after. All three scenarios pass their thresholds and every probe is clean.
+
+**Getting to the first request took more than writing scenarios, and that is the most important thing in this entry.** Three defects sat between this repo and any HTTP traffic against the Compose stack, none of which any existing test could have caught:
+
+1. **The API image had not built since Stage 5c.** `spatie/laravel-medialibrary` (and `spatie/image` under it) hard-requires PHP's `exif` extension; `apps/api/Dockerfile` never installed it, so `composer install` inside the image failed outright. `docker compose build api` at HEAD errors. Fixed by adding `exif` to the `install-php-extensions` list, which is the whole fix; nothing else was missing.
+2. **The running container was serving five-day-old code.** The `api` service builds from `apps/api/Dockerfile` with no bind mount, so the image bakes the source at build time. Because the image could not rebuild (defect 1), `make up` kept starting the last image that did build, from before most of the API existed. The container had 2 migration files; the host has 66.
+3. **The Compose database had never had the application schema.** `make up` and `make fresh` never migrate, and nothing else does either, so `nodia_api` held only the two base Laravel tables. Every stage from 2 through 11 was developed and verified against `nodia_test` through Pest on the host. `/v1/health` returned 200 the entire time because it checks connectivity, not schema.
+
+Taken together: **before this task, no code in this repository had ever been exercised over HTTP through the Compose stack.** The Pest suites are extensive and they were the only thing running. Fixing 1 and migrating unblocked 2 and 3; the first `POST /v1/storefront/holds` against the container returned 201 and the rest of the task proceeded normally. Defect 1's fix is in this task's commits. Defects 2 and 3 are not "fixed" so much as worked around by rebuilding and migrating by hand, and the gap that allowed them (no migrate step in `make up`, no CI job that ever builds the image) is called out under Follow-ups below rather than silently patched here.
+
+What landed:
+
+- `infra/load/fixture.sql`: one tenant, one domain (`load.localhost`, which is what makes the Host-resolved storefront routes reachable), and two published events with fixed, UUIDv7-shaped ids. Re-runnable: it resets its own tenant's rows first, so one run's holds cannot fail the next run's oversell probe. Two events rather than one because `CreateHold::assertAdmitted` makes an admission token mandatory on any high-demand event, so the hold and payment scenarios need an event without a waiting room in front of the counter row, and the admission scenario needs one with it.
+- `infra/load/hold-burst.js`, `payment-initiation.js`, `waiting-room.js`, and `lib/fixture.js`. Arrival-rate executors, not VU-based: a crowd arriving for an on-sale does not slow down because the API slowed down, and a VU executor would have backed off under contention and quietly offered less load than the target claims. Thresholds are declared per scenario and decide k6's exit code.
+- `infra/load/probe.sql` and `run.sh`. The probes are the point: no oversell (`sold + held <= quantity`), no duplicate payment per idempotency key, no order with two confirmed payments, ledger debits equal credits per tenant and currency, and the `held` counter still agreeing with the outstanding holds. Every probe selects only violating rows, so a clean probe prints nothing and `run.sh` treats any output at all as a failed run whatever the latency numbers said.
+- `.github/workflows/load.yml`: `workflow_dispatch` only. It proves the scenarios still execute against the current API and the probes still pass, which is what rots silently; it does not produce the numbers in the targets doc, and says so.
+- `docs/load-targets.md`: tool selection and why, targets with the reasoning behind each number, the probes, the environment stamp, results, and an explicit "what these runs do not prove" section.
+
+Results (full profile, k6 2.1.0, 8 CPUs / 7.75 GiB, everything including the load generator on one machine):
+
+- Hold burst: 200 req/s offered for 60s against a single ticket type with 5,000 available. **Exactly 5,000 holds created, 7,001 rejected with `insufficient_inventory`, zero oversell, zero 5xx**, p95 6.71ms against a 500ms target. Stage 6's conditional-UPDATE guard holding under real contention rather than in a unit test is the single most valuable thing this task produced.
+- Payment initiation: 50 req/s for 60s through the real funnel (hold, order, payment). 3,000 payments, 301 deliberate `Idempotency-Key` replays, **301 returned the original payment with 200 and not one charged twice**, ledger balanced, p95 24.07ms against 800ms.
+- Waiting room: 500 entrants against a configured 120 admissions/minute. 234 admitted, **266 still waiting when the window closed**, observed rate 115.8/min (within 4% of configured), all 234 admission tokens produced valid holds, poll p95 48.58ms against 200ms.
+
+Two of my own mistakes, both caught by running the thing rather than by reading it, and both worth recording because the first version of each looked like it worked:
+
+- **The first waiting-room run was a vacuous pass.** With 500 entrants against a 600/min admission rate the queue drained before the window closed, so every entrant was admitted and the "observed admission rate" was really measuring how fast k6 ran out of entrants. It reported a number comfortably inside the tolerance while testing nothing about backpressure. The fixture now configures 120/min, which is below what the crowd needs, so the queue stays backed up for the whole run and the measured rate is the gatekeeper's. A load scenario that cannot fail is worse than no scenario, because it reads as coverage.
+- **The fixture reset PostgreSQL but not Redis.** The waiting room's queue lives entirely in Redis (`onsale:*` keys; there is no `queue_entries` table), so a second run's entrants queued up behind the previous run's 245 leftovers in FIFO order and the gatekeeper spent the window admitting ghosts that were no longer polling. It surfaced as "nobody was admitted", which looks exactly like a broken gatekeeper. `run.sh` now clears the fixture tenant's `onsale:*` keys and its member of the `onsale:active` set before every scenario. The first full-profile waiting-room measurement was taken before this fix and was therefore discarded; the numbers above come from a clean re-run after it.
+
+Deviation from the plan, and it is a real one: **the task's declared scope is `ci` and `docs`, and this change also touches `apps/api/Dockerfile`, `infra/compose/docker-compose.yml`, `eslint.config.mjs`, and `.prettierignore`.** The Dockerfile fix is not optional (nothing runs without it). The compose change forwards the `ONSALE_*` throttles and the admission-token signing key into the container, every one defaulting to the value `config/onsale.php` already falls back to, so an ordinary `make up` is unchanged; without it, hold creation is capped at 10 requests per minute per IP and a load run measures the rate limiter instead of the counter row. The ESLint and Prettier changes teach the tooling that `infra/load/**` is k6's runtime (which injects `__ENV`, `__VU`, `__ITER`) and that `infra/load/results/**` is run output. No file under `apps/api/app/` changed, so no application behavior moved.
+
+Two design choices worth stating, since both were nearly the other way:
+
+- **The fixture is SQL, not a Laravel seeder.** A seeder would have had to construct a tenant, an event, and ticket types, and every Action that does so (`RegisterDomain`, `CreateTicketType`, `PublishEvent`) takes a Model argument, so the seeder would have imported `App\Tenancy\Models\Tenant` and `App\EventCatalog\Models\Event` and broken `tests/Architecture/ContextBoundariesTest`, which exempts `Database\Factories` but not `Database\Seeders`. Weakening that guard (a guard T14 shipped) to seed a load fixture is a bad trade, and the plan's own scope for this task anticipated no application code at all. The cost is that the fixture writes rows without going through the domain Actions, so it can drift from the schema; a drift breaks the run loudly on the next `psql` error, and the probes, not the fixture, are what assert the invariants.
+- **Customers are registered over HTTP in the scenario's `setup()`,** not seeded, so the fixture never has to fabricate a password hash.
+
+Verification (every command run, every result as reported):
+
+- `docker compose build api`: fails at HEAD with `spatie/image 3.9.5 requires ext-exif`; passes with the Dockerfile fix. Confirmed in that order, so the fix is load-bearing and not cargo cult.
+- `php artisan migrate --force` against the Compose database: 64 migrations applied, 54 tables.
+- `./infra/load/run.sh --profile ci` (all three scenarios): every threshold passed, every probe clean. This is what the CI job dispatches.
+- `./infra/load/run.sh --profile full` (all three scenarios): the results above, every threshold passed, every probe clean after every scenario.
+- `php artisan test --testsuite=Architecture`: 45 tests, 45 passed, 106 assertions. Run because this task edits `eslint.config.mjs` and the Dockerfile, and `SecretHandlingTest` guards committed env examples; nothing regressed.
+- `pnpm lint`: clean across storefront, admin, checkin, packages, and Pint on the API. `pnpm exec eslint infra/load`: clean. `pnpm exec prettier --check` on every file this task adds or edits: clean.
+- Not run, and not claimed: the full Pest suite. No file under `apps/api/app/`, `database/`, or `tests/` changed, so there is nothing in it this task could have moved. `composer types:generate` likewise: no Data class changed.
+- Noted, not caused by this task: `pnpm format:check` fails repo-wide on `main` today (59 files, including `README.md` and `packages/api-client/src/index.ts`). Verified by stashing this task's work and re-running. Left alone; fixing 59 unrelated files is not this task.
+
+Follow-ups this task surfaced and deliberately did not take (each is somebody's next task, not a silent gap):
+
+- **`make up` never migrates and nothing builds the API image in CI.** That combination is what let the image stay broken for seven stages. A migrate step in `make up`, or a CI job that runs `docker compose build api`, would have caught it the day Stage 5c landed. This is the highest-value item on the list and it is not a load-testing concern, which is why it is not folded in here.
+- The load runs are not soaks: the longest is two minutes, so connection-pool exhaustion, memory growth, and queue backlog over hours remain unmeasured.
+- Payment initiation runs against `FakeGateway`, so gateway latency and its failure modes are unmeasured until Stage 8d lands a real adapter.
+
+Commits: `fix(ci): install the exif extension so the API image builds`, `feat(ci): add k6 load scenarios, correctness probes, and a manual load job`, and the `docs` commit carrying this entry.
