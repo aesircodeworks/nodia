@@ -30,6 +30,28 @@ beforeEach(function (): void {
     MigratedDatabase::ensure();
     Storage::fake(config()->string('retention.archive_disk'));
     archivableActivityLogIdRegistry(reset: true);
+
+    /*
+     * ArchiveActivityLog is a platform-wide sweep: it archives every row past
+     * the cutoff, for every tenant. These tests assert on its return count
+     * ("archived exactly 1 row"), which only holds when the table starts empty.
+     * Any suite that ran earlier and logged an activity old enough to be past
+     * the cutoff would otherwise be archived along with this test's own row, so
+     * the assertion would pass or fail purely on test order. The afterEach below
+     * only removes the ids this file inserted, which is what leaves the residue.
+     *
+     * Deleting needs task 8's scoped DELETE path (no role may delete activity_log
+     * rows outright): the platform role, with app.activity_log_prune_cutoff set
+     * past every row.
+     */
+    app(TenantTransaction::class)->asPlatform(function (): void {
+        DB::selectOne('select set_config(?, ?, true)', [
+            'app.activity_log_prune_cutoff',
+            now()->addYear()->toIso8601String(),
+        ]);
+
+        DB::table('activity_log')->delete();
+    });
 });
 
 afterEach(function (): void {
