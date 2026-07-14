@@ -61,6 +61,7 @@ shape (a declined `GatewayRefundResult`, never an exception), not how
 each adapter recognizes "unknown."
 
 Test evidence (apps/api):
+
 - `php artisan test --filter='GatewayAdapterConformance|GatewayRegistryTest|FakeGatewayTest'`: 35 passed, 105 assertions.
 - `php artisan test --testsuite=Architecture`: 40 passed, 97 assertions (no interface or namespace boundary violation).
 - `php artisan test tests/Unit/Payments`: 146 passed, 353 assertions (no regression in the Payments unit suite).
@@ -80,7 +81,7 @@ Support namespace, following the convention already used for
 
 - `GatewayFixtureLoader`: reads recorded exchanges from
   `tests/Fixtures/gateways/{slug}/*.json` (each a `{request: {method,
-  url, body}, response: {status, body, headers}}` pair) and fakes the
+url, body}, response: {status, body, headers}}` pair) and fakes the
   HTTP client with them. A request not covered by the fixture set, or a
   slug with no fixture directory at all, throws the new
   `GatewayFixtureNotCoveredException` instead of the fake falling
@@ -115,6 +116,7 @@ reads through `config/payments.php` (see `gateway_retry_after_seconds`,
 overridable in tests via `config(['payments.ci' => true])`.
 
 Test evidence (apps/api):
+
 - `php artisan test --filter='GatewayFixtureLoaderTest|GatewayFixtureSanitizerTest|RecordGatewayFixturesCommandTest'`: 10 passed, 13 assertions.
 - `php artisan test tests/Unit/Payments tests/Feature/Payments`: 318 passed, 1306 assertions (no regression).
 - `php artisan test --testsuite=Architecture`: 40 passed, 97 assertions, after adding `GatewayFixtureNotCoveredException` to the preset test's explicit list of bounded-context Throwables (same pattern as every other `Exceptions` class in that list).
@@ -188,6 +190,7 @@ This is a test-authoring note, not a production behavior change (a
 real request boots a fresh registry per Octane worker cycle).
 
 Test evidence (apps/api):
+
 - `php artisan test --filter='PendingGatewayAdapterTest|PendingGatewayWebhookIngestionTest|PendingGatewayOfferAndInitiationTest'`: 7 passed, 36 assertions.
 - `php artisan test tests/Unit/Payments tests/Feature/Payments`: 325 passed, 1309 assertions (no regression).
 - `php artisan test --testsuite=Architecture`: 40 passed, 97 assertions.
@@ -204,7 +207,7 @@ status quarantines instead of throwing or being silently dropped
 (stage-08d plan, Slice 4):
 
 - `app/Payments/Enums/SubmerchantStatus.php`: added `NeedsReview =
-  'needs_review'`, a platform-normalized state, not a gateway one.
+'needs_review'`, a platform-normalized state, not a gateway one.
 - `app/Payments/Gateways/SubmerchantStatusMap.php`: new value object
   wrapping `array<string, SubmerchantStatus>`; `resolve()` returns
   `NeedsReview` for any raw status absent from the map;
@@ -242,6 +245,7 @@ status quarantines instead of throwing or being silently dropped
   `typescript-transformer-manifest.json` committed.
 
 Tests (failing first, per the double loop):
+
 - `tests/Unit/Payments/SubmerchantStatusNormalizationTest.php`: a
   second adapter identity (`altgw`), built as a `FakeGateway` instance
   configured with an entirely disjoint raw vocabulary map
@@ -282,6 +286,7 @@ existing `submerchant_accounts.status` column, backed by the same
 merged migration); no new isolation test required.
 
 Test evidence (apps/api):
+
 - `php artisan test --filter='SubmerchantStatusNormalizationTest|TransitionSubmerchantAccountTest|SubmerchantOnboardingTest|SubmerchantAccountTransitionContentionTest'`: 87 passed, 251 assertions.
 - `php artisan test tests/Unit/Payments tests/Feature/Payments`: 342 passed, 1355 assertions (no regression from the 325/1309 baseline recorded after task 8d-3).
 - `php artisan test --testsuite=Isolation`: 270 passed, 539 assertions.
@@ -338,6 +343,7 @@ adapter/recorder implementation, only the detector skeleton and doc):
   at once, per the plan's Risks section).
 
 Tests (failing first, per the double loop):
+
 - `tests/Unit/Payments/GatewayFixtureDriftDetectorTest.php`: no drift
   when a fake recorder's returned exchange matches the committed
   `examplegw/create-payment.json` fixture exactly; drift detected when
@@ -356,6 +362,7 @@ tenant-scoped table; no isolation or concurrency test required (the
 detector and command touch no database state).
 
 Test evidence (apps/api):
+
 - `php artisan test --filter='GatewayFixtureDriftDetectorTest|CheckGatewayFixtureDriftCommandTest'`: 5 passed, 7 assertions.
 - `php artisan test tests/Unit/Payments tests/Feature/Payments`: 347 passed, 1362 assertions (no regression from the 342/1355 baseline recorded after task 8d-4).
 - `php artisan test --testsuite=Architecture`: 40 passed, 97 assertions.
@@ -380,13 +387,13 @@ Run at Sun Jul 12 13:44:51 -03 2026, full local quality gates after stage
   UnhandledMatchError would fire instead of the intended 409 problem
   response). Fixed by adding the missing arm; commit `1d79018`,
   `fix(payments): map GatewayNotConfigured error code to a problem
-  detail`. Re-run: 0 errors.
+detail`. Re-run: 0 errors.
 - `php artisan test --parallel`: failed with widespread `SQLSTATE[42P01]:
-  Undefined table: migrations` errors across unrelated feature tests,
+Undefined table: migrations` errors across unrelated feature tests,
   consistent with parallel workers racing over shared database
   migration state rather than a real regression; one genuine failure
   surfaced underneath the noise (`ErrorCodeTest::the registry holds
-  exactly the known codes`, missing the new `gateway_not_configured`
+exactly the known codes`, missing the new `gateway_not_configured`
   code and its status/title/type dataset row). Fell back to a
   non-parallel run per the parallelism-induced-failure exception.
   Fixed the test's expected registry list and status/title dataset;
@@ -397,7 +404,7 @@ Run at Sun Jul 12 13:44:51 -03 2026, full local quality gates after stage
   directly (no composer wrapper) to remove that ceiling. Final result:
   2733 passed, 10981 assertions, 0 failures.
 - `composer -d apps/api run types:generate`: ran clean; `git status
-  --short packages/api-client/src/generated` empty, no contract drift.
+--short packages/api-client/src/generated` empty, no contract drift.
 - `pnpm typecheck`: skipped, no TypeScript changed in this diff.
 
 ### Review rounds
@@ -414,7 +421,7 @@ Six findings (1 blocking, 5 important):
 2. (important) `app/Payments/Actions/InitiatePayment.php` `offeredMethod()` --
    any enabled empty-capability (skeleton) adapter forced `gateway_not_configured`
    even when a genuinely configured gateway was also enabled but did not serve the
-   requested method. Fixed: `gateway_not_configured` now fires only when *every*
+   requested method. Fixed: `gateway_not_configured` now fires only when _every_
    enabled gateway is an unconfigured skeleton; if any configured gateway is
    present the method is genuinely off-offer and the generic 422
    `payment_method_not_available` is returned. Added a feature test asserting a

@@ -51,14 +51,14 @@ All four tables are tenant-scoped: non-null `tenant_id` even where derivable (sy
 
 The narrow counter table from system-design 6.3, kept free of metadata so hot updates do not contend with catalog reads.
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid | PK, UUIDv7 |
-| tenant_id | uuid | non-null, RLS |
-| ticket_type_id | uuid | non-null, unique |
-| quantity | integer | non-null, >= 0 |
-| sold | integer | non-null, default 0, >= 0 |
-| held | integer | non-null, default 0, >= 0 |
+| Column         | Type    | Notes                     |
+| -------------- | ------- | ------------------------- |
+| id             | uuid    | PK, UUIDv7                |
+| tenant_id      | uuid    | non-null, RLS             |
+| ticket_type_id | uuid    | non-null, unique          |
+| quantity       | integer | non-null, >= 0            |
+| sold           | integer | non-null, default 0, >= 0 |
+| held           | integer | non-null, default 0, >= 0 |
 
 Constraints: `unique (ticket_type_id)`; CHECK constraints `quantity >= 0`, `sold >= 0`, `held >= 0`, and `sold + held <= quantity` (custom name `ticket_type_inventory_no_oversell_idx` pattern per data-conventions applies to indexes; the check gets a descriptive name the builder supports). The conditional UPDATE is the concurrency guard; the CHECK is defense in depth that turns any future guard bug into a statement error instead of an oversell.
 
@@ -75,14 +75,14 @@ Zero affected rows means insufficient inventory; the transaction rolls back and 
 
 ### holds
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid | PK, UUIDv7 |
-| tenant_id | uuid | non-null, RLS |
-| event_id | uuid | non-null |
-| customer_id | uuid | nullable by design; Stage 7 attaches the customer at conversion (see risks) |
-| status | string | enum-backed: `active`, `released`, `expired`, `committed` |
-| expires_at | timestamptz | non-null, UTC |
+| Column      | Type        | Notes                                                                       |
+| ----------- | ----------- | --------------------------------------------------------------------------- |
+| id          | uuid        | PK, UUIDv7                                                                  |
+| tenant_id   | uuid        | non-null, RLS                                                               |
+| event_id    | uuid        | non-null                                                                    |
+| customer_id | uuid        | nullable by design; Stage 7 attaches the customer at conversion (see risks) |
+| status      | string      | enum-backed: `active`, `released`, `expired`, `committed`                   |
+| expires_at  | timestamptz | non-null, UTC                                                               |
 
 Indexes: `(tenant_id, status, expires_at)` for the sweeper scan; `event_id`; `customer_id` (Stage 10's per-customer limits will need it, cheap to ship now).
 
@@ -97,13 +97,13 @@ Counter and seat effects always ride in the same transaction as the hold-row tra
 
 ### hold_items
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid | PK, UUIDv7 |
-| tenant_id | uuid | non-null, RLS (derivable, still required) |
-| hold_id | uuid | non-null, FK |
-| ticket_type_id | uuid | non-null |
-| quantity | integer | non-null, > 0 |
+| Column         | Type    | Notes                                     |
+| -------------- | ------- | ----------------------------------------- |
+| id             | uuid    | PK, UUIDv7                                |
+| tenant_id      | uuid    | non-null, RLS (derivable, still required) |
+| hold_id        | uuid    | non-null, FK                              |
+| ticket_type_id | uuid    | non-null                                  |
+| quantity       | integer | non-null, > 0                             |
 
 Constraints: `unique (hold_id, ticket_type_id)`; CHECK `quantity > 0`. Index on `ticket_type_id`.
 
@@ -111,15 +111,15 @@ Constraints: `unique (hold_id, ticket_type_id)`; CHECK `quantity > 0`. Index on 
 
 Materialized per event on publish (system-design 6.2). The unique constraint plus conditional transitions make double-booking structurally impossible.
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid | PK, UUIDv7 |
-| tenant_id | uuid | non-null, RLS |
-| event_id | uuid | non-null |
-| seat_id | uuid | non-null, FK `seats.id` on delete restrict (the Stage 5b deferral: deleting a materialized template now fails at the database and Catalog maps it to `catalog.seat_map_in_use`) |
-| ticket_type_id | uuid | nullable (a blocked or unzoned seat has no type; all seats materialize unzoned) |
-| status | string | enum-backed: `available`, `held`, `sold`, `blocked` |
-| hold_id | uuid | nullable, FK `holds.id`, set while `held` |
+| Column         | Type   | Notes                                                                                                                                                                           |
+| -------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id             | uuid   | PK, UUIDv7                                                                                                                                                                      |
+| tenant_id      | uuid   | non-null, RLS                                                                                                                                                                   |
+| event_id       | uuid   | non-null                                                                                                                                                                        |
+| seat_id        | uuid   | non-null, FK `seats.id` on delete restrict (the Stage 5b deferral: deleting a materialized template now fails at the database and Catalog maps it to `catalog.seat_map_in_use`) |
+| ticket_type_id | uuid   | nullable (a blocked or unzoned seat has no type; all seats materialize unzoned)                                                                                                 |
+| status         | string | enum-backed: `available`, `held`, `sold`, `blocked`                                                                                                                             |
+| hold_id        | uuid   | nullable, FK `holds.id`, set while `held`                                                                                                                                       |
 
 Constraints: `unique (event_id, seat_id)`. Indexes: `(event_id, status)` for map rendering and counts; `hold_id` for release and expiry; `(event_id, ticket_type_id)` for zone counts.
 
@@ -141,11 +141,11 @@ Four migrations, in dependency order: `ticket_type_inventory`, `holds`, `hold_it
 
 Produced by this stage, all three already in the system-design 9.3 registry, so no registry change is needed. Envelope per event-conventions: `id` (UUIDv7), `sequence`, `type`, non-null `tenant_id`, `aggregate_type` `hold` with `aggregate_id` the hold ID, `correlation_id` from the originating request (a synthetic correlation ID for the sweeper's scheduled runs), `occurred_at` UTC, and a laravel-data payload with snake_case keys carrying identifiers and facts, not snapshots.
 
-| Event | Recorded when | Payload |
-| --- | --- | --- |
-| HoldCreated | `CreateHold` commits | `hold_id`, `event_id`, `customer_id` (nullable), `expires_at`, `items` as `[{ticket_type_id, quantity}]`, `seat_ids` |
-| HoldReleased | Explicit release (buyer or Orders) commits | `hold_id`, `event_id`, `items`, `seat_ids` |
-| HoldExpired | Sweeper wins the `active -> expired` transition | `hold_id`, `event_id`, `items`, `seat_ids` |
+| Event        | Recorded when                                   | Payload                                                                                                              |
+| ------------ | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| HoldCreated  | `CreateHold` commits                            | `hold_id`, `event_id`, `customer_id` (nullable), `expires_at`, `items` as `[{ticket_type_id, quantity}]`, `seat_ids` |
+| HoldReleased | Explicit release (buyer or Orders) commits      | `hold_id`, `event_id`, `items`, `seat_ids`                                                                           |
+| HoldExpired  | Sweeper wins the `active -> expired` transition | `hold_id`, `event_id`, `items`, `seat_ids`                                                                           |
 
 Recording happens in the same transaction as the state change, without exception (event-conventions Envelope). Exactly-once recording falls out of the conditional transition: only the request or sweeper run whose UPDATE affected a row records the event, so a lagging sweeper racing an explicit release produces exactly one of `HoldExpired` or `HoldReleased`, never both. Payload evolution is additive only.
 
@@ -163,15 +163,15 @@ All routes under `/v1`, snake_case JSON, laravel-data request and response objec
 
 Failure modes and codes:
 
-| Condition | Status | code |
-| --- | --- | --- |
-| Malformed body, zero or negative quantity, empty items | 422 | `request.validation_failed` (with `errors` map) |
-| Event not published or not found for tenant | 404 | `event_not_found` |
-| Ticket type not in event | 422 | `ticket_type_not_in_event` |
-| Outside the ticket type's sales window | 409 | `sales_window_closed` |
-| Counter guard fails (sold out at requested quantity) | 409 | `insufficient_inventory` |
-| Seated type without seats, seat count not matching quantity, or seats on a GA type | 422 | `seat_selection_invalid` |
-| Seat not available (held, sold, blocked, wrong zone, wrong event) | 409 | `seat_unavailable` |
+| Condition                                                                          | Status | code                                            |
+| ---------------------------------------------------------------------------------- | ------ | ----------------------------------------------- |
+| Malformed body, zero or negative quantity, empty items                             | 422    | `request.validation_failed` (with `errors` map) |
+| Event not published or not found for tenant                                        | 404    | `event_not_found`                               |
+| Ticket type not in event                                                           | 422    | `ticket_type_not_in_event`                      |
+| Outside the ticket type's sales window                                             | 409    | `sales_window_closed`                           |
+| Counter guard fails (sold out at requested quantity)                               | 409    | `insufficient_inventory`                        |
+| Seated type without seats, seat count not matching quantity, or seats on a GA type | 422    | `seat_selection_invalid`                        |
+| Seat not available (held, sold, blocked, wrong zone, wrong event)                  | 409    | `seat_unavailable`                              |
 
 `insufficient_inventory` and `seat_unavailable` responses identify the failing `ticket_type_id` or `seat_ids` in an extension member so the storefront can react per line.
 
@@ -274,7 +274,7 @@ Ordered; each is a small PR, independently mergeable unless noted. Commit scope 
 8. `ExtendHold` and `CommitHold` with the commit-versus-expiry concurrency test. Depends on 4.
 9. `event_seats` migration (RLS, restricting FK on `seat_id`, FK on `hold_id`), `EventSeatStatus` enum, `MaterializeEventSeats`, the `requires_seat` publish validation, publish-Action wiring. Scope `catalog` for the wiring commit if split, else `inventory`. Depends on Stage 5b and on 4 (`event_seats.hold_id` references `holds`, matching the migration order); independent of 5 through 8.
 10. Seated hold path through `CreateHold`, `ReleaseHold`, `CommitHold`, and the sweeper; double-booking simulation green. Depends on 8 and 9.
-10a. Capability registry addition `events.manage_seating` plus its template-role wiring in the seeders (Stage 3's initial registry does not include it); authorization matrix test extended. Scope `identity`. Mergeable alone; must land before 11.
+    10a. Capability registry addition `events.manage_seating` plus its template-role wiring in the seeders (Stage 3's initial registry does not include it); authorization matrix test extended. Scope `identity`. Mergeable alone; must land before 11.
 11. Storefront seats endpoint, admin seats list, admin PATCH operations, contracts. Depends on 10 and 10a.
 12. Status table flip in `docs/api-implementation-plan.md` (start at task 1, done at exit), and OpenAPI document consolidation check. With task 11.
 

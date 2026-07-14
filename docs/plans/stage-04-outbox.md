@@ -51,18 +51,18 @@ All timestamps UTC. No money columns in this stage. Both new tables are tenant-s
 
 Append-only event log per the envelope in event-conventions:
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid, PK | UUIDv7 via `HasUuids`; the event ID consumers are idempotent by |
-| sequence | bigint generated always as identity, unique | global replay order; the sole auto-increment column in the schema (data-conventions); not the primary key |
-| type | string, not null | event name from the system-design 9.3 registry, e.g. `UserInvited` |
-| tenant_id | uuid, not null | sentinel platform tenant for platform-scope events |
-| aggregate_type | string, not null | e.g. `membership`, `customer` |
-| aggregate_id | uuid, not null | |
-| correlation_id | string, not null | propagated from the originating request; the Phase 0 middleware and api-conventions accept any opaque `X-Correlation-Id` value, so this is a string, not a uuid column; generated values (CLI and scheduled producers, absent header) are UUIDv7 |
-| occurred_at | timestamp, not null | UTC, set at record time |
-| payload | jsonb, not null | laravel-data payload, snake_case keys |
-| created_at, updated_at | timestamps | rows are never updated or deleted by the application |
+| Column                 | Type                                        | Notes                                                                                                                                                                                                                                            |
+| ---------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| id                     | uuid, PK                                    | UUIDv7 via `HasUuids`; the event ID consumers are idempotent by                                                                                                                                                                                  |
+| sequence               | bigint generated always as identity, unique | global replay order; the sole auto-increment column in the schema (data-conventions); not the primary key                                                                                                                                        |
+| type                   | string, not null                            | event name from the system-design 9.3 registry, e.g. `UserInvited`                                                                                                                                                                               |
+| tenant_id              | uuid, not null                              | sentinel platform tenant for platform-scope events                                                                                                                                                                                               |
+| aggregate_type         | string, not null                            | e.g. `membership`, `customer`                                                                                                                                                                                                                    |
+| aggregate_id           | uuid, not null                              |                                                                                                                                                                                                                                                  |
+| correlation_id         | string, not null                            | propagated from the originating request; the Phase 0 middleware and api-conventions accept any opaque `X-Correlation-Id` value, so this is a string, not a uuid column; generated values (CLI and scheduled producers, absent header) are UUIDv7 |
+| occurred_at            | timestamp, not null                         | UTC, set at record time                                                                                                                                                                                                                          |
+| payload                | jsonb, not null                             | laravel-data payload, snake_case keys                                                                                                                                                                                                            |
+| created_at, updated_at | timestamps                                  | rows are never updated or deleted by the application                                                                                                                                                                                             |
 
 Constraints and indexes:
 
@@ -77,16 +77,16 @@ Append-only is an application invariant (no model update or delete paths; the mo
 
 One row per event and subscriber, created in the same producing transaction as the event row so a crash between commit and enqueue leaves a durable `pending` record for the sweeper (system-design 9.2).
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid, PK | UUIDv7 |
-| outbox_event_id | uuid, not null, FK to outbox_events | |
-| tenant_id | uuid, not null | denormalized per system-design 4.2 |
-| subscriber | string, not null | stable subscriber name from the registry, e.g. `ledger_projection` |
-| status | string, not null | enum-backed: `pending`, `processed` |
-| processed_at | timestamp, nullable | |
-| last_enqueued_at | timestamp, nullable | set by dispatcher and sweeper; the sweeper grace window is measured from `coalesce(last_enqueued_at, created_at)`, so a never-enqueued row (crash between commit and enqueue) ages out of the window from creation time |
-| created_at, updated_at | timestamps | |
+| Column                 | Type                                | Notes                                                                                                                                                                                                                   |
+| ---------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id                     | uuid, PK                            | UUIDv7                                                                                                                                                                                                                  |
+| outbox_event_id        | uuid, not null, FK to outbox_events |                                                                                                                                                                                                                         |
+| tenant_id              | uuid, not null                      | denormalized per system-design 4.2                                                                                                                                                                                      |
+| subscriber             | string, not null                    | stable subscriber name from the registry, e.g. `ledger_projection`                                                                                                                                                      |
+| status                 | string, not null                    | enum-backed: `pending`, `processed`                                                                                                                                                                                     |
+| processed_at           | timestamp, nullable                 |                                                                                                                                                                                                                         |
+| last_enqueued_at       | timestamp, nullable                 | set by dispatcher and sweeper; the sweeper grace window is measured from `coalesce(last_enqueued_at, created_at)`, so a never-enqueued row (crash between commit and enqueue) ages out of the window from creation time |
+| created_at, updated_at | timestamps                          |                                                                                                                                                                                                                         |
 
 Constraints and indexes:
 
@@ -110,13 +110,13 @@ Queue jobs carry only the event ID, so a worker cannot set `app.tenant_id` befor
 
 The three identity events from system-design 9.3 and the two Tenancy events from system-design 3.2, recorded by their Stage 3 and Stage 2 Actions in the producing transaction. All use the envelope above; payloads are laravel-data objects with snake_case keys carrying identifiers and facts, never entity snapshots (event-conventions). Payloads deliberately exclude email addresses and names: outbox rows are retained and replayed indefinitely (system-design 9.1) while customer PII is anonymized in place (system-design 14.3), so PII in payloads would outlive erasure. Consumers needing PII load it through the owning context's Actions at consumption time.
 
-| Event | Recorded by | Aggregate | Payload fields |
-| --- | --- | --- | --- |
-| UserInvited | InviteUser | `membership` / membership ID | `user_id`, `membership_id`, `tenant_id`, `role_id`, `invited_by_user_id` |
-| UserRoleChanged | AssignRole | `membership` / membership ID | `membership_id`, `user_id`, `previous_role_id`, `new_role_id`, `changed_by_user_id` |
-| CustomerRegistered | RegisterCustomer | `customer` / customer ID | `customer_id`, `is_guest` |
-| TenantCreated | CreateTenant | `tenant` / tenant ID | `tenant_id`, `name`, `default_locale` |
-| DomainVerified | the Action settled by Stage 2's trigger decision, recorded before Stage 2 closed | `tenant_domain` / tenant domain ID | `tenant_domain_id`, `tenant_id`, `domain` |
+| Event              | Recorded by                                                                      | Aggregate                          | Payload fields                                                                      |
+| ------------------ | -------------------------------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------- |
+| UserInvited        | InviteUser                                                                       | `membership` / membership ID       | `user_id`, `membership_id`, `tenant_id`, `role_id`, `invited_by_user_id`            |
+| UserRoleChanged    | AssignRole                                                                       | `membership` / membership ID       | `membership_id`, `user_id`, `previous_role_id`, `new_role_id`, `changed_by_user_id` |
+| CustomerRegistered | RegisterCustomer                                                                 | `customer` / customer ID           | `customer_id`, `is_guest`                                                           |
+| TenantCreated      | CreateTenant                                                                     | `tenant` / tenant ID               | `tenant_id`, `name`, `default_locale`                                               |
+| DomainVerified     | the Action settled by Stage 2's trigger decision, recorded before Stage 2 closed | `tenant_domain` / tenant domain ID | `tenant_domain_id`, `tenant_id`, `domain`                                           |
 
 Envelope `tenant_id` is the membership's or customer's tenant; platform-scope memberships use the sentinel platform tenant (event-conventions). Per the Stage 2 plan, `TenantCreated` carries the sentinel platform tenant in its envelope (tenant creation runs in a platform-posture transaction, which is also what lets the outbox insert pass the table's `WITH CHECK`); `DomainVerified` carries the owning tenant. Payload Data classes live in each context's `Events/` directory and are recorded only by the owning context (event-conventions); they are internal contracts, not API shapes, and are excluded from TypeScript generation. Evolution is additive-only; a breaking change is a new event type, never a version field.
 

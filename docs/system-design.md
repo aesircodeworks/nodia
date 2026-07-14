@@ -914,18 +914,18 @@ The edge proxy is Caddy, the same server FrankenPHP embeds. Tenant custom domain
 
 The ubiquitous language for all domain artifacts: documents, code, schema, domain events, and API contracts. Within any artifact, every term below resolves to exactly one model concept. Terms owned by a single bounded context are defined by that context; other contexts either reference the shared concept (as they do via `tenant_id`) or use their own precisely defined local term, translated explicitly at the boundary. ADRs and specs merged before this glossary existed retain their original wording; all new writing follows it.
 
-| Term | Definition |
-| --- | --- |
-| Platform | Nodia itself: the operator of the multi-tenant system and the merchant of record. |
-| Tenant | The business renting the platform. Owns its domains, branding, events, ticket types, orders, and customer base; onboards with a payment gateway as a sub-merchant and receives payouts. Owned by the Tenancy context. |
-| User | A staff identity: one row in `users`, platform-global, holding credentials and MFA settings. Gains tenant access only through memberships. Customers are never users. Owned by the Identity context. |
-| Staff | The human population that users represent: people working for a tenant or for the platform. Qualifies roles and groups (platform-scope staff, check-in staff); never a model name. |
-| Membership | The link granting one user access to one tenant under one role. Platform administrators hold platform-scope memberships instead of tenant memberships. Owned by the Identity context. |
-| Customer | An attendee identity: a tenant-scoped row in `customers`, unique per tenant by email, password nullable for guest checkout. Never holds roles or capabilities. Owned by the Identity context. |
-| Buyer | A customer in the act of purchasing. |
-| Attendee | The person a ticket admits; may differ from the buyer. |
-| Sub-merchant | A tenant as registered with a payment gateway for split payments and payouts. Owned by the Payments context. |
-| KYC | Know Your Customer: the gateway's legally mandated identity verification of a sub-merchant. The customer in the acronym is the gateway's customer, meaning the tenant; never a Customer. |
+| Term         | Definition                                                                                                                                                                                                            |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Platform     | Nodia itself: the operator of the multi-tenant system and the merchant of record.                                                                                                                                     |
+| Tenant       | The business renting the platform. Owns its domains, branding, events, ticket types, orders, and customer base; onboards with a payment gateway as a sub-merchant and receives payouts. Owned by the Tenancy context. |
+| User         | A staff identity: one row in `users`, platform-global, holding credentials and MFA settings. Gains tenant access only through memberships. Customers are never users. Owned by the Identity context.                  |
+| Staff        | The human population that users represent: people working for a tenant or for the platform. Qualifies roles and groups (platform-scope staff, check-in staff); never a model name.                                    |
+| Membership   | The link granting one user access to one tenant under one role. Platform administrators hold platform-scope memberships instead of tenant memberships. Owned by the Identity context.                                 |
+| Customer     | An attendee identity: a tenant-scoped row in `customers`, unique per tenant by email, password nullable for guest checkout. Never holds roles or capabilities. Owned by the Identity context.                         |
+| Buyer        | A customer in the act of purchasing.                                                                                                                                                                                  |
+| Attendee     | The person a ticket admits; may differ from the buyer.                                                                                                                                                                |
+| Sub-merchant | A tenant as registered with a payment gateway for split payments and payouts. Owned by the Payments context.                                                                                                          |
+| KYC          | Know Your Customer: the gateway's legally mandated identity verification of a sub-merchant. The customer in the acronym is the gateway's customer, meaning the tenant; never a Customer.                              |
 
 Retired terms, not to be used in any new writing:
 

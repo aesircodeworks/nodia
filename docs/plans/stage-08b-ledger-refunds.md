@@ -52,22 +52,22 @@ All tables follow data-conventions: UUIDv7 primary keys via `HasUuids`, non-null
 
 Per system-design 8.3 `REFUND`, extended with the operational columns the execution path requires (system-design 7.5 and 13 idempotency pattern):
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | uuid | PK, UUIDv7 |
-| `tenant_id` | uuid | non-null |
-| `payment_id` | uuid | FK to `payments` |
-| `amount` | bigint | minor units |
-| `currency` | char(3) | must equal the payment currency |
-| `status` | string | enum: `pending`, `processing`, `completed`, `failed` |
-| `reason` | string, nullable | free text |
-| `ticket_ids` | jsonb, nullable | the ticket selection from the request, persisted so the asynchronous completion transaction knows which tickets to void |
-| `commission_amount` | bigint | returned commission, derived proportionally from the payment's persisted `commission_amount` and capped by its un-returned remainder; 0 when the policy is retained |
-| `idempotency_key` | string | from the request header; also passed to the gateway on execute and retry |
-| `request_hash` | string | hash of the canonicalized request body, detects key reuse with a different body (the 8a `payments.request_hash` pattern) |
-| `gateway_reference` | string, nullable | set on gateway acceptance |
-| `failure_code` | string, nullable | normalized gateway failure |
-| `created_at`, `updated_at` | timestamptz | |
+| Column                     | Type             | Notes                                                                                                                                                               |
+| -------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                       | uuid             | PK, UUIDv7                                                                                                                                                          |
+| `tenant_id`                | uuid             | non-null                                                                                                                                                            |
+| `payment_id`               | uuid             | FK to `payments`                                                                                                                                                    |
+| `amount`                   | bigint           | minor units                                                                                                                                                         |
+| `currency`                 | char(3)          | must equal the payment currency                                                                                                                                     |
+| `status`                   | string           | enum: `pending`, `processing`, `completed`, `failed`                                                                                                                |
+| `reason`                   | string, nullable | free text                                                                                                                                                           |
+| `ticket_ids`               | jsonb, nullable  | the ticket selection from the request, persisted so the asynchronous completion transaction knows which tickets to void                                             |
+| `commission_amount`        | bigint           | returned commission, derived proportionally from the payment's persisted `commission_amount` and capped by its un-returned remainder; 0 when the policy is retained |
+| `idempotency_key`          | string           | from the request header; also passed to the gateway on execute and retry                                                                                            |
+| `request_hash`             | string           | hash of the canonicalized request body, detects key reuse with a different body (the 8a `payments.request_hash` pattern)                                            |
+| `gateway_reference`        | string, nullable | set on gateway acceptance                                                                                                                                           |
+| `failure_code`             | string, nullable | normalized gateway failure                                                                                                                                          |
+| `created_at`, `updated_at` | timestamptz      |                                                                                                                                                                     |
 
 Constraints and indexes: unique `(tenant_id, idempotency_key)` (the replay anchor); index `payment_id`; check `amount > 0`. RLS policy in the same migration. Replay mirrors 8a: a unique violation on the key loads the original row, compares `request_hash`, then replays the original response or returns the mismatch problem.
 
@@ -84,18 +84,18 @@ No RLS work needed: the policy shipped with the 8a `payments` migration and merg
 
 Per system-design 8.3 `LEDGER_ENTRY`, append-only per system-design 7.3 and data-conventions (Money): no UPDATE or DELETE, corrections are new entries.
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | uuid | PK, UUIDv7 |
-| `tenant_id` | uuid | non-null |
-| `account` | string | enum: `gateway_receivable`, `gateway_fees`, `platform_commission`, `tenant_net` |
-| `direction` | string | enum: `debit`, `credit` |
-| `amount` | bigint | minor units, check `amount > 0` |
-| `currency` | char(3) | |
-| `reference_type` | string | `payment` or `refund` |
-| `reference_id` | uuid | the payment or refund |
-| `source_event_id` | uuid | the outbox event that produced this entry |
-| `created_at`, `updated_at` | timestamptz | |
+| Column                     | Type        | Notes                                                                           |
+| -------------------------- | ----------- | ------------------------------------------------------------------------------- |
+| `id`                       | uuid        | PK, UUIDv7                                                                      |
+| `tenant_id`                | uuid        | non-null                                                                        |
+| `account`                  | string      | enum: `gateway_receivable`, `gateway_fees`, `platform_commission`, `tenant_net` |
+| `direction`                | string      | enum: `debit`, `credit`                                                         |
+| `amount`                   | bigint      | minor units, check `amount > 0`                                                 |
+| `currency`                 | char(3)     |                                                                                 |
+| `reference_type`           | string      | `payment` or `refund`                                                           |
+| `reference_id`             | uuid        | the payment or refund                                                           |
+| `source_event_id`          | uuid        | the outbox event that produced this entry                                       |
+| `created_at`, `updated_at` | timestamptz |                                                                                 |
 
 Constraints and indexes: unique `(source_event_id, account)` (idempotence anchor: one event produces at most one entry per account, so duplicate delivery and replay insert nothing new); index `(tenant_id, currency, account)` for balance sums; index `(reference_type, reference_id)`; index `created_at` supporting the deterministic cursor order.
 

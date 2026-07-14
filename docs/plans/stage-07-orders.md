@@ -111,47 +111,47 @@ Snake_case JSON, laravel-data request and response objects as the source of trut
 
 ### Buyer-facing (storefront population)
 
-| Method and path | Request Data | Response Data | Notes |
-| --- | --- | --- | --- |
-| POST `/v1/storefront/orders` | `CreateOrderData` (`hold_id`, optional `attendee_names` keyed by ticket type; slice 5 adds the optional `promo_code` field) | 201 `OrderData` | Hold must be anonymous or already belong to the authenticated customer; conversion attaches the customer |
-| GET `/v1/storefront/orders/{order}` | none | 200 `OrderData` | Customers see only their own orders; 404 otherwise |
-| GET `/v1/storefront/orders/{order}/tickets` | none | 200 list of `TicketData` | `qr_payload` computed on render; empty list before `paid` |
-| POST `/v1/storefront/orders/{order}/cancel` | none | 200 `OrderData` | Only from `pending`; releases the hold |
-| POST `/v1/storefront/promo-codes/check` | `CheckPromoCodeData` (`code`, `hold_id`) | 200 `PromoCodeCheckData` (`valid`, `discount` as money, `reason_code` nullable) | Read-only preview, never increments `usage_count` |
+| Method and path                             | Request Data                                                                                                                | Response Data                                                                   | Notes                                                                                                    |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| POST `/v1/storefront/orders`                | `CreateOrderData` (`hold_id`, optional `attendee_names` keyed by ticket type; slice 5 adds the optional `promo_code` field) | 201 `OrderData`                                                                 | Hold must be anonymous or already belong to the authenticated customer; conversion attaches the customer |
+| GET `/v1/storefront/orders/{order}`         | none                                                                                                                        | 200 `OrderData`                                                                 | Customers see only their own orders; 404 otherwise                                                       |
+| GET `/v1/storefront/orders/{order}/tickets` | none                                                                                                                        | 200 list of `TicketData`                                                        | `qr_payload` computed on render; empty list before `paid`                                                |
+| POST `/v1/storefront/orders/{order}/cancel` | none                                                                                                                        | 200 `OrderData`                                                                 | Only from `pending`; releases the hold                                                                   |
+| POST `/v1/storefront/promo-codes/check`     | `CheckPromoCodeData` (`code`, `hold_id`)                                                                                    | 200 `PromoCodeCheckData` (`valid`, `discount` as money, `reason_code` nullable) | Read-only preview, never increments `usage_count`                                                        |
 
 `OrderData` carries `id`, `status`, `event_id`, `items` (list of `OrderItemData`), the four money fields as `{amount, currency}`, `promo_code` (code string, nullable), `created_at`. `TicketData` carries `id`, `ticket_type_id`, `event_seat_id`, `status`, `attendee_name`, `issued_at`, `qr_payload`.
 
 ### Staff-facing (admin population)
 
-| Method and path | Request Data | Response Data | Notes |
-| --- | --- | --- | --- |
-| GET `/v1/orders` | query-builder params | 200 cursor-paginated `OrderData` | High-volume, `cursorPaginate` with `-created_at,id`; filters `status`, `event_id`, `customer_id`, `created_at` range; unknown params rejected. Capability `orders.view` |
-| GET `/v1/orders/{order}` | none | 200 `OrderDetailData` | `OrderData` plus tickets and a customer summary composed through an Identity Action, never a join. Capability `orders.view` |
-| POST `/v1/orders/{order}/resend-tickets` | none | 202 | Only for `paid` (or refund-state) orders; dispatches the resend pathway that Stage 8a activates; audited. The `qr_rotation_counter` bump (invalidating screenshots per system-design 8.3) lives in that pathway, not the endpoint, so payloads are only invalidated when new tickets actually go out; Stage 8a's resend activation task owns the bump (see risks). Capability `orders.resend_tickets` |
-| GET `/v1/promo-codes` | query-builder params | 200 page-paginated `PromoCodeData` | Bounded collection; filters `code`, validity. Capability `promo_codes.manage` |
-| POST `/v1/promo-codes` | `UpsertPromoCodeData` | 201 `PromoCodeData` | Capability `promo_codes.manage` |
-| GET `/v1/promo-codes/{promo_code}` | none | 200 `PromoCodeData` | Includes `usage_count` |
-| PATCH `/v1/promo-codes/{promo_code}` | `UpsertPromoCodeData` (partial) | 200 `PromoCodeData` | `discount_type`, `discount_value`, `currency`, `code` immutable once `usage_count > 0`; windows editable (deactivation = set `valid_to`) |
-| GET `/v1/customers` | query-builder params | 200 cursor-paginated `CustomerSummaryData` | Identity context endpoint; filters `email` (exact), `name` (prefix). Capability `customers.view` |
+| Method and path                          | Request Data                    | Response Data                              | Notes                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------------------- | ------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET `/v1/orders`                         | query-builder params            | 200 cursor-paginated `OrderData`           | High-volume, `cursorPaginate` with `-created_at,id`; filters `status`, `event_id`, `customer_id`, `created_at` range; unknown params rejected. Capability `orders.view`                                                                                                                                                                                                                               |
+| GET `/v1/orders/{order}`                 | none                            | 200 `OrderDetailData`                      | `OrderData` plus tickets and a customer summary composed through an Identity Action, never a join. Capability `orders.view`                                                                                                                                                                                                                                                                           |
+| POST `/v1/orders/{order}/resend-tickets` | none                            | 202                                        | Only for `paid` (or refund-state) orders; dispatches the resend pathway that Stage 8a activates; audited. The `qr_rotation_counter` bump (invalidating screenshots per system-design 8.3) lives in that pathway, not the endpoint, so payloads are only invalidated when new tickets actually go out; Stage 8a's resend activation task owns the bump (see risks). Capability `orders.resend_tickets` |
+| GET `/v1/promo-codes`                    | query-builder params            | 200 page-paginated `PromoCodeData`         | Bounded collection; filters `code`, validity. Capability `promo_codes.manage`                                                                                                                                                                                                                                                                                                                         |
+| POST `/v1/promo-codes`                   | `UpsertPromoCodeData`           | 201 `PromoCodeData`                        | Capability `promo_codes.manage`                                                                                                                                                                                                                                                                                                                                                                       |
+| GET `/v1/promo-codes/{promo_code}`       | none                            | 200 `PromoCodeData`                        | Includes `usage_count`                                                                                                                                                                                                                                                                                                                                                                                |
+| PATCH `/v1/promo-codes/{promo_code}`     | `UpsertPromoCodeData` (partial) | 200 `PromoCodeData`                        | `discount_type`, `discount_value`, `currency`, `code` immutable once `usage_count > 0`; windows editable (deactivation = set `valid_to`)                                                                                                                                                                                                                                                              |
+| GET `/v1/customers`                      | query-builder params            | 200 cursor-paginated `CustomerSummaryData` | Identity context endpoint; filters `email` (exact), `name` (prefix). Capability `customers.view`                                                                                                                                                                                                                                                                                                      |
 
 New capabilities registered in the Stage 3 RBAC capability set: `orders.resend_tickets`, `promo_codes.manage`, `customers.view`. `orders.view` already exists in Stage 3's initial registry; this stage adds only the Policies and endpoint gating that consume it.
 
 ### Error codes (registry additions)
 
-| `code` | Status | Condition |
-| --- | --- | --- |
-| `hold_not_found` | 404 | Hold does not exist for this tenant, or belongs to a different customer (not-found semantics so hold IDs never leak ownership) |
-| `checkout.hold_expired` | 409 | `expires_at` has passed, regardless of sweeper state |
-| `hold_already_converted` | 409 | An order already references this hold |
-| `order_not_found` | 404 | Missing, other tenant (via RLS), or other customer |
-| `order_not_cancelable` | 409 | Cancel attempted on a non-pending order |
-| `order_not_paid` | 409 | Resend-tickets on an order without issued tickets |
-| `invalid_order_transition` | 409 | Transition Action guard affected zero rows |
-| `promo_code_invalid` | 422 | Unknown code for this tenant |
-| `promo_code_not_active` | 422 | Outside `valid_from`/`valid_to` |
-| `promo_code_exhausted` | 422 | `usage_count` would exceed `usage_limit` |
-| `promo_code_currency_mismatch` | 422 | Fixed-amount currency differs from the order currency |
-| `promo_code_immutable_field` | 422 | PATCH to a locked field after first use |
+| `code`                         | Status | Condition                                                                                                                      |
+| ------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `hold_not_found`               | 404    | Hold does not exist for this tenant, or belongs to a different customer (not-found semantics so hold IDs never leak ownership) |
+| `checkout.hold_expired`        | 409    | `expires_at` has passed, regardless of sweeper state                                                                           |
+| `hold_already_converted`       | 409    | An order already references this hold                                                                                          |
+| `order_not_found`              | 404    | Missing, other tenant (via RLS), or other customer                                                                             |
+| `order_not_cancelable`         | 409    | Cancel attempted on a non-pending order                                                                                        |
+| `order_not_paid`               | 409    | Resend-tickets on an order without issued tickets                                                                              |
+| `invalid_order_transition`     | 409    | Transition Action guard affected zero rows                                                                                     |
+| `promo_code_invalid`           | 422    | Unknown code for this tenant                                                                                                   |
+| `promo_code_not_active`        | 422    | Outside `valid_from`/`valid_to`                                                                                                |
+| `promo_code_exhausted`         | 422    | `usage_count` would exceed `usage_limit`                                                                                       |
+| `promo_code_currency_mismatch` | 422    | Fixed-amount currency differs from the order currency                                                                          |
+| `promo_code_immutable_field`   | 422    | PATCH to a locked field after first use                                                                                        |
 
 Validation failures use the Stage 1 `request.validation_failed` problem shape with the `errors` map.
 

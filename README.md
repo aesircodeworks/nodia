@@ -24,15 +24,15 @@ To run a single frontend instead of all three: `pnpm --filter storefront dev` (o
 
 ## Default Ports
 
-| Service | Port | Where to change it |
-| --- | --- | --- |
-| API | 8000 | `API_PORT` in the root `.env` |
-| PostgreSQL | 5432 | `DB_PORT` in the root `.env` |
-| Redis | 6379 | `REDIS_PORT` in the root `.env` |
-| MinIO | 9000 (console 9001) | `MINIO_PORT` / `MINIO_CONSOLE_PORT` in the root `.env` |
-| Storefront | 3000 | `dev` script in `apps/storefront/package.json` |
-| Admin portal | 3001 | `dev` script in `apps/admin/package.json` |
-| Check-in PWA | 5173 | `dev` script in `apps/checkin/package.json` (Vite `--port`) |
+| Service      | Port                | Where to change it                                          |
+| ------------ | ------------------- | ----------------------------------------------------------- |
+| API          | 8000                | `API_PORT` in the root `.env`                               |
+| PostgreSQL   | 5432                | `DB_PORT` in the root `.env`                                |
+| Redis        | 6379                | `REDIS_PORT` in the root `.env`                             |
+| MinIO        | 9000 (console 9001) | `MINIO_PORT` / `MINIO_CONSOLE_PORT` in the root `.env`      |
+| Storefront   | 3000                | `dev` script in `apps/storefront/package.json`              |
+| Admin portal | 3001                | `dev` script in `apps/admin/package.json`                   |
+| Check-in PWA | 5173                | `dev` script in `apps/checkin/package.json` (Vite `--port`) |
 
 Container ports come from the root `.env` (copied from `.env.example` by `make setup`); every variable has a default in `infra/compose/docker-compose.yml`, so only the overrides you need go in `.env`. If a port is already occupied, change the variable and rerun `make up`. When you change `API_PORT`, update `NEXT_PUBLIC_API_URL` in `apps/storefront/.env` and `apps/admin/.env` and `VITE_API_URL` in `apps/checkin/.env` to match.
 

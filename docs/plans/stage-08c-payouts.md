@@ -51,17 +51,17 @@ Two new tables, both tenant-scoped, both shipping their RLS policy in the creati
 
 One row per tenant per gateway: the tenant as registered with that gateway for split payments and payouts (Sub-merchant, system-design 19).
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid | PK, UUIDv7 |
-| tenant_id | uuid | non-null, FK to tenants |
-| gateway | string | adapter key, matching the Stage 8a gateway registry |
-| status | string | enum `SubmerchantStatus`: `pending`, `under_review`, `action_required`, `active`, `rejected`, `disabled` |
-| gateway_account_reference | string nullable | the gateway's sub-merchant identifier, set once the gateway acknowledges creation |
-| onboarding_url | text nullable | gateway-hosted KYC URL, present while the gateway wants buyer-side action; the platform never collects KYC data itself (system-design 7.3) |
-| requirements | jsonb | list of outstanding requirement keys reported by the gateway, default `[]` |
-| activated_at | timestamptz nullable | set on transition to `active` |
-| created_at, updated_at | timestamptz | |
+| Column                    | Type                 | Notes                                                                                                                                      |
+| ------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| id                        | uuid                 | PK, UUIDv7                                                                                                                                 |
+| tenant_id                 | uuid                 | non-null, FK to tenants                                                                                                                    |
+| gateway                   | string               | adapter key, matching the Stage 8a gateway registry                                                                                        |
+| status                    | string               | enum `SubmerchantStatus`: `pending`, `under_review`, `action_required`, `active`, `rejected`, `disabled`                                   |
+| gateway_account_reference | string nullable      | the gateway's sub-merchant identifier, set once the gateway acknowledges creation                                                          |
+| onboarding_url            | text nullable        | gateway-hosted KYC URL, present while the gateway wants buyer-side action; the platform never collects KYC data itself (system-design 7.3) |
+| requirements              | jsonb                | list of outstanding requirement keys reported by the gateway, default `[]`                                                                 |
+| activated_at              | timestamptz nullable | set on transition to `active`                                                                                                              |
+| created_at, updated_at    | timestamptz          |                                                                                                                                            |
 
 Constraints and indexes:
 
@@ -83,19 +83,19 @@ Status transitions (all conditional UPDATEs checked by affected-row count, never
 
 Mirror of gateway payout objects (system-design 7.3, 8.3). Rows are created by webhook ingestion or the reconciliation poller, never by an admin request.
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid | PK, UUIDv7 |
-| tenant_id | uuid | non-null |
-| gateway | string | adapter key |
-| gateway_reference | string | the gateway's payout identifier |
-| amount | bigint | integer minor units; bare `amount` paired with `currency` per the data-conventions exception for rows that are themselves single monetary facts, following the system-design 8.3 diagram |
-| currency | string | the tenant settlement currency (system-design 12) |
-| status | string | enum `PayoutStatus`: `pending`, `in_transit`, `paid`, `failed`, `canceled` |
-| executed_at | timestamptz nullable | gateway-reported completion time, set on transition to `paid` |
-| reconciled_at | timestamptz nullable | set by `ReconcilePayouts` when the payout has been checked against the ledger |
-| discrepancy_amount | bigint nullable | minor units in the row's `currency`; non-null when reconciliation found the mirrored amounts diverging from ledger expectations |
-| created_at, updated_at | timestamptz | |
+| Column                 | Type                 | Notes                                                                                                                                                                                    |
+| ---------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id                     | uuid                 | PK, UUIDv7                                                                                                                                                                               |
+| tenant_id              | uuid                 | non-null                                                                                                                                                                                 |
+| gateway                | string               | adapter key                                                                                                                                                                              |
+| gateway_reference      | string               | the gateway's payout identifier                                                                                                                                                          |
+| amount                 | bigint               | integer minor units; bare `amount` paired with `currency` per the data-conventions exception for rows that are themselves single monetary facts, following the system-design 8.3 diagram |
+| currency               | string               | the tenant settlement currency (system-design 12)                                                                                                                                        |
+| status                 | string               | enum `PayoutStatus`: `pending`, `in_transit`, `paid`, `failed`, `canceled`                                                                                                               |
+| executed_at            | timestamptz nullable | gateway-reported completion time, set on transition to `paid`                                                                                                                            |
+| reconciled_at          | timestamptz nullable | set by `ReconcilePayouts` when the payout has been checked against the ledger                                                                                                            |
+| discrepancy_amount     | bigint nullable      | minor units in the row's `currency`; non-null when reconciliation found the mirrored amounts diverging from ledger expectations                                                          |
+| created_at, updated_at | timestamptz          |                                                                                                                                                                                          |
 
 Constraints and indexes:
 

@@ -48,34 +48,34 @@ All three tables: UUIDv7 `id` via `HasUuids`, non-null `tenant_id`, `created_at`
 
 ### venues
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid | PK, UUIDv7 |
-| tenant_id | uuid | non-null, FK tenants |
-| name | string | non-null |
-| address | string | non-null |
-| city | string | non-null |
-| country | string | non-null, ISO 3166-1 alpha-2, validated in the request layer |
-| capacity | integer | non-null, > 0 enforced by CHECK |
+| Column    | Type    | Notes                                                        |
+| --------- | ------- | ------------------------------------------------------------ |
+| id        | uuid    | PK, UUIDv7                                                   |
+| tenant_id | uuid    | non-null, FK tenants                                         |
+| name      | string  | non-null                                                     |
+| address   | string  | non-null                                                     |
+| city      | string  | non-null                                                     |
+| country   | string  | non-null, ISO 3166-1 alpha-2, validated in the request layer |
+| capacity  | integer | non-null, > 0 enforced by CHECK                              |
 
 Indexes: FK index on `tenant_id` (Laravel default names throughout).
 
 ### events
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid | PK, UUIDv7 |
-| tenant_id | uuid | non-null, FK tenants |
-| venue_id | uuid | nullable, FK venues (section 8.3: virtual events have no venue) |
-| status | string | enum-backed: `draft`, `published`, `canceled`; default `draft` |
-| name | jsonb | translatable, locale-keyed (section 12, ADR 014) |
-| description | jsonb | translatable, locale-keyed |
-| start_at | timestamp | non-null, UTC |
-| end_at | timestamp | non-null, UTC, CHECK `end_at > start_at` |
-| timezone | string | non-null, IANA identifier, validated in the request layer (section 8: timezones are data, never encoded into stored timestamps) |
-| is_virtual | boolean | non-null, default false |
-| virtual_event_url | string | nullable |
-| async_payment_policy | jsonb | non-null, validated shape (see below) |
+| Column               | Type      | Notes                                                                                                                           |
+| -------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| id                   | uuid      | PK, UUIDv7                                                                                                                      |
+| tenant_id            | uuid      | non-null, FK tenants                                                                                                            |
+| venue_id             | uuid      | nullable, FK venues (section 8.3: virtual events have no venue)                                                                 |
+| status               | string    | enum-backed: `draft`, `published`, `canceled`; default `draft`                                                                  |
+| name                 | jsonb     | translatable, locale-keyed (section 12, ADR 014)                                                                                |
+| description          | jsonb     | translatable, locale-keyed                                                                                                      |
+| start_at             | timestamp | non-null, UTC                                                                                                                   |
+| end_at               | timestamp | non-null, UTC, CHECK `end_at > start_at`                                                                                        |
+| timezone             | string    | non-null, IANA identifier, validated in the request layer (section 8: timezones are data, never encoded into stored timestamps) |
+| is_virtual           | boolean   | non-null, default false                                                                                                         |
+| virtual_event_url    | string    | nullable                                                                                                                        |
+| async_payment_policy | jsonb     | non-null, validated shape (see below)                                                                                           |
 
 Constraints:
 
@@ -86,17 +86,17 @@ Constraints:
 
 ### ticket_types
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid | PK, UUIDv7 |
-| tenant_id | uuid | non-null, FK tenants (denormalized per section 4.2) |
-| event_id | uuid | non-null, FK events |
-| name | string | non-null (section 8.2 models this untranslated; see open questions) |
-| price_amount | integer | non-null, minor units, CHECK `price_amount >= 0` |
-| currency | string | non-null, ISO 4217, paired with `price_amount` on the same row (ADR 018) |
-| sales_start | timestamp | nullable, UTC |
-| sales_end | timestamp | nullable, UTC, CHECK `sales_end > sales_start` when both set |
-| requires_seat | boolean | non-null, default false |
+| Column        | Type      | Notes                                                                    |
+| ------------- | --------- | ------------------------------------------------------------------------ |
+| id            | uuid      | PK, UUIDv7                                                               |
+| tenant_id     | uuid      | non-null, FK tenants (denormalized per section 4.2)                      |
+| event_id      | uuid      | non-null, FK events                                                      |
+| name          | string    | non-null (section 8.2 models this untranslated; see open questions)      |
+| price_amount  | integer   | non-null, minor units, CHECK `price_amount >= 0`                         |
+| currency      | string    | non-null, ISO 4217, paired with `price_amount` on the same row (ADR 018) |
+| sales_start   | timestamp | nullable, UTC                                                            |
+| sales_end     | timestamp | nullable, UTC, CHECK `sales_end > sales_start` when both set             |
+| requires_seat | boolean   | non-null, default false                                                  |
 
 Indexes: `(tenant_id, event_id)`; FK index on `event_id`.
 
@@ -108,12 +108,12 @@ Currency constraint: section 12 fixes currency as a property of the ticket type 
 
 Produced (all four are already in the section 9.3 registry; no registry change needed):
 
-| Event | Aggregate | Payload | Recorded by |
-| --- | --- | --- | --- |
-| EventCreated | event / event id | `event_id` | CreateEvent |
-| EventUpdated | event / event id | `event_id` | UpdateEvent, CreateTicketType, UpdateTicketType (ticket type changes alter the event's sellable surface; the registry has no ticket-type event, so the parent event's update event is the fact recorded) |
-| EventPublished | event / event id | `event_id`, `published_at` | PublishEvent |
-| EventCanceled | event / event id | `event_id`, `canceled_at`, `prior_status` | CancelEvent |
+| Event          | Aggregate        | Payload                                   | Recorded by                                                                                                                                                                                              |
+| -------------- | ---------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| EventCreated   | event / event id | `event_id`                                | CreateEvent                                                                                                                                                                                              |
+| EventUpdated   | event / event id | `event_id`                                | UpdateEvent, CreateTicketType, UpdateTicketType (ticket type changes alter the event's sellable surface; the registry has no ticket-type event, so the parent event's update event is the fact recorded) |
+| EventPublished | event / event id | `event_id`, `published_at`                | PublishEvent                                                                                                                                                                                             |
+| EventCanceled  | event / event id | `event_id`, `canceled_at`, `prior_status` | CancelEvent                                                                                                                                                                                              |
 
 Envelope per event-conventions: UUIDv7 event `id`, global `sequence`, `type`, non-null `tenant_id`, `aggregate_type` `event`, `aggregate_id`, `correlation_id` propagated from the request, `occurred_at`, laravel-data payload with snake_case keys carrying identifiers and facts, not snapshots. Every event is recorded in the same database transaction as the state change, without exception; for `EventPublished` and `EventCanceled` that means the same transaction as the conditional UPDATE, and the event is recorded only when the affected-row count is 1.
 
@@ -127,22 +127,22 @@ All routes under `/v1`, snake_case JSON wire format, laravel-data objects as the
 
 Admin surface (staff bearer token, `X-Tenant-Id` validated against memberships, capability-gated, mutations activity-logged):
 
-| Method and path | Capability | Request Data | Response Data | Errors |
-| --- | --- | --- | --- | --- |
-| POST /v1/venues | events.manage | CreateVenueData | VenueData (201) | request.validation_failed |
-| GET /v1/venues | events.view | query-builder: `filter[name]`, `filter[city]`, `sort` in `name,-name,created_at,-created_at`, page pagination | paginated VenueData | request.validation_failed on unknown filter/sort (rejected, not ignored) |
-| GET /v1/venues/{venue} | events.view | | VenueData | request.not_found |
-| PATCH /v1/venues/{venue} | events.manage | UpdateVenueData | VenueData | request.validation_failed, request.not_found |
-| POST /v1/events | events.manage | CreateEventData | EventData (201) | request.validation_failed |
-| GET /v1/events | events.view | query-builder: `filter[status]`, `filter[venue_id]`, `filter[is_virtual]`, `sort` in `start_at,-start_at,created_at,-created_at`, `include=venue,ticket_types`, page pagination | paginated EventData | request.validation_failed |
-| GET /v1/events/{event} | events.view | `include=venue,ticket_types` | EventData | request.not_found |
-| PATCH /v1/events/{event} | events.manage | UpdateEventData | EventData | request.validation_failed, request.not_found, catalog.event_immutable (409, event is canceled) |
-| POST /v1/events/{event}/publish | events.publish | none | EventData | request.not_found, catalog.event_not_publishable (409, status was not draft) |
-| POST /v1/events/{event}/cancel | events.publish | none | EventData | request.not_found, catalog.event_not_cancelable (409, already canceled) |
-| POST /v1/events/{event}/ticket-types | events.manage | CreateTicketTypeData | TicketTypeData (201) | request.validation_failed, catalog.currency_mismatch (422), catalog.event_immutable (409) |
-| GET /v1/events/{event}/ticket-types | events.view | page pagination | paginated TicketTypeData | request.not_found |
-| GET /v1/ticket-types/{ticket_type} | events.view | | TicketTypeData | request.not_found |
-| PATCH /v1/ticket-types/{ticket_type} | events.manage | UpdateTicketTypeData | TicketTypeData | request.validation_failed, catalog.currency_mismatch, catalog.event_immutable |
+| Method and path                      | Capability     | Request Data                                                                                                                                                                    | Response Data            | Errors                                                                                         |
+| ------------------------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------- |
+| POST /v1/venues                      | events.manage  | CreateVenueData                                                                                                                                                                 | VenueData (201)          | request.validation_failed                                                                      |
+| GET /v1/venues                       | events.view    | query-builder: `filter[name]`, `filter[city]`, `sort` in `name,-name,created_at,-created_at`, page pagination                                                                   | paginated VenueData      | request.validation_failed on unknown filter/sort (rejected, not ignored)                       |
+| GET /v1/venues/{venue}               | events.view    |                                                                                                                                                                                 | VenueData                | request.not_found                                                                              |
+| PATCH /v1/venues/{venue}             | events.manage  | UpdateVenueData                                                                                                                                                                 | VenueData                | request.validation_failed, request.not_found                                                   |
+| POST /v1/events                      | events.manage  | CreateEventData                                                                                                                                                                 | EventData (201)          | request.validation_failed                                                                      |
+| GET /v1/events                       | events.view    | query-builder: `filter[status]`, `filter[venue_id]`, `filter[is_virtual]`, `sort` in `start_at,-start_at,created_at,-created_at`, `include=venue,ticket_types`, page pagination | paginated EventData      | request.validation_failed                                                                      |
+| GET /v1/events/{event}               | events.view    | `include=venue,ticket_types`                                                                                                                                                    | EventData                | request.not_found                                                                              |
+| PATCH /v1/events/{event}             | events.manage  | UpdateEventData                                                                                                                                                                 | EventData                | request.validation_failed, request.not_found, catalog.event_immutable (409, event is canceled) |
+| POST /v1/events/{event}/publish      | events.publish | none                                                                                                                                                                            | EventData                | request.not_found, catalog.event_not_publishable (409, status was not draft)                   |
+| POST /v1/events/{event}/cancel       | events.publish | none                                                                                                                                                                            | EventData                | request.not_found, catalog.event_not_cancelable (409, already canceled)                        |
+| POST /v1/events/{event}/ticket-types | events.manage  | CreateTicketTypeData                                                                                                                                                            | TicketTypeData (201)     | request.validation_failed, catalog.currency_mismatch (422), catalog.event_immutable (409)      |
+| GET /v1/events/{event}/ticket-types  | events.view    | page pagination                                                                                                                                                                 | paginated TicketTypeData | request.not_found                                                                              |
+| GET /v1/ticket-types/{ticket_type}   | events.view    |                                                                                                                                                                                 | TicketTypeData           | request.not_found                                                                              |
+| PATCH /v1/ticket-types/{ticket_type} | events.manage  | UpdateTicketTypeData                                                                                                                                                            | TicketTypeData           | request.validation_failed, catalog.currency_mismatch, catalog.event_immutable                  |
 
 Ticket types nest one level under events for creation and listing, then get their own top-level resource for detail and update, per the api-conventions nesting rule. Route parameters are UUIDv7 strings.
 
@@ -150,10 +150,10 @@ Admin Data shapes: `EventData` carries `name` and `description` as full locale-k
 
 Storefront surface (no auth, tenant resolved from `Host` against `tenant_domains`, purpose-built parameters, no query-builder passthrough):
 
-| Method and path | Parameters | Response Data | Errors |
-| --- | --- | --- | --- |
-| GET /v1/storefront/events | `locale` (optional), page pagination, ordered by `start_at` ascending | paginated StorefrontEventData | tenant resolution failure codes from Stage 2 |
-| GET /v1/storefront/events/{event} | `locale` (optional) | StorefrontEventData with ticket types | request.not_found (draft and canceled events return 404 indistinguishably from nonexistent ones) |
+| Method and path                   | Parameters                                                            | Response Data                         | Errors                                                                                           |
+| --------------------------------- | --------------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| GET /v1/storefront/events         | `locale` (optional), page pagination, ordered by `start_at` ascending | paginated StorefrontEventData         | tenant resolution failure codes from Stage 2                                                     |
+| GET /v1/storefront/events/{event} | `locale` (optional)                                                   | StorefrontEventData with ticket types | request.not_found (draft and canceled events return 404 indistinguishably from nonexistent ones) |
 
 Locale negotiation per section 12: explicit `locale` query parameter first, then `Accept-Language`, falling back to the tenant default; only tenant-supported locales are honored. Section 12 also places customer preference in the chain; that step is deliberately out of scope here because these storefront reads carry no customer identity, and Stage 7 adds it to the resolver when customer-facing order endpoints arrive. The response resolves `name` and `description` to single strings in the negotiated locale (falling back per laravel-translatable to the tenant default when a translation is missing), includes the resolved `locale`, and sets `Content-Language`. `StorefrontEventData` embeds `StorefrontTicketTypeData` (name, `price` as `{amount, currency}`, sales window); no availability field exists until Stage 6. Raw internal state (status, async_payment_policy) is not exposed on the storefront shape.
 

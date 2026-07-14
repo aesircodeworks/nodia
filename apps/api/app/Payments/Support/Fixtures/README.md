@@ -49,14 +49,15 @@ environment variable is set.
    `GatewayFixtureRecorder` implementation expects.
 2. Run:
 
-   ```sh
-   php artisan gateway:record-fixtures {slug} {scenario}
-   ```
+    ```sh
+    php artisan gateway:record-fixtures {slug} {scenario}
+    ```
 
-   This calls the bound recorder's `record()` method, sanitizes every
-   returned exchange with `GatewayFixtureSanitizer::redact()`, and writes
-   `tests/Fixtures/gateways/{slug}/{scenario}-{index}.json` for each
-   exchange the scenario produced.
+    This calls the bound recorder's `record()` method, sanitizes every
+    returned exchange with `GatewayFixtureSanitizer::redact()`, and writes
+    `tests/Fixtures/gateways/{slug}/{scenario}-{index}.json` for each
+    exchange the scenario produced.
+
 3. Diff the newly written fixtures before committing. Confirm no secret
    material survived redaction (the sanitizer catches known shapes; a
    gateway-specific format it does not recognize is still your

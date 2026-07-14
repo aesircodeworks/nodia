@@ -84,12 +84,14 @@ Slices 1 through 4 are gateway-agnostic and can start immediately, before the AD
 ### Slice 1: adapter conformance suite (gateway-agnostic)
 
 Failing tests first:
+
 - Unit: a shared conformance test case, parameterized by adapter, asserting the `GatewayAdapter` behavioral contract: `createPayment` returns a normalized result carrying the gateway reference and echoes the idempotency key; `refund` on an unknown reference returns a typed failure, not an exception; `parseWebhook` on a tampered signature throws the typed verification failure; capability flags are internally consistent (an adapter claiming async confirmation must declare which methods confirm asynchronously). Run first against `FakeGateway`; it must pass unchanged, proving the contract was extracted, not invented.
 - Unit: adapter registry resolution by gateway slug; resolving a slug whose adapter is not bound fails with a typed error; an adapter present in code but not enabled for the tenant is never offered (feature-level assertion deferred to slice 4).
 
 ### Slice 2: recorded-fixture harness (gateway-agnostic)
 
 Failing tests first:
+
 - Unit: fixture loader reads a recorded exchange (request matcher plus canned response) from `tests/Fixtures/gateways/{slug}/`, and replaying a request the fixture set does not cover fails the test loudly rather than falling through to the network.
 - Unit: sanitizer proves recorded fixtures contain no secret material: a fixture containing a known-format credential, bearer token, or PAN-like digit run fails a guard test that scans the fixture directory. This guard runs in CI permanently.
 - Unit: record mode is inert in CI: attempting to record while `CI` is set fails immediately.
@@ -99,6 +101,7 @@ Implementation: an HTTP fake layer keyed by fixture files, a `php artisan gatewa
 ### Slice 3: adapter and verifier skeletons (gateway-agnostic)
 
 Failing tests first:
+
 - Unit: a `PendingGatewayAdapter` skeleton implements the interface, declares placeholder capability flags of "supports nothing", and every operation throws a typed `GatewayNotConfigured` error.
 - Feature: with the skeleton registered but its capabilities empty, checkout offers for a tenant that enabled it contain no methods from it and the offer response is otherwise unchanged; initiating a payment that somehow names it returns a problem document with code `gateway_not_configured` (distinct from `gateway_unavailable`, which signals an open circuit breaker; see Endpoints).
 - Unit: webhook verifier seam accepts a per-gateway verifier; the skeleton verifier rejects everything, and ingestion for its slug returns the `webhook_signature_invalid` problem without persisting.
@@ -106,6 +109,7 @@ Failing tests first:
 ### Slice 4: KYC flow abstraction hardening (gateway-agnostic)
 
 Failing tests first:
+
 - Unit: the Stage 8c onboarding port is exercised with a second fake implementation that uses a different status vocabulary, proving the normalization mapping is data-driven per adapter and unknown gateway statuses land in a quarantined `needs_review` state rather than throwing or silently mapping.
 - Feature: onboarding status endpoint renders only the normalized status enum on the wire; the raw gateway status never leaks into responses.
 - Concurrency: status normalization applies via conditional UPDATE on the onboarding row (guard on current status, checked by affected-row count) so a stale webhook cannot regress a completed onboarding.
@@ -113,6 +117,7 @@ Failing tests first:
 ### Slice 5: real adapter, payment happy path (pending ADR)
 
 Failing tests first:
+
 - Contract/Feature: the full Stage 8a purchase feature test re-run with the real adapter substituted and HTTP replayed from fixtures: initiate, awaiting_payment, webhook confirm, paid, tickets issued once. Written against fixture names before the fixtures exist; recording them is part of going green.
 - Unit: request mapping (order, amount as integer minor units plus currency, idempotency key, sub-merchant split reference) and response normalization for `createPayment` and capture.
 - Unit: circuit breaker wraps the real adapter's transport; a scripted transport failure opens the breaker and the offer endpoint drops the gateway's methods (system-design 13).
@@ -120,6 +125,7 @@ Failing tests first:
 ### Slice 6: real webhooks and failure modes (pending ADR)
 
 Failing tests first:
+
 - Feature: signature verification against a real recorded webhook with the sandbox signing secret's test-key equivalent; positive, tampered-body, wrong-key, and stale-timestamp cases each mapped to the stable codes.
 - Feature: duplicate delivery of the same recorded webhook produces one raw row, one normalized event, one order transition, one ticket batch, one email, one PDF, one ledger set (the Stage 8a/8b invariant with real payloads).
 - Feature: decline, expiry, and async-confirm-after-delay fixtures drive `PaymentFailed`, payment expiry, and delayed `PaymentConfirmed` respectively; the reconciliation poller path is exercised with fixtures for the gateway's payment-status query.
@@ -128,6 +134,7 @@ Failing tests first:
 ### Slice 7: real refunds, KYC, payouts (pending ADR)
 
 Failing tests first:
+
 - Feature: full and partial refund through the real adapter from fixtures, idempotency key on retry, ledger balanced after each (8b invariant).
 - Feature: KYC flow end to end from fixtures: create sub-merchant, receive status webhooks or poll, normalized transitions land, `needs_review` on unknown status.
 - Feature: payout webhook or poll fixtures mirror into `payouts` and reconcile against ledger balances (8c invariant, real shapes).

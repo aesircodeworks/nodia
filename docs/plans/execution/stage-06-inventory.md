@@ -48,11 +48,11 @@ plan Slice 1 task 2:
   `fresh()` call; passing them explicitly is simpler and matches every
   other counter caller's expectation of a fully-populated object back).
 - `App\Inventory\Actions\AdjustInventoryQuantity`: increase (`$delta >=
-  0`) is an unconditional `UPDATE quantity = quantity + delta`; decrease
+0`) is an unconditional `UPDATE quantity = quantity + delta`; decrease
   adds `WHERE sold + held <= quantity + delta` to the same statement,
   checked by affected-row count, never read-then-write. Zero affected
   rows throws the new `App\Inventory\Exceptions\
-  InsufficientInventoryException` (`ErrorCode::InsufficientInventory`,
+InsufficientInventoryException` (`ErrorCode::InsufficientInventory`,
   wire code `insufficient_inventory`, 409, matching the plan's endpoint
   table for the future hold-creation guard reusing this same shape).
 - Isolation: `tests/Isolation/Support/TicketTypeInventoryFixture.php`
@@ -67,7 +67,7 @@ plan Slice 1 task 2:
   isolation from the other three; documented inline in the test).
   Two extra tests exercise the plan's own SQL shape for the held-increment
   guard directly (`UPDATE ... SET held = held + ? WHERE ticket_type_id =
-  ? AND sold + held + ? <= quantity`) via `DB::update`, proving the
+? AND sold + held + ? <= quantity`) via `DB::update`, proving the
   affected-row-count pattern task 4's `CreateHold` will reuse, without
   introducing that Action ahead of its own task.
 - Unit: `tests/Unit/Inventory/InitializeTicketTypeInventoryTest.php` and
@@ -85,11 +85,11 @@ plan Slice 1 task 2:
   in its `$contexts` array from the stage-06 plan's own scaffolding, so
   no change was needed there.
 - `ProblemRenderer::detailFor()` and `tests/Unit/Problems/
-  ErrorCodeTest.php`'s registry snapshot both updated for the new
+ErrorCodeTest.php`'s registry snapshot both updated for the new
   `ErrorCode::InsufficientInventory` case (Larastan's match-exhaustiveness
   check caught the renderer miss).
 - `composer types:generate` run; `packages/api-client/src/generated/
-  index.ts` and `typescript-transformer-manifest.json` regenerated for
+index.ts` and `typescript-transformer-manifest.json` regenerated for
   the new `ErrorCode` case (no new Data class this task; the counter
   table has no laravel-data object yet, that arrives with task 3's
   Catalog quantity contract).
@@ -116,7 +116,7 @@ the Risks note "Quantity input ownership":
 
 - `App\EventCatalog\Data\CreateTicketTypeData` and `UpdateTicketTypeData`
   gain `public int|Optional $quantity` with rule `['sometimes',
-  'integer', 'min:0']`. `quantity` never lands on `ticket_types` or on
+'integer', 'min:0']`. `quantity` never lands on `ticket_types` or on
   `TicketTypeData`'s response shape (unchanged); it is read only by the
   two Catalog Actions and handed to Inventory.
 - New `App\Inventory\Actions\SetTicketTypeQuantity`: locks the counter
@@ -131,7 +131,7 @@ the Risks note "Quantity input ownership":
   layer, not a new primitive.
 - `CreateTicketType`: resolves effective `requiresSeat` (existing
   Optional-default-false pattern), throws `Illuminate\Validation\
-  ValidationException` on `quantity` given with `requires_seat` true
+ValidationException` on `quantity` given with `requires_seat` true
   (renders as the generic `request.validation_failed`, matching
   `ProblemRenderer`'s existing handling for every `ValidationException`),
   otherwise calls `SetTicketTypeQuantity` with the given quantity or `0`
@@ -152,13 +152,13 @@ the Risks note "Quantity input ownership":
   409, now either `catalog.event_immutable` or `insufficient_inventory`;
   both endpoints' 422 descriptions mention the new quantity failure
   modes. `composer types:generate` run; `packages/api-client/src/generated/
-  index.ts` and the manifest regenerated with `quantity?: number` on both
+index.ts` and the manifest regenerated with `quantity?: number` on both
   request types.
 - Test-first, per the master plan double loop: added the requires_seat
   rejection, quantity-seeding, and quantity-update feature tests to
   `tests/Feature/EventCatalog/TicketTypeEndpointsTest.php` before writing
   the Data/Action changes, watched them fail (`Undefined property
-  $quantity`, then 500s once the field existed but nothing consumed it),
+$quantity`, then 500s once the field existed but nothing consumed it),
   then implemented. Same order for the unit suites below.
 - Unit: extended `tests/Unit/EventCatalog/CreateTicketTypeTest.php` and
   `UpdateTicketTypeTest.php` with quantity-seeding, zero-default,
@@ -173,8 +173,8 @@ the Risks note "Quantity input ownership":
   deletes `ticket_types` for a tenant needed a `ticket_type_inventory`
   delete first (the new table's FK to `ticket_types.id` has no cascade).
   Touched `tests/Feature/EventCatalog/{TicketTypeEndpointsTest,
-  TicketTypeEventUpdatedOutboxTest, EventEndpointsTest,
-  StorefrontEventEndpointsTest, CatalogPublishSequenceTest}.php`,
+TicketTypeEventUpdatedOutboxTest, EventEndpointsTest,
+StorefrontEventEndpointsTest, CatalogPublishSequenceTest}.php`,
   `tests/Feature/Identity/ActivityLogCoverageTest.php`, and
   `tests/Unit/EventCatalog/{CreateTicketTypeTest,UpdateTicketTypeTest}.php`.
   Left uncaught this surfaced only as cascading failures several files
@@ -225,7 +225,7 @@ from slice 0 green.
   (`ticket_type_not_in_event`), sales-window check against
   `Illuminate\Support\Facades\Date::now()` (`sales_window_closed`),
   then the held-increment conditional UPDATE (`sold + held + n <=
-  quantity`, checked by affected-row count, throwing
+quantity`, checked by affected-row count, throwing
   `InsufficientHoldInventoryException` with a `ticket_type_id`
   extension member on zero rows). TTL is a 10-minute constant. Runs
   entirely inside the ambient request transaction
@@ -255,7 +255,7 @@ from slice 0 green.
   schemas (`HoldEventNotFoundProblem`, `HoldNotFoundProblem`,
   `HoldCreateUnprocessableProblem`, `HoldCreateConflictProblem`).
   `composer types:generate` run; `packages/api-client/src/generated/
-  index.ts` and the manifest regenerated with `CreateHoldData`,
+index.ts` and the manifest regenerated with `CreateHoldData`,
   `HoldData`, `HoldItemData`, `HoldItemInputData`, `HoldStatus`, and the
   four new `ErrorCode` members.
 - Test-first per the master plan double loop: the GA oversell
@@ -267,7 +267,7 @@ from slice 0 green.
   slice 0's rule that a failing probe cannot land on `main` so it
   merges with the task that turns it green. Isolation probes for
   `holds` and `hold_items` (`tests/Isolation/{HoldsIsolationTest,
-  HoldItemsIsolationTest}.php`) went the same route. Unit
+HoldItemsIsolationTest}.php`) went the same route. Unit
   (`tests/Unit/Inventory/CreateHoldTest.php`, including a rollback
   probe: `HoldCreated` present via a mid-transaction `OutboxEvent`
   query, then absent and the hold row gone after a forced
@@ -282,7 +282,7 @@ from slice 0 green.
   `contractHoldTenant()`/`contractHoldFixture()` helpers and six
   exercisers (one per newly documented `method path status` triple),
   required by that suite's own coverage gate; `tests/Architecture/
-  PresetTest.php` gained the new context's ignore-list entries
+PresetTest.php` gained the new context's ignore-list entries
   (`App\Inventory\Http\Controllers`, `InventoryServiceProvider`,
   `HoldStatus`, the five new exception classes) the Laravel preset
   needs for a fresh bounded context, mirroring every earlier context's
@@ -353,7 +353,7 @@ green.
 - Counter reconciliation (`held = held - n WHERE held >= n`, the mirror
   image of `CreateHold::claim`'s held-increment guard) is shared by both
   Actions through a new `App\Inventory\Actions\Concerns\
-  ReleasesHoldInventory` trait rather than duplicated, since the two
+ReleasesHoldInventory` trait rather than duplicated, since the two
   Actions differ only in how they win their own conditional transition,
   not in what happens once they have.
 - `HoldReleased` and `HoldExpired` events, each carrying `hold_id`,
@@ -369,7 +369,7 @@ green.
   `packages/api-client/src/generated/index.ts` and the manifest
   regenerated.
 - Test-first per the master plan double loop: `tests/Unit/Inventory/
-  {ReleaseHoldTest,ReleaseExpiredHoldsTest}.php` (the fake-clock TTL
+{ReleaseHoldTest,ReleaseExpiredHoldsTest}.php` (the fake-clock TTL
   matrix: well before `expires_at` untouched, exactly at `expires_at`
   expires, long past expires, a second sweeper run is a no-op, a
   sweeper run skips a hold an explicit release already claimed;
@@ -385,7 +385,7 @@ green.
   requests through the real HTTP kernel; the invariant asserted is
   interleaving-independent: `sold + held <= quantity` always holds, and
   once every worker has joined, `held` exactly equals `3 *
-  successCount`, i.e. availability recovers to exactly `quantity - sold`
+successCount`, i.e. availability recovers to exactly `quantity - sold`
   for whatever surviving holds remain, not a fixed success count, since
   the new-hold workers legitimately see `insufficient_inventory` for
   any of them that lands before the sweeper's own commit frees the
@@ -441,7 +441,7 @@ availability read and the admin ticket-type inventory read.
   minting a duplicate exception, since the code, status, and unpublished-
   existence posture are identical. Returns `EventAvailabilityData`: per
   ticket type `{ticket_type_id, available, on_sale}`, `available =
-  quantity - sold - held` (defensively floored at 0, though the
+quantity - sold - held` (defensively floored at 0, though the
   `ticket_type_inventory_no_oversell` CHECK constraint makes a negative
   value unreachable in practice), `on_sale` true when `now` falls inside
   the ticket type's own `sales_start`/`sales_end` window (inclusive at
@@ -529,7 +529,7 @@ Data objects, per the plan.
 - `App\Inventory\Actions\ExtendHold` (`App\Inventory\Data\ExtendHoldData`
   input, holdId plus a `CarbonImmutable` `expiresAt`): a single
   conditional UPDATE, `status = 'active' AND expires_at > now() AND
-  :new > expires_at`, checked by affected-row count exactly as
+:new > expires_at`, checked by affected-row count exactly as
   system-design 6.1 specifies, so extension can never resurrect an
   expired or released hold and never shortens `expires_at`. Zero
   affected rows throws the new `HoldNotExtendableException`
@@ -538,7 +538,7 @@ Data objects, per the plan.
 - `App\Inventory\Actions\CommitHold` (`App\Inventory\Data\CommitHoldData`
   input, holdId only): the hold's own active -> committed transition is
   a conditional UPDATE guarded by `status = 'active' AND expires_at >
-  now()`, so an expired-but-unswept hold, a double commit, and a
+now()`, so an expired-but-unswept hold, a double commit, and a
   released hold all fail this one guard with the same
   `HoldNotCommittableException` (`hold_not_committable`, 409). Each
   item's held -> sold move is its own guarded conditional UPDATE
@@ -733,7 +733,7 @@ double-booking concurrency simulation.
   elimination (which of the requested ids now show `hold_id` = this
   hold), still inside the same transaction, never from stale data.
 - `App\Inventory\Actions\Concerns\ReleasesHoldInventory::
-  releaseHeldInventory` now also flips this hold's own held seats back to
+releaseHeldInventory` now also flips this hold's own held seats back to
   `available` (clearing `hold_id`) and returns the freed seat ids, shared
   by `ReleaseHold` and `ReleaseExpiredHolds` exactly as the counter
   decrement already was; `CommitHold` gained the parallel `held -> sold`
@@ -753,7 +753,7 @@ double-booking concurrency simulation.
 - Two new stable codes: `seat_selection_invalid` (422,
   `SeatSelectionInvalidException`) and `seat_unavailable` (409,
   `SeatUnavailableException implements HasValidationErrors`, `errors.
-  seat_ids`). OpenAPI: `POST /v1/storefront/holds`'s 422/409 responses,
+seat_ids`). OpenAPI: `POST /v1/storefront/holds`'s 422/409 responses,
   `CreateHoldRequest.seat_ids`, `Hold`'s description, and both
   `HoldCreateUnprocessableProblem`/`HoldCreateConflictProblem` oneOf
   branches extended (no new schemas, matching the existing combined-enum
@@ -956,6 +956,7 @@ Test evidence (all from `apps/api`):
 Deviations from the plan: two, both self-authored resolutions of shapes
 the endpoint table states only loosely, following the precedent task
 06-08 already set for `CreateHoldData.seat_ids`:
+
 1. The PATCH request's polymorphic `op` shape (`block`, `unblock`, or
    `{assign_ticket_type: uuid|null}`) is flattened to two fields on
    `UpdateEventSeatOperationData`, `op` (a string enum) plus
@@ -964,7 +965,7 @@ the endpoint table states only loosely, following the precedent task
    laravel-data representation.
 2. The PATCH response, unspecified by the endpoint table beyond
    "`EventSeatData[]`" prose, is object-wrapped as `EventSeatBatchData
-   { seats: EventSeatData[] }` rather than shipped as a bare JSON array:
+{ seats: EventSeatData[] }` rather than shipped as a bare JSON array:
    `tests/Contract/ResponseSchemaStrictnessTest.php` (ADR 019) requires
    every documented response schema to declare
    `additionalProperties`/`unevaluatedProperties: false`, which a
@@ -1149,7 +1150,7 @@ Re-ran full local gates after the review-round fixes landed past the
   `test(inventory):`), not by relocating the class or weakening the
   rule. Re-run: 1964 passed, 7797 assertions.
 - `composer -d apps/api run types:generate` + `git status --short
-  packages/api-client/src/generated`: no contract drift.
+packages/api-client/src/generated`: no contract drift.
 - `pnpm typecheck`: not run (no TypeScript changed; only a PHP test file
   moved).
 

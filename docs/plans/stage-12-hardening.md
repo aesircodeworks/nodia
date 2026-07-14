@@ -47,16 +47,16 @@ All timestamps UTC. No new money columns. One new tenant-scoped table (RLS polic
 
 Tracks erasure and export requests so both flows are auditable, idempotent, and safe under concurrent submission.
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid, PK | UUIDv7 via `HasUuids` |
-| tenant_id | uuid, not null | RLS subject |
-| customer_id | uuid, not null, FK to customers | |
-| type | string, not null | enum-backed: `erasure`, `export` |
-| status | string, not null | enum-backed: `pending`, `processing`, `completed`, `failed` |
-| requested_by_user_id | uuid, not null | the staff member acting on the data subject's request |
-| completed_at | timestamp, nullable | |
-| created_at, updated_at | timestamps | |
+| Column                 | Type                            | Notes                                                       |
+| ---------------------- | ------------------------------- | ----------------------------------------------------------- |
+| id                     | uuid, PK                        | UUIDv7 via `HasUuids`                                       |
+| tenant_id              | uuid, not null                  | RLS subject                                                 |
+| customer_id            | uuid, not null, FK to customers |                                                             |
+| type                   | string, not null                | enum-backed: `erasure`, `export`                            |
+| status                 | string, not null                | enum-backed: `pending`, `processing`, `completed`, `failed` |
+| requested_by_user_id   | uuid, not null                  | the staff member acting on the data subject's request       |
+| completed_at           | timestamp, nullable             |                                                             |
+| created_at, updated_at | timestamps                      |                                                             |
 
 Constraints and indexes:
 
@@ -70,17 +70,17 @@ Status transitions guard the run-once invariant, so every advance is a condition
 
 Platform infrastructure manifest for archived outbox and activity log rows. Segments span tenants (they are batches by global order), so per-tenant RLS does not apply: no `tenant_id`, no policy, isolation-sweep exclusion list updated, readable only through the cross-tenant platform role, following the Stage 4 `failed_jobs` precedent.
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid, PK | UUIDv7 |
-| source | string, not null | enum-backed: `outbox_events`, `activity_log` |
-| range_from | string, not null | first outbox `sequence` or first activity log `created_at` in the segment |
-| range_to | string, not null | last marker in the segment |
-| object_key | string, not null, unique | key in the S3-compatible store |
-| row_count | integer, not null | |
-| checksum | string, not null | content hash verified after upload, before source rows are deleted |
-| archived_at | timestamp, not null | |
-| created_at, updated_at | timestamps | |
+| Column                 | Type                     | Notes                                                                     |
+| ---------------------- | ------------------------ | ------------------------------------------------------------------------- |
+| id                     | uuid, PK                 | UUIDv7                                                                    |
+| source                 | string, not null         | enum-backed: `outbox_events`, `activity_log`                              |
+| range_from             | string, not null         | first outbox `sequence` or first activity log `created_at` in the segment |
+| range_to               | string, not null         | last marker in the segment                                                |
+| object_key             | string, not null, unique | key in the S3-compatible store                                            |
+| row_count              | integer, not null        |                                                                           |
+| checksum               | string, not null         | content hash verified after upload, before source rows are deleted        |
+| archived_at            | timestamp, not null      |                                                                           |
+| created_at, updated_at | timestamps               |                                                                           |
 
 Index on `(source, range_from)` so archive-aware replay can locate segments in order.
 
@@ -95,8 +95,8 @@ Index on `(source, range_from)` so archive-aware replay can locate segments in o
 
 One new event, which requires adding `CustomerAnonymized` to the system-design 9.3 registry in the same change (event-conventions, Naming and Registry).
 
-| Event | Recorded by | Aggregate | Payload fields |
-| --- | --- | --- | --- |
+| Event              | Recorded by                  | Aggregate                | Payload fields                           |
+| ------------------ | ---------------------------- | ------------------------ | ---------------------------------------- |
 | CustomerAnonymized | AnonymizeCustomer (Identity) | `customer` / customer ID | `customer_id`, `data_subject_request_id` |
 
 Envelope per event-conventions: UUIDv7 event ID, global `sequence`, `type`, non-null `tenant_id`, aggregate reference, `correlation_id`, `occurred_at`, snake_case laravel-data payload, recorded in the same transaction as the customer UPDATE, and only when the conditional UPDATE's affected-row count is 1. The payload carries identifiers only; carrying the erased name or email would defeat erasure, since outbox rows are retained and replayed (system-design 9.1). This constraint already binds every payload since Stage 4 (no PII in payloads); the erasure design depends on it, and a Slice 6 meta-test asserts it across all registered payload classes.

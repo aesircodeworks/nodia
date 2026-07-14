@@ -86,16 +86,16 @@ New laravel-data objects (source of truth per ADR 013, `#[MapName(SnakeCaseMappe
 
 Initial error code registry (`App\Support\Problems\ErrorCode`, a string-backed enum; each case carries title and HTTP status, and derives its type slug mechanically from the code value as described under Endpoints). Codes are stable API contract from the moment they merge (api-conventions Errors):
 
-| Condition | HTTP | code |
-| --- | --- | --- |
-| Route or model not found | 404 | `request.not_found` |
-| Method not allowed | 405 | `request.method_not_allowed` |
-| Validation failed | 422 | `request.validation_failed` |
-| Unauthenticated | 401 | `auth.unauthenticated` |
-| Forbidden | 403 | `auth.forbidden` |
-| Throttled, with `Retry-After` header | 429 | `request.rate_limited` |
-| Unhandled server error | 500 | `server.internal_error` |
-| Health degradation (existing, migrated into the registry) | 503 | `health.degraded` |
+| Condition                                                 | HTTP | code                         |
+| --------------------------------------------------------- | ---- | ---------------------------- |
+| Route or model not found                                  | 404  | `request.not_found`          |
+| Method not allowed                                        | 405  | `request.method_not_allowed` |
+| Validation failed                                         | 422  | `request.validation_failed`  |
+| Unauthenticated                                           | 401  | `auth.unauthenticated`       |
+| Forbidden                                                 | 403  | `auth.forbidden`             |
+| Throttled, with `Retry-After` header                      | 429  | `request.rate_limited`       |
+| Unhandled server error                                    | 500  | `server.internal_error`      |
+| Health degradation (existing, migrated into the registry) | 503  | `health.degraded`            |
 
 The 500 problem never leaks exception class, message, or trace when `app.debug` is false; `detail` is generic and the correlation ID is the support handle. Domain-specific codes (`checkout.hold_expired`, gateway errors) are added by their owning stages; the registry is the single place they land.
 

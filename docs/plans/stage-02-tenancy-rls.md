@@ -82,16 +82,16 @@ The sentinel platform tenant (data-conventions: platform-scope rows in shared ta
 
 The tenant is the aggregate root of the Tenancy context (system-design 8.1, glossary).
 
-| Column | Type | Constraints |
-| --- | --- | --- |
-| `id` | uuid | PK, UUIDv7 |
-| `name` | string | not null |
-| `branding_settings` | jsonb | not null, default `{}` |
-| `default_locale` | string | not null |
-| `supported_locales` | jsonb | not null (JSON array of locale strings) |
-| `enabled_gateways` | jsonb | not null, default `[]` (ADR 008: any adapter the platform provides) |
-| `payout_schedule` | jsonb | nullable (interpreted by Stage 8c) |
-| `created_at`, `updated_at` | timestamptz | not null |
+| Column                     | Type        | Constraints                                                         |
+| -------------------------- | ----------- | ------------------------------------------------------------------- |
+| `id`                       | uuid        | PK, UUIDv7                                                          |
+| `name`                     | string      | not null                                                            |
+| `branding_settings`        | jsonb       | not null, default `{}`                                              |
+| `default_locale`           | string      | not null                                                            |
+| `supported_locales`        | jsonb       | not null (JSON array of locale strings)                             |
+| `enabled_gateways`         | jsonb       | not null, default `[]` (ADR 008: any adapter the platform provides) |
+| `payout_schedule`          | jsonb       | nullable (interpreted by Stage 8c)                                  |
+| `created_at`, `updated_at` | timestamptz | not null                                                            |
 
 Constraints and invariants: `default_locale` must be a member of `supported_locales`, enforced as an application invariant in `CreateTenant` and `UpdateBranding` (unit-tested), not as a check constraint, because JSON containment checks on locale arrays are fragile across writes from future stages.
 
@@ -109,13 +109,13 @@ plus the platform read and platform write policies, and this table's own GRANTs 
 
 The first tenant-scoped child table; the isolation suite's two-tenant fixture runs against it first, per the master plan.
 
-| Column | Type | Constraints |
-| --- | --- | --- |
-| `id` | uuid | PK, UUIDv7 |
-| `tenant_id` | uuid | not null, FK `tenants(id)` |
-| `domain` | string | not null, stored lowercase (normalized in the Action), unique |
-| `is_primary` | boolean | not null, default false |
-| `created_at`, `updated_at` | timestamptz | not null |
+| Column                     | Type        | Constraints                                                   |
+| -------------------------- | ----------- | ------------------------------------------------------------- |
+| `id`                       | uuid        | PK, UUIDv7                                                    |
+| `tenant_id`                | uuid        | not null, FK `tenants(id)`                                    |
+| `domain`                   | string      | not null, stored lowercase (normalized in the Action), unique |
+| `is_primary`               | boolean     | not null, default false                                       |
+| `created_at`, `updated_at` | timestamptz | not null                                                      |
 
 Indexes:
 
@@ -152,16 +152,16 @@ Route groups introduced by this stage (registered by `TenancyServiceProvider`):
 
 ### Platform admin CRUD
 
-| Method and path | Request Data | Response Data | Errors (`code`) |
-| --- | --- | --- | --- |
-| `POST /v1/tenants` | `CreateTenantData` (name, default_locale, supported_locales, branding_settings?, enabled_gateways?, payout_schedule?) | 201 `TenantData` | 422 `request.validation_failed`; 422 `default_locale_not_supported` |
-| `GET /v1/tenants` | query-builder allowlist: `filter[name]`, `sort` in (`name`, `created_at`, `-name`, `-created_at`) | 200 paginator envelope of `TenantData` (page pagination, bounded collection) | 400 `invalid_query_parameter` (unknown filter or sort rejected, not ignored) |
-| `GET /v1/tenants/{tenant}` | none | 200 `TenantData` | 404 `tenant_not_found` |
-| `PATCH /v1/tenants/{tenant}` | `UpdateTenantData` (all fields optional; branding and locale fields route to `UpdateBranding`, gateway fields to `ConfigureGateways`) | 200 `TenantData` | 404 `tenant_not_found`; 422 `request.validation_failed`; 422 `default_locale_not_supported` |
-| `POST /v1/tenants/{tenant}/domains` | `RegisterTenantDomainData` (domain, is_primary?) | 201 `TenantDomainData` | 404 `tenant_not_found`; 409 `domain_already_registered`; 422 `request.validation_failed` |
-| `GET /v1/tenants/{tenant}/domains` | none | 200 paginator envelope of `TenantDomainData` | 404 `tenant_not_found` |
-| `PATCH /v1/tenant-domains/{tenant_domain}` | `UpdateTenantDomainData` (is_primary only) | 200 `TenantDomainData` | 404 `tenant_domain_not_found` |
-| `DELETE /v1/tenant-domains/{tenant_domain}` | none | 204 | 404 `tenant_domain_not_found`; 409 `tenant_domain_is_primary` (demote first) |
+| Method and path                             | Request Data                                                                                                                          | Response Data                                                                | Errors (`code`)                                                                             |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `POST /v1/tenants`                          | `CreateTenantData` (name, default_locale, supported_locales, branding_settings?, enabled_gateways?, payout_schedule?)                 | 201 `TenantData`                                                             | 422 `request.validation_failed`; 422 `default_locale_not_supported`                         |
+| `GET /v1/tenants`                           | query-builder allowlist: `filter[name]`, `sort` in (`name`, `created_at`, `-name`, `-created_at`)                                     | 200 paginator envelope of `TenantData` (page pagination, bounded collection) | 400 `invalid_query_parameter` (unknown filter or sort rejected, not ignored)                |
+| `GET /v1/tenants/{tenant}`                  | none                                                                                                                                  | 200 `TenantData`                                                             | 404 `tenant_not_found`                                                                      |
+| `PATCH /v1/tenants/{tenant}`                | `UpdateTenantData` (all fields optional; branding and locale fields route to `UpdateBranding`, gateway fields to `ConfigureGateways`) | 200 `TenantData`                                                             | 404 `tenant_not_found`; 422 `request.validation_failed`; 422 `default_locale_not_supported` |
+| `POST /v1/tenants/{tenant}/domains`         | `RegisterTenantDomainData` (domain, is_primary?)                                                                                      | 201 `TenantDomainData`                                                       | 404 `tenant_not_found`; 409 `domain_already_registered`; 422 `request.validation_failed`    |
+| `GET /v1/tenants/{tenant}/domains`          | none                                                                                                                                  | 200 paginator envelope of `TenantDomainData`                                 | 404 `tenant_not_found`                                                                      |
+| `PATCH /v1/tenant-domains/{tenant_domain}`  | `UpdateTenantDomainData` (is_primary only)                                                                                            | 200 `TenantDomainData`                                                       | 404 `tenant_domain_not_found`                                                               |
+| `DELETE /v1/tenant-domains/{tenant_domain}` | none                                                                                                                                  | 204                                                                          | 404 `tenant_domain_not_found`; 409 `tenant_domain_is_primary` (demote first)                |
 
 Domain item operations live at top-level `/v1/tenant-domains` because `/v1/tenants/{tenant}/domains/{domain}` would exceed the one-level nesting rule (api-conventions URLs).
 
@@ -169,20 +169,20 @@ The make-primary transition touches two rows (demote the current primary, promot
 
 ### Domain verification (Caddy on-demand TLS ask endpoint)
 
-| Method and path | Request | Response | Errors (`code`) |
-| --- | --- | --- | --- |
+| Method and path                                | Request               | Response                                                                                              | Errors (`code`)                                                                       |
+| ---------------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | `GET /v1/internal/domain-verification?domain=` | query string `domain` | 204 when the normalized domain exists in `tenant_domains` (system-design 16.3: existence is the gate) | 404 `unknown_domain`; 422 `request.validation_failed` (missing or malformed `domain`) |
 
 Unauthenticated by design (Caddy calls it during the TLS handshake) but network-internal: infra must never route it through the public edge. Its read posture follows the domain-resolution open question (resolver role or resolution policy, not `nodia_platform` unless system-design 4.3 is amended). Contract still ships in OpenAPI like every endpoint.
 
 ### Resolution middleware error surface (applies to admin and storefront groups)
 
-| Condition | Status and `code` |
-| --- | --- |
-| Storefront `Host` not found in `tenant_domains` | 404 `unknown_host` |
-| Admin request missing `X-Tenant-Id` | 400 `missing_tenant_header` |
-| `X-Tenant-Id` not a UUID | 400 `invalid_tenant_header` |
-| `X-Tenant-Id` references no tenant | 403 `tenant_access_denied` (deliberately indistinguishable from the Stage 3 membership denial, so activating membership checks later does not change the contract) |
+| Condition                                       | Status and `code`                                                                                                                                                  |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Storefront `Host` not found in `tenant_domains` | 404 `unknown_host`                                                                                                                                                 |
+| Admin request missing `X-Tenant-Id`             | 400 `missing_tenant_header`                                                                                                                                        |
+| `X-Tenant-Id` not a UUID                        | 400 `invalid_tenant_header`                                                                                                                                        |
+| `X-Tenant-Id` references no tenant              | 403 `tenant_access_denied` (deliberately indistinguishable from the Stage 3 membership denial, so activating membership checks later does not change the contract) |
 
 ### laravel-data objects
 

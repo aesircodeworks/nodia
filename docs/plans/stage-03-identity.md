@@ -115,25 +115,25 @@ The `/v1/auth/*` namespace holds flow endpoints rather than resource nouns; toke
 
 ### Staff authentication
 
-| Method and path | Request Data | Response Data | Error codes |
-| --- | --- | --- | --- |
-| POST `/v1/auth/staff/token` | `StaffTokenRequestData` (email, password, mfa_code nullable) | `TokenPairData` (access_token, refresh_token, token_type, expires_in) | `invalid_credentials`, `mfa_required`, `mfa_code_invalid`, `request.validation_failed` |
-| POST `/v1/auth/staff/refresh` | `RefreshTokenRequestData` (refresh_token) | `TokenPairData` | `invalid_refresh_token`, `refresh_token_reused` |
-| POST `/v1/auth/staff/logout` | none (bearer) | 204 | `auth.unauthenticated` |
-| GET `/v1/me` | none (bearer) | `CurrentUserData` (id, name, email, mfa_enabled, memberships: list of `MembershipData`) | `auth.unauthenticated` |
-| POST `/v1/auth/staff/invitation/accept` | `AcceptInvitationData` (token, password) | 204 | `invitation_token_invalid`, `invitation_token_expired`, `request.validation_failed` |
-| POST `/v1/auth/staff/password/reset` | `RequestPasswordResetData` (email) | 202, empty body | `request.validation_failed` (always 202 for unknown email to avoid enumeration) |
-| POST `/v1/auth/staff/password/reset/confirm` | `ConfirmPasswordResetData` (token, password) | 204 | `reset_token_invalid`, `reset_token_expired`, `request.validation_failed` |
+| Method and path                              | Request Data                                                 | Response Data                                                                           | Error codes                                                                            |
+| -------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| POST `/v1/auth/staff/token`                  | `StaffTokenRequestData` (email, password, mfa_code nullable) | `TokenPairData` (access_token, refresh_token, token_type, expires_in)                   | `invalid_credentials`, `mfa_required`, `mfa_code_invalid`, `request.validation_failed` |
+| POST `/v1/auth/staff/refresh`                | `RefreshTokenRequestData` (refresh_token)                    | `TokenPairData`                                                                         | `invalid_refresh_token`, `refresh_token_reused`                                        |
+| POST `/v1/auth/staff/logout`                 | none (bearer)                                                | 204                                                                                     | `auth.unauthenticated`                                                                 |
+| GET `/v1/me`                                 | none (bearer)                                                | `CurrentUserData` (id, name, email, mfa_enabled, memberships: list of `MembershipData`) | `auth.unauthenticated`                                                                 |
+| POST `/v1/auth/staff/invitation/accept`      | `AcceptInvitationData` (token, password)                     | 204                                                                                     | `invitation_token_invalid`, `invitation_token_expired`, `request.validation_failed`    |
+| POST `/v1/auth/staff/password/reset`         | `RequestPasswordResetData` (email)                           | 202, empty body                                                                         | `request.validation_failed` (always 202 for unknown email to avoid enumeration)        |
+| POST `/v1/auth/staff/password/reset/confirm` | `ConfirmPasswordResetData` (token, password)                 | 204                                                                                     | `reset_token_invalid`, `reset_token_expired`, `request.validation_failed`              |
 
 Staff access tokens carry `identity_type: staff` and the subject ID, never an implicit tenant; the acting tenant is asserted per request via `X-Tenant-Id` and validated against memberships (system-design 5.4, api-conventions). `mfa_required` is returned when the user has confirmed MFA and no `mfa_code` was supplied; a recovery code is accepted in place of a TOTP code and consumed atomically.
 
 ### MFA (staff bearer required)
 
-| Method and path | Request Data | Response Data | Error codes |
-| --- | --- | --- | --- |
-| POST `/v1/auth/mfa/enrollment` | none | `MfaEnrollmentData` (secret, otpauth_uri) | `mfa_already_enrolled` |
-| POST `/v1/auth/mfa/enrollment/confirm` | `ConfirmMfaData` (code) | `MfaRecoveryCodesData` (recovery_codes) | `mfa_code_invalid`, `mfa_not_enrolled` |
-| POST `/v1/auth/mfa/disable` | `DisableMfaData` (code) | 204 | `mfa_code_invalid`, `mfa_not_enrolled`, `mfa_enforced_for_role` |
+| Method and path                        | Request Data            | Response Data                             | Error codes                                                     |
+| -------------------------------------- | ----------------------- | ----------------------------------------- | --------------------------------------------------------------- |
+| POST `/v1/auth/mfa/enrollment`         | none                    | `MfaEnrollmentData` (secret, otpauth_uri) | `mfa_already_enrolled`                                          |
+| POST `/v1/auth/mfa/enrollment/confirm` | `ConfirmMfaData` (code) | `MfaRecoveryCodesData` (recovery_codes)   | `mfa_code_invalid`, `mfa_not_enrolled`                          |
+| POST `/v1/auth/mfa/disable`            | `DisableMfaData` (code) | 204                                       | `mfa_code_invalid`, `mfa_not_enrolled`, `mfa_enforced_for_role` |
 
 Disable is a POST flow endpoint rather than a DELETE because the confirmation code travels in the request body and bodies on DELETE have no defined HTTP semantics; the `/v1/auth` namespace already uses flow-endpoint naming.
 
@@ -141,31 +141,31 @@ Enforcement: when the acting membership is platform-scope, or its role's capabil
 
 ### Customer authentication and lifecycle (tenant from Host header; system-design 4.1)
 
-| Method and path | Request Data | Response Data | Error codes |
-| --- | --- | --- | --- |
-| POST `/v1/auth/customer/token` | `CustomerTokenRequestData` (email, password) | `TokenPairData` | `invalid_credentials`, `request.validation_failed` |
-| POST `/v1/auth/customer/refresh` | `RefreshTokenRequestData` | `TokenPairData` | `invalid_refresh_token`, `refresh_token_reused` |
-| POST `/v1/auth/customer/logout` | none (bearer) | 204 | `auth.unauthenticated` |
-| POST `/v1/customers` | `RegisterCustomerData` (email, name, password nullable, locale nullable) | `CustomerData` (id, email, name, locale, is_claimed) | `customer_email_taken`, `request.validation_failed` |
-| POST `/v1/auth/customer/claim` | `ClaimRequestData` (email) | 202, empty body | `request.validation_failed` (always 202 for unknown email to avoid enumeration) |
-| POST `/v1/auth/customer/claim/confirm` | `ConfirmClaimData` (token, password) | 204 | `claim_token_invalid`, `claim_token_expired`, `customer_already_claimed` |
+| Method and path                        | Request Data                                                             | Response Data                                        | Error codes                                                                     |
+| -------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------- |
+| POST `/v1/auth/customer/token`         | `CustomerTokenRequestData` (email, password)                             | `TokenPairData`                                      | `invalid_credentials`, `request.validation_failed`                              |
+| POST `/v1/auth/customer/refresh`       | `RefreshTokenRequestData`                                                | `TokenPairData`                                      | `invalid_refresh_token`, `refresh_token_reused`                                 |
+| POST `/v1/auth/customer/logout`        | none (bearer)                                                            | 204                                                  | `auth.unauthenticated`                                                          |
+| POST `/v1/customers`                   | `RegisterCustomerData` (email, name, password nullable, locale nullable) | `CustomerData` (id, email, name, locale, is_claimed) | `customer_email_taken`, `request.validation_failed`                             |
+| POST `/v1/auth/customer/claim`         | `ClaimRequestData` (email)                                               | 202, empty body                                      | `request.validation_failed` (always 202 for unknown email to avoid enumeration) |
+| POST `/v1/auth/customer/claim/confirm` | `ConfirmClaimData` (token, password)                                     | 204                                                  | `claim_token_invalid`, `claim_token_expired`, `customer_already_claimed`        |
 
 Customer tokens carry `identity_type: customer`, the subject ID, and the tenant ID, and are valid only for that tenant (api-conventions); a customer bearer presented against a host resolving to a different tenant is rejected with 401 `tenant_mismatch`. Token issuance for an unclaimed guest (null password) fails with `invalid_credentials`. `POST /v1/customers` with no password is guest creation; with a password it is registration (`RegisterCustomer` Action covers both).
 
 ### Roles and memberships (staff bearer plus `X-Tenant-Id`; admin lists use query-builder allowlists per api-conventions)
 
-| Method and path | Request Data | Response Data | Error codes |
-| --- | --- | --- | --- |
-| GET `/v1/roles` | filters: `filter[name]`, sort `name` | paginator of `RoleData` (id, tenant_id, name, capabilities, is_template) | `auth.unauthenticated`, `tenant_access_denied` |
-| POST `/v1/roles` | `CreateRoleData` (name, capabilities) | `RoleData` 201 | `missing_capability`, `unknown_capability`, `role_name_taken`, `request.validation_failed` |
-| GET `/v1/roles/{role}` | none | `RoleData` | `request.not_found` |
-| PATCH `/v1/roles/{role}` | `UpdateRoleData` (name nullable, capabilities nullable) | `RoleData` | `role_not_editable` (template), `missing_capability`, `unknown_capability`, `role_in_use` guard not needed on update |
-| DELETE `/v1/roles/{role}` | none | 204 | `role_not_editable`, `role_in_use` (memberships reference it) |
-| GET `/v1/capabilities` | none | list of `CapabilityData` (name, is_financially_privileged) | `auth.unauthenticated` |
-| GET `/v1/memberships` | filters: `filter[user_id]`, `filter[role_id]`, sort `-created_at` | paginator of `MembershipData` (id, user_id, user_name, user_email, tenant_id, role_id, role_name, scope) | `tenant_access_denied` |
-| POST `/v1/memberships` | `InviteUserData` (email, name, role_id) | `MembershipData` 201 | `missing_capability`, `membership_exists`, `request.not_found` (role), `request.validation_failed` |
-| PATCH `/v1/memberships/{membership}` | `ChangeMembershipRoleData` (role_id) | `MembershipData` | `missing_capability`, `request.not_found`, `last_owner_removal` if demoting the only Owner |
-| DELETE `/v1/memberships/{membership}` | none | 204 | `missing_capability`, `last_owner_removal` |
+| Method and path                       | Request Data                                                      | Response Data                                                                                            | Error codes                                                                                                          |
+| ------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| GET `/v1/roles`                       | filters: `filter[name]`, sort `name`                              | paginator of `RoleData` (id, tenant_id, name, capabilities, is_template)                                 | `auth.unauthenticated`, `tenant_access_denied`                                                                       |
+| POST `/v1/roles`                      | `CreateRoleData` (name, capabilities)                             | `RoleData` 201                                                                                           | `missing_capability`, `unknown_capability`, `role_name_taken`, `request.validation_failed`                           |
+| GET `/v1/roles/{role}`                | none                                                              | `RoleData`                                                                                               | `request.not_found`                                                                                                  |
+| PATCH `/v1/roles/{role}`              | `UpdateRoleData` (name nullable, capabilities nullable)           | `RoleData`                                                                                               | `role_not_editable` (template), `missing_capability`, `unknown_capability`, `role_in_use` guard not needed on update |
+| DELETE `/v1/roles/{role}`             | none                                                              | 204                                                                                                      | `role_not_editable`, `role_in_use` (memberships reference it)                                                        |
+| GET `/v1/capabilities`                | none                                                              | list of `CapabilityData` (name, is_financially_privileged)                                               | `auth.unauthenticated`                                                                                               |
+| GET `/v1/memberships`                 | filters: `filter[user_id]`, `filter[role_id]`, sort `-created_at` | paginator of `MembershipData` (id, user_id, user_name, user_email, tenant_id, role_id, role_name, scope) | `tenant_access_denied`                                                                                               |
+| POST `/v1/memberships`                | `InviteUserData` (email, name, role_id)                           | `MembershipData` 201                                                                                     | `missing_capability`, `membership_exists`, `request.not_found` (role), `request.validation_failed`                   |
+| PATCH `/v1/memberships/{membership}`  | `ChangeMembershipRoleData` (role_id)                              | `MembershipData`                                                                                         | `missing_capability`, `request.not_found`, `last_owner_removal` if demoting the only Owner                           |
+| DELETE `/v1/memberships/{membership}` | none                                                              | 204                                                                                                      | `missing_capability`, `last_owner_removal`                                                                           |
 
 Role and membership mutations require `roles.manage` and `memberships.manage` respectively; capability denial is 403 `missing_capability`. Authorization always evaluates capability plus tenant context through Gates and Policies, never role names (system-design 5.3). `InviteUser` creates the user if absent (random unusable password) and emails a signed, time-limited acceptance token; acceptance sets the password.
 

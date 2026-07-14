@@ -185,6 +185,7 @@ Every slice follows the master plan's double loop: outside feature test first, c
 ### Slice 1: tables under RLS
 
 Failing tests first:
+
 - Isolation: two-tenant fixture attempts cross-tenant SELECT, INSERT, UPDATE, DELETE against `check_ins`, `event_signing_keys`, and `check_in_assignments`; every attempt fails under RLS before any endpoint exists.
 - Unit: enum-backed `result` and `status` columns reject values outside their enums; the partial unique indexes reject a second `accepted` row per ticket and a second `active` key per event at the database level.
 
@@ -193,6 +194,7 @@ Implementation: three migrations, each creating its table and its RLS policy tog
 ### Slice 2: signing keys and rotation
 
 Failing tests first:
+
 - Feature: `GET /v1/events/{event}/signing-keys` returns active and retired keys with secrets, excludes revoked; `POST` rotates, incrementing `key_version`; `revoke_previous: true` marks the outgoing key revoked; both against the OpenAPI fragment; rotation appears in the activity log.
 - Feature: authorization matrix rows: no capability 403, `checkin.scan` without assignment 403 `checkin_not_assigned` on GET, `checkin.scan` cannot POST, `checkin.manage` can.
 - Unit: rotation Action retires via conditional UPDATE checked by affected-row count; get-or-create of the version 1 key is race-safe and seeds the secret from the Stage 7 HKDF derivation; secrets round-trip through the encrypted cast.
@@ -202,6 +204,7 @@ Failing tests first:
 ### Slice 3: manifest
 
 Failing tests first:
+
 - Feature: manifest returns exactly the event's tickets with status, rotation counter, and `checked_in_at` overlay; cursor pagination with deterministic order; `filter[updated_since]` narrows on both sides of the overlay, including a ticket unchanged in Orders but checked in on another device after the filter timestamp appearing in the delta; unknown filter rejected; no PII fields present in the response shape; contract conformance.
 - Feature (the master plan's scoping matrix): assigned user with `checkin.scan` succeeds on event A and gets 403 `checkin_not_assigned` on event B; role without the capability gets 403; `checkin.manage` succeeds unassigned; customer token is rejected.
 - Isolation: a staff token from tenant 1 requesting tenant 2's event manifest sees 404 under RLS.
@@ -210,6 +213,7 @@ Failing tests first:
 ### Slice 4: online scan, first-scan-wins
 
 Failing tests first:
+
 - Concurrency (written before the endpoint exists, master plan test-first rule): N parallel `POST /v1/check-ins` for the same ticket from distinct devices produce exactly one `accepted` row, N-1 `duplicate` rows, exactly one `TicketCheckedIn` outbox row, and N-1 `DuplicateScanDetected` rows.
 - Feature: happy path 201 with `result: accepted`; second scan 409 `ticket_already_checked_in` carrying `first_scanned_at` and `first_device_id` while still persisting the duplicate row and its event; replay of the same (`device_id`, `client_scan_id`) returns the original outcome and records nothing new; each rejection code in the endpoint table exercised (tampered signature, revoked key after `revoke_previous` rotation, stale rotation counter, canceled ticket, refunded ticket, unknown ticket, future `scanned_at`); all against the contract.
 - Feature (rotated-keys matrix, master plan): a QR signed under key version 1 still validates after a plain rotation to version 2; the same QR fails with `qr_key_revoked` after rotation with `revoke_previous: true`; a QR signed with a key the event never issued fails `qr_signature_invalid`.
@@ -219,6 +223,7 @@ Failing tests first:
 ### Slice 5: batch reconciliation
 
 Failing tests first:
+
 - Feature (the cross-device duplicate matrix, master plan): same ticket scanned offline on two devices with overlapping queues, submitted in both orders: earlier-timestamp-first (later arrives as `duplicate`) and later-timestamp-first (swap: earlier arrival demotes the accepted row, one `DuplicateScanDetected` for the demoted scan, no second `TicketCheckedIn`); equal timestamps resolve by smallest `client_scan_id` identically regardless of submission order.
 - Feature: partial outcomes in one batch (accepted, duplicate, rejected with per-scan `code`) with HTTP 200; full batch resubmission returns the recorded outcomes for accepted and duplicate scans and records nothing new for them; a scan rejected on first submission is re-verified on resubmission and succeeds once the blocking condition clears (asserted by granting the missing assignment between submissions); 501-scan batch rejected `batch_too_large`; scans for an unassigned event come back `rejected` with `checkin_not_assigned` without failing the batch; contract conformance.
 - Concurrency: two devices submit overlapping batches in parallel; after both settle, every contested ticket has exactly one `accepted` row holding the earliest timestamp and exactly one `TicketCheckedIn`; a batch swap racing an online scan for the same ticket resolves to the same invariant.
@@ -227,6 +232,7 @@ Failing tests first:
 ### Slice 6: assignments surface and wrap-up
 
 Failing tests first:
+
 - Feature: assignment CRUD with codes (`user_not_member`, `already_assigned`, `assignment_not_found`), pagination, activity-log entries, contract conformance.
 - Isolation: assignment rows invisible and unwritable cross-tenant.
 - Contract: full-surface conformance pass over every Stage 9 endpoint; TypeScript drift gate clean after regeneration.

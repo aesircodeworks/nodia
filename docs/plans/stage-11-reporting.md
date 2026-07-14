@@ -49,19 +49,19 @@ All tables are tenant-scoped: non-null `tenant_id`, UUIDv7 `id` via `HasUuids`, 
 
 One row per tenant, event, ticket type, and UTC calendar day with sales activity.
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid, PK | UUIDv7 |
-| tenant_id | uuid, not null | |
-| event_id | uuid, not null | no FK across context boundaries is implied by architecture rules, but the FK constraint itself is a database concern and is allowed; index required |
-| ticket_type_id | uuid, not null | |
-| sales_date | date, not null | UTC calendar day of `occurred_at` (see risks) |
-| tickets_issued_count | integer, not null, default 0 | |
-| tickets_refunded_count | integer, not null, default 0 | |
-| gross_amount | bigint, not null, default 0 | face value of issued tickets, minor units; see the money semantics note |
-| refunded_amount | bigint, not null, default 0 | face value of refunded tickets; see the money semantics note |
-| currency | string, not null | |
-| created_at, updated_at | timestamps | |
+| Column                 | Type                         | Notes                                                                                                                                               |
+| ---------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id                     | uuid, PK                     | UUIDv7                                                                                                                                              |
+| tenant_id              | uuid, not null               |                                                                                                                                                     |
+| event_id               | uuid, not null               | no FK across context boundaries is implied by architecture rules, but the FK constraint itself is a database concern and is allowed; index required |
+| ticket_type_id         | uuid, not null               |                                                                                                                                                     |
+| sales_date             | date, not null               | UTC calendar day of `occurred_at` (see risks)                                                                                                       |
+| tickets_issued_count   | integer, not null, default 0 |                                                                                                                                                     |
+| tickets_refunded_count | integer, not null, default 0 |                                                                                                                                                     |
+| gross_amount           | bigint, not null, default 0  | face value of issued tickets, minor units; see the money semantics note                                                                             |
+| refunded_amount        | bigint, not null, default 0  | face value of refunded tickets; see the money semantics note                                                                                        |
+| currency               | string, not null             |                                                                                                                                                     |
+| created_at, updated_at | timestamps                   |                                                                                                                                                     |
 
 Constraints and indexes: unique on `(tenant_id, event_id, ticket_type_id, sales_date)` (the upsert conflict target); index on `(tenant_id, sales_date)` for date-range dashboard queries. RLS policy in the same migration.
 
@@ -73,20 +73,20 @@ All writes are `INSERT ... ON CONFLICT DO UPDATE` with additive increments evalu
 
 One row per tenant and event, mirroring the ledger's per-event totals (system-design 7.3: gross charge, gateway fee, platform commission, tenant net).
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid, PK | UUIDv7 |
-| tenant_id | uuid, not null | |
-| event_id | uuid, not null, unique with tenant_id | |
-| orders_paid_count | integer, not null, default 0 | |
-| refunds_count | integer, not null, default 0 | |
-| gross_amount | bigint, not null, default 0 | |
-| gateway_fee_amount | bigint, not null, default 0 | |
-| platform_commission_amount | bigint, not null, default 0 | |
-| tenant_net_amount | bigint, not null, default 0 | |
-| refunded_amount | bigint, not null, default 0 | |
-| currency | string, not null | |
-| created_at, updated_at | timestamps | |
+| Column                     | Type                                  | Notes  |
+| -------------------------- | ------------------------------------- | ------ |
+| id                         | uuid, PK                              | UUIDv7 |
+| tenant_id                  | uuid, not null                        |        |
+| event_id                   | uuid, not null, unique with tenant_id |        |
+| orders_paid_count          | integer, not null, default 0          |        |
+| refunds_count              | integer, not null, default 0          |        |
+| gross_amount               | bigint, not null, default 0           |        |
+| gateway_fee_amount         | bigint, not null, default 0           |        |
+| platform_commission_amount | bigint, not null, default 0           |        |
+| tenant_net_amount          | bigint, not null, default 0           |        |
+| refunded_amount            | bigint, not null, default 0           |        |
+| currency                   | string, not null                      |        |
+| created_at, updated_at     | timestamps                            |        |
 
 Constraints and indexes: unique on `(tenant_id, event_id)`. Same upsert-with-increments write pattern, RLS policy in the same migration. Payment rows take gross from the `PaymentConfirmed` payload and fee and commission from the payment row facts (`fee_amount`, `commission_amount`, persisted at confirmation time per Stage 8b), with net as gross minus fee minus commission. Refund rows apply signed deltas to the commission and net columns from the `RefundCompleted` payload fields (`amount`, `commission_amount`, `commission_policy`), whose commission math was resolved at refund creation (Stage 8b); the projector applies recorded facts, it never recomputes commission from mutable tenant configuration and it never reads `ledger_entries`.
 
@@ -94,17 +94,17 @@ Constraints and indexes: unique on `(tenant_id, event_id)`. Same upsert-with-inc
 
 One row per tenant, event, and ticket type.
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid, PK | UUIDv7 |
-| tenant_id | uuid, not null | |
-| event_id | uuid, not null | |
-| ticket_type_id | uuid, not null | |
-| checked_in_count | integer, not null, default 0 | |
-| duplicate_scan_count | integer, not null, default 0 | |
-| first_scan_at | timestamp, nullable | monotonic min, set via `LEAST` in the upsert |
-| last_scan_at | timestamp, nullable | monotonic max, set via `GREATEST` in the upsert |
-| created_at, updated_at | timestamps | |
+| Column                 | Type                         | Notes                                           |
+| ---------------------- | ---------------------------- | ----------------------------------------------- |
+| id                     | uuid, PK                     | UUIDv7                                          |
+| tenant_id              | uuid, not null               |                                                 |
+| event_id               | uuid, not null               |                                                 |
+| ticket_type_id         | uuid, not null               |                                                 |
+| checked_in_count       | integer, not null, default 0 |                                                 |
+| duplicate_scan_count   | integer, not null, default 0 |                                                 |
+| first_scan_at          | timestamp, nullable          | monotonic min, set via `LEAST` in the upsert    |
+| last_scan_at           | timestamp, nullable          | monotonic max, set via `GREATEST` in the upsert |
+| created_at, updated_at | timestamps                   |                                                 |
 
 Constraints and indexes: unique on `(tenant_id, event_id, ticket_type_id)`. No money columns. Same upsert pattern, RLS policy in the same migration. `LEAST` and `GREATEST` keep the timestamp columns commutative so replay order cannot change them.
 
@@ -112,18 +112,18 @@ Constraints and indexes: unique on `(tenant_id, event_id, ticket_type_id)`. No m
 
 The export lifecycle record. The generated file is a medialibrary attachment on this model (data-conventions: file attachments go through medialibrary's `media` table, no bespoke path columns).
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid, PK | UUIDv7 |
-| tenant_id | uuid, not null | |
-| type | string, not null | enum-backed: `orders`, `tickets`, `ledger_entries`, `check_ins`; creation accepts only types with a registered `ExportSource` (task 16) |
-| status | string, not null | enum-backed: `pending`, `processing`, `completed`, `failed` |
-| parameters | jsonb, not null | validated per type: `event_id`, `from`, `to` |
-| requested_by_user_id | uuid, not null | the staff user; export creation is activity-logged |
-| row_count | integer, nullable | set on completion |
-| completed_at | timestamp, nullable | |
-| failure_code | string, nullable | stable code surfaced on the resource, never free text alone |
-| created_at, updated_at | timestamps | |
+| Column                 | Type                | Notes                                                                                                                                   |
+| ---------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| id                     | uuid, PK            | UUIDv7                                                                                                                                  |
+| tenant_id              | uuid, not null      |                                                                                                                                         |
+| type                   | string, not null    | enum-backed: `orders`, `tickets`, `ledger_entries`, `check_ins`; creation accepts only types with a registered `ExportSource` (task 16) |
+| status                 | string, not null    | enum-backed: `pending`, `processing`, `completed`, `failed`                                                                             |
+| parameters             | jsonb, not null     | validated per type: `event_id`, `from`, `to`                                                                                            |
+| requested_by_user_id   | uuid, not null      | the staff user; export creation is activity-logged                                                                                      |
+| row_count              | integer, nullable   | set on completion                                                                                                                       |
+| completed_at           | timestamp, nullable |                                                                                                                                         |
+| failure_code           | string, nullable    | stable code surfaced on the resource, never free text alone                                                                             |
+| created_at, updated_at | timestamps          |                                                                                                                                         |
 
 Constraints and indexes: index on `(tenant_id, created_at)` for the cursor-paginated list. RLS policy in the same migration.
 
@@ -141,14 +141,14 @@ All consumption uses the Stage 4 mechanism verbatim: queue jobs carry only the e
 
 No projector uses the ordered-consumption helper: every projection mutation is a commutative increment or a `LEAST`/`GREATEST` bound, so cross-event ordering cannot change the converged state. This is a deliberate design constraint on all three projectors and is asserted by the rebuild-equivalence tests, which replay in sequence order and must match state built in arbitrary delivery order.
 
-| Event | Owner | Projector | Effect |
-| --- | --- | --- | --- |
-| TicketIssued | Orders | ProjectDailySales | increment `tickets_issued_count` and `gross_amount` (face value via the Orders bulk lookup Action) for the ticket's event, ticket type, and UTC day |
-| TicketRefunded | Orders | ProjectDailySales | increment `tickets_refunded_count` and `refunded_amount`, resolving event, ticket type, and face value through the Orders bulk lookup Action (the payload carries only `ticket_id`, `order_id`, `refund_id`) |
-| PaymentConfirmed | Payments | ProjectEventFinance | increment `orders_paid_count`; gross from the payload `amount`, fee and commission from the payment row facts via a Payments Action, net as gross minus fee minus commission |
-| RefundCompleted | Payments | ProjectEventFinance | increment `refunds_count` and `refunded_amount`; signed commission and net deltas from the payload `amount`, `commission_amount`, and `commission_policy` |
-| TicketCheckedIn | CheckIn | ProjectEventAttendance | increment `checked_in_count`, update `first_scan_at` and `last_scan_at` |
-| DuplicateScanDetected | CheckIn | ProjectEventAttendance | increment `duplicate_scan_count` |
+| Event                 | Owner    | Projector              | Effect                                                                                                                                                                                                       |
+| --------------------- | -------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| TicketIssued          | Orders   | ProjectDailySales      | increment `tickets_issued_count` and `gross_amount` (face value via the Orders bulk lookup Action) for the ticket's event, ticket type, and UTC day                                                          |
+| TicketRefunded        | Orders   | ProjectDailySales      | increment `tickets_refunded_count` and `refunded_amount`, resolving event, ticket type, and face value through the Orders bulk lookup Action (the payload carries only `ticket_id`, `order_id`, `refund_id`) |
+| PaymentConfirmed      | Payments | ProjectEventFinance    | increment `orders_paid_count`; gross from the payload `amount`, fee and commission from the payment row facts via a Payments Action, net as gross minus fee minus commission                                 |
+| RefundCompleted       | Payments | ProjectEventFinance    | increment `refunds_count` and `refunded_amount`; signed commission and net deltas from the payload `amount`, `commission_amount`, and `commission_policy`                                                    |
+| TicketCheckedIn       | CheckIn  | ProjectEventAttendance | increment `checked_in_count`, update `first_scan_at` and `last_scan_at`                                                                                                                                      |
+| DuplicateScanDetected | CheckIn  | ProjectEventAttendance | increment `duplicate_scan_count`                                                                                                                                                                             |
 
 System-design 9.2 already routes `TicketIssued`, `PaymentConfirmed`, `RefundCompleted`, and the check-in events to reporting. Subscribing reporting to `TicketRefunded` is an addition to the static in-code routing only; `TicketRefunded` is already in the 9.3 registry, so no registry change is needed. `OrderCreated` is deliberately not consumed: pending orders are not sales.
 
@@ -156,15 +156,15 @@ System-design 9.2 already routes `TicketIssued`, `PaymentConfirmed`, `RefundComp
 
 All endpoints are admin endpoints: bearer staff JWT, `X-Tenant-Id` validated against memberships (api-conventions), capability-gated through Reporting policies. Dashboard endpoints require `reports.view`; every `/v1/exports` route requires `reports.export` because export files contain customer PII. List endpoints use spatie/laravel-query-builder with explicit allowlists; unknown filter, sort, or include values are rejected with the standard validation problem code from the Stage 1 registry (api-conventions). All money on the wire is `{amount, currency}` via the `Support/Money` transformers. Auth and tenant-context failures use the problem codes established in Stages 2 and 3; only codes new in this stage are listed. Every endpoint ships its OpenAPI path in `docs/openapi/openapi.yaml` in the same change, and regenerated TypeScript lands in `packages/api-client` without drift.
 
-| Method and path | Purpose | Request | Response | New error codes |
-| --- | --- | --- | --- | --- |
-| GET `/v1/reports/daily-sales` | daily sales rows | query: `filter[event_id]`, `filter[ticket_type_id]`, `filter[from]`, `filter[to]` (dates), `sort` allowlist `sales_date`, `-sales_date` | cursor-paginated envelope of `DailySalesData` (deterministic order: `sales_date`, `id`) | none |
-| GET `/v1/reports/event-finance` | per-event finance summaries | query: `filter[event_id]` | cursor-paginated envelope of `EventFinanceData` | none |
-| GET `/v1/reports/attendance` | per-event attendance | query: `filter[event_id]` | cursor-paginated envelope of `EventAttendanceData` | none |
-| POST `/v1/exports` | request an export | `CreateExportData`: `type`, `parameters` (`event_id` nullable, `from` and `to` nullable dates) | 202 with `ExportData` | validation failures use the standard registry code |
-| GET `/v1/exports` | list exports | query: `filter[type]`, `filter[status]`, `sort` allowlist `-created_at`, `created_at` | cursor-paginated envelope of `ExportData` | none |
-| GET `/v1/exports/{export}` | export status | | `ExportData` | 404 (standard) when unknown or cross-tenant, indistinguishable under RLS |
-| GET `/v1/exports/{export}/download` | fetch the file | | `ExportDownloadData`: `url` (expiring signed object-storage URL), `expires_at` | 409 `export_not_ready` while `pending` or `processing`; 409 `export_failed` when `failed` |
+| Method and path                     | Purpose                     | Request                                                                                                                                 | Response                                                                                | New error codes                                                                           |
+| ----------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| GET `/v1/reports/daily-sales`       | daily sales rows            | query: `filter[event_id]`, `filter[ticket_type_id]`, `filter[from]`, `filter[to]` (dates), `sort` allowlist `sales_date`, `-sales_date` | cursor-paginated envelope of `DailySalesData` (deterministic order: `sales_date`, `id`) | none                                                                                      |
+| GET `/v1/reports/event-finance`     | per-event finance summaries | query: `filter[event_id]`                                                                                                               | cursor-paginated envelope of `EventFinanceData`                                         | none                                                                                      |
+| GET `/v1/reports/attendance`        | per-event attendance        | query: `filter[event_id]`                                                                                                               | cursor-paginated envelope of `EventAttendanceData`                                      | none                                                                                      |
+| POST `/v1/exports`                  | request an export           | `CreateExportData`: `type`, `parameters` (`event_id` nullable, `from` and `to` nullable dates)                                          | 202 with `ExportData`                                                                   | validation failures use the standard registry code                                        |
+| GET `/v1/exports`                   | list exports                | query: `filter[type]`, `filter[status]`, `sort` allowlist `-created_at`, `created_at`                                                   | cursor-paginated envelope of `ExportData`                                               | none                                                                                      |
+| GET `/v1/exports/{export}`          | export status               |                                                                                                                                         | `ExportData`                                                                            | 404 (standard) when unknown or cross-tenant, indistinguishable under RLS                  |
+| GET `/v1/exports/{export}/download` | fetch the file              |                                                                                                                                         | `ExportDownloadData`: `url` (expiring signed object-storage URL), `expires_at`          | 409 `export_not_ready` while `pending` or `processing`; 409 `export_failed` when `failed` |
 
 laravel-data objects (all in `app/Reporting/Data`, snake_case on the wire, exported to TypeScript):
 

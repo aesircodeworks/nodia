@@ -91,12 +91,12 @@ Produced: none. This stage adds no event types to the registry in system-design 
 
 Consumed, all by the `RefreshSearchIndex` consumer (EventCatalog's own job, system-design 3.2; routing per system-design 9.2 "catalog events feed the search index"):
 
-| Event | Effect on the projection |
-| --- | --- |
-| `EventPublished` | Upsert one document per tenant-supported locale from current event state |
-| `EventUpdated` | If the event is currently published, upsert all locale documents; if not published, delete any documents |
-| `EventCanceled` | Delete all documents for the event |
-| `EventCreated` | No-op (drafts are never indexed); subscribed for completeness so routing stays uniform |
+| Event            | Effect on the projection                                                                                 |
+| ---------------- | -------------------------------------------------------------------------------------------------------- |
+| `EventPublished` | Upsert one document per tenant-supported locale from current event state                                 |
+| `EventUpdated`   | If the event is currently published, upsert all locale documents; if not published, delete any documents |
+| `EventCanceled`  | Delete all documents for the event                                                                       |
+| `EventCreated`   | No-op (drafts are never indexed); subscribed for completeness so routing stays uniform                   |
 
 Envelope: these events are Stage 5a producers and already carry the full envelope per event-conventions (`id`, `sequence`, `type`, non-null `tenant_id`, `aggregate_type` `event`, `aggregate_id`, `correlation_id`, `occurred_at`, payload). This stage adds a subscriber, not a producer, so no payload changes; the consumer uses only the aggregate ID and loads current event state from its own context's models (permitted: the projector lives inside EventCatalog, which owns both `events` and the projection). The tenant locale configuration the document builder needs (`supported_locales`, `default_locale`) is Tenancy-owned, so the builder obtains it through a Tenancy read Action, never by querying `tenants` (system-design 3.1 boundary rule), following the Stage 5a settlement-currency Action precedent; task 6 ships that Action.
 

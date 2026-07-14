@@ -51,13 +51,13 @@ No new money columns exist in this stage; nothing here prices anything. All Post
 
 One row per customer per ticket type, tracking the quantity currently held plus already committed, so `max_per_customer` is enforceable in a single guarded statement.
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid | PK, UUIDv7 |
-| tenant_id | uuid | non-null, RLS (derivable via ticket type, still required per section 4.2) |
-| customer_id | uuid | non-null |
-| ticket_type_id | uuid | non-null |
-| quantity | integer | non-null, default 0, CHECK `quantity >= 0` |
+| Column         | Type    | Notes                                                                     |
+| -------------- | ------- | ------------------------------------------------------------------------- |
+| id             | uuid    | PK, UUIDv7                                                                |
+| tenant_id      | uuid    | non-null, RLS (derivable via ticket type, still required per section 4.2) |
+| customer_id    | uuid    | non-null                                                                  |
+| ticket_type_id | uuid    | non-null                                                                  |
+| quantity       | integer | non-null, default 0, CHECK `quantity >= 0`                                |
 
 Constraints and indexes: `unique (customer_id, ticket_type_id)` (the upsert conflict target and the lookup path); index on `ticket_type_id`. The RLS policy comparing `tenant_id` to `current_setting('app.tenant_id')` ships in the same migration, or the isolation suite blocks the merge (data-conventions Tenancy).
 
@@ -121,26 +121,26 @@ All routes under `/v1`, snake_case JSON, laravel-data request and response objec
 
 **POST /v1/storefront/events/{event}/queue-entries** joins the waiting room for a flagged event. Unauthenticated; the entrant ID returned is the capability, per the UUIDv7 anti-enumeration posture (section 14.4). Request `JoinQueueData`: optional `challenge_response` (string). Response 201 `QueueEntryData`: `id`, `event_id`, `status` (`waiting` or `admitted`), `position` (nullable int, null once admitted), `admission_token` (nullable string), `admission_expires_at` (nullable ISO 8601 UTC). When the queue is empty and the budget allows, the join may admit immediately and return `admitted` in the same response.
 
-| Condition | Status | code |
-| --- | --- | --- |
-| Malformed body | 422 | `request.validation_failed` |
-| Event not published or unknown for tenant | 404 | `event_not_found` |
-| Event not flagged high-demand | 409 | `queue_not_active` |
-| Policy requires a challenge, none supplied | 403 | `challenge_required` |
-| Challenge supplied but rejected by the verifier | 403 | `challenge_failed` |
-| Queue-entry rate tier exceeded | 429 | `request.rate_limited` (with `Retry-After`) |
+| Condition                                       | Status | code                                        |
+| ----------------------------------------------- | ------ | ------------------------------------------- |
+| Malformed body                                  | 422    | `request.validation_failed`                 |
+| Event not published or unknown for tenant       | 404    | `event_not_found`                           |
+| Event not flagged high-demand                   | 409    | `queue_not_active`                          |
+| Policy requires a challenge, none supplied      | 403    | `challenge_required`                        |
+| Challenge supplied but rejected by the verifier | 403    | `challenge_failed`                          |
+| Queue-entry rate tier exceeded                  | 429    | `request.rate_limited` (with `Retry-After`) |
 
 **GET /v1/storefront/queue-entries/{entry}** is the queue position endpoint the storefront polls (section 10). Response 200 `QueueEntryData` as above: `position` while waiting; `admission_token` and `admission_expires_at` once the gatekeeper has admitted the entrant (the token is signed at response time from the admitted state, so nothing secret rests in Redis). 404 `queue_entry_not_found` for unknown, expired, or cross-tenant entrants (cross-tenant resolves to not-found by key namespacing, mirroring the RLS-driven 404 pattern). 429 `request.rate_limited` on the poll tier, with `Retry-After` doubling as the polling-interval hint.
 
 **POST /v1/storefront/holds** (existing Stage 6 endpoint, additive contract change). For events whose `on_sale_policy.high_demand` is true, a valid `X-Admission-Token` for that event is required before any inventory work runs. For items whose ticket type has `max_per_customer`, `customer_id` becomes required and the counter guard runs inside the hold transaction. New failure modes joining the Stage 6 table:
 
-| Condition | Status | code |
-| --- | --- | --- |
-| Flagged event, header absent | 403 | `admission_required` |
-| Header present but signature, event, tenant, or expiry invalid | 403 | `admission_invalid` |
-| Limited ticket type without `customer_id` | 422 | `customer_required` |
-| Counter guard affects zero rows | 409 | `purchase_limit_exceeded` (extension members: `ticket_type_id`, `limit`) |
-| Hold-creation rate tier exceeded | 429 | `request.rate_limited` (with `Retry-After`) |
+| Condition                                                      | Status | code                                                                     |
+| -------------------------------------------------------------- | ------ | ------------------------------------------------------------------------ |
+| Flagged event, header absent                                   | 403    | `admission_required`                                                     |
+| Header present but signature, event, tenant, or expiry invalid | 403    | `admission_invalid`                                                      |
+| Limited ticket type without `customer_id`                      | 422    | `customer_required`                                                      |
+| Counter guard affects zero rows                                | 409    | `purchase_limit_exceeded` (extension members: `ticket_type_id`, `limit`) |
+| Hold-creation rate tier exceeded                               | 429    | `request.rate_limited` (with `Retry-After`)                              |
 
 **GET /v1/storefront/events/{event}/availability** and **GET /v1/storefront/events/{event}/seats** (existing Stage 6 endpoints): contracts, shapes, and codes unchanged. Responses are now served from the Redis cache with a second-level TTL (default 2 seconds, config), so browse traffic never touches the inventory tables during an on-sale (section 10). The cache is read-through and never written by the hold path; correctness always comes from PostgreSQL.
 

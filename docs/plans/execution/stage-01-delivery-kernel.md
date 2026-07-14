@@ -211,7 +211,7 @@ Run at Thu Jul 9 13:24:28 -03 2026, all green on the first pass with no fixes re
 
 ### Review round 1
 
-Codex review findings applied Thu Jul  9 13:39:05 -03 2026. The review ran after task-06; its three blocking findings correspond exactly to the then-outstanding tasks 8 (slice 6, concurrency harness) and 9 (slice 7, time control). All three were accepted and fixed; none declined.
+Codex review findings applied Thu Jul 9 13:39:05 -03 2026. The review ran after task-06; its three blocking findings correspond exactly to the then-outstanding tasks 8 (slice 6, concurrency harness) and 9 (slice 7, time control). All three were accepted and fixed; none declined.
 
 Finding 1 (blocking, `tests/Concurrency/SuiteHarnessTest.php`): the concurrency harness was still the placeholder `expect(true)->toBeTrue()`. Fixed in commit `026fe51`, `test: concurrency harness with parallel process runner`:
 

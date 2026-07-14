@@ -23,3 +23,9 @@ packages/api-client/src/generated/typescript-transformer-manifest.json
 
 # Load-run output (k6 summaries and probe dumps), written per run and not committed
 infra/load/results
+
+# Framework-generated, rewritten by `next build` on every run
+**/next-env.d.ts
+
+# Vendored upstream artifact (the OpenAPI 3.1 meta-schema), kept byte-for-byte
+apps/api/tests/Support/oas-3.1-schema-2025-09-15.json

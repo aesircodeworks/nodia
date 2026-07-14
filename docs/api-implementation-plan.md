@@ -10,25 +10,25 @@ MVP thinning: when the roadmap is driving a product release, thin this plan rath
 
 Update this table when a stage starts and when it merges.
 
-| Stage | Status |
-| --- | --- |
-| Stage 1: Delivery Kernel and Test Harness | Done |
-| Stage 2: Tenancy and RLS Regime | Done |
-| Stage 3: Identity, AuthN, AuthZ | Done |
-| Stage 4: Transactional Outbox | Done |
-| Stage 5a: Catalog Core and Publish | Done |
-| Stage 5b: Seating Templates | Done |
-| Stage 5c: Search and Media | Done |
-| Stage 6: Inventory and Reserved Seating | Done |
-| Stage 7: Orders, Tickets, Promo Codes | Done |
-| Stage 8a: Payments and Webhooks | Done |
-| Stage 8b: Ledger and Refunds | Done |
-| Stage 8c: Payouts and Sub-merchant Onboarding | Done |
+| Stage                                         | Status      |
+| --------------------------------------------- | ----------- |
+| Stage 1: Delivery Kernel and Test Harness     | Done        |
+| Stage 2: Tenancy and RLS Regime               | Done        |
+| Stage 3: Identity, AuthN, AuthZ               | Done        |
+| Stage 4: Transactional Outbox                 | Done        |
+| Stage 5a: Catalog Core and Publish            | Done        |
+| Stage 5b: Seating Templates                   | Done        |
+| Stage 5c: Search and Media                    | Done        |
+| Stage 6: Inventory and Reserved Seating       | Done        |
+| Stage 7: Orders, Tickets, Promo Codes         | Done        |
+| Stage 8a: Payments and Webhooks               | Done        |
+| Stage 8b: Ledger and Refunds                  | Done        |
+| Stage 8c: Payouts and Sub-merchant Onboarding | Done        |
 | Stage 8d: Real Gateway Adapter (gated on ADR) | In progress |
-| Stage 9: Check-in and Offline Reconciliation | Done |
-| Stage 10: High-Demand On-Sales | Done |
-| Stage 11: Reporting and Exports | Done |
-| Stage 12: Compliance, Operations, Hardening | In progress |
+| Stage 9: Check-in and Offline Reconciliation  | Done        |
+| Stage 10: High-Demand On-Sales                | Done        |
+| Stage 11: Reporting and Exports               | Done        |
+| Stage 12: Compliance, Operations, Hardening   | In progress |
 
 ## Method: the TDD loop
 
@@ -47,14 +47,14 @@ Test-first is non-negotiable in three places, because these are where the design
 
 Test suites, extending the existing four:
 
-| Suite | Drives |
-| --- | --- |
-| Feature | Endpoint behavior, wire contracts, error codes |
-| Unit | Actions, value objects, state machines, ledger math |
+| Suite          | Drives                                                               |
+| -------------- | -------------------------------------------------------------------- |
+| Feature        | Endpoint behavior, wire contracts, error codes                       |
+| Unit           | Actions, value objects, state machines, ledger math                  |
 | Contract (new) | Response conformance to `docs/openapi/openapi.yaml`, drift detection |
-| Architecture | Context boundary enforcement |
-| Isolation | RLS cross-tenant denial for every endpoint |
-| Concurrency | Oversell, double-booking, promo limits, first-scan-wins |
+| Architecture   | Context boundary enforcement                                         |
+| Isolation      | RLS cross-tenant denial for every endpoint                           |
+| Concurrency    | Oversell, double-booking, promo limits, first-scan-wins              |
 
 Definition of done for any slice: feature and unit tests written first and passing, contract merged and conformance-checked, isolation coverage for new tables, architecture suite green, Larastan and Pint clean, generated TypeScript committed without drift.
 

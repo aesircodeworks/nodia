@@ -42,14 +42,14 @@ All three changes follow data-conventions: UUIDv7 `id` via `HasUuids`, non-null 
 
 ### `seat_maps`
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | uuid | PK, UUIDv7 |
-| `tenant_id` | uuid | non-null, FK `tenants.id` (system-design 4.2: denormalized even though derivable via venue) |
-| `venue_id` | uuid | non-null, FK `venues.id` |
-| `name` | string | template name shown to staff |
-| `layout` | jsonb | map-level geometry (stage position, section shapes); opaque to the API, rendered by the admin frontend |
-| `created_at`, `updated_at` | timestamptz | UTC |
+| Column                     | Type        | Notes                                                                                                  |
+| -------------------------- | ----------- | ------------------------------------------------------------------------------------------------------ |
+| `id`                       | uuid        | PK, UUIDv7                                                                                             |
+| `tenant_id`                | uuid        | non-null, FK `tenants.id` (system-design 4.2: denormalized even though derivable via venue)            |
+| `venue_id`                 | uuid        | non-null, FK `venues.id`                                                                               |
+| `name`                     | string      | template name shown to staff                                                                           |
+| `layout`                   | jsonb       | map-level geometry (stage position, section shapes); opaque to the API, rendered by the admin frontend |
+| `created_at`, `updated_at` | timestamptz | UTC                                                                                                    |
 
 Constraints and indexes:
 
@@ -60,17 +60,17 @@ Constraints and indexes:
 
 ### `seats`
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | uuid | PK, UUIDv7. Stable identity: Stage 6 `event_seats.seat_id` will reference it, so upserts must preserve it for unchanged seats |
-| `tenant_id` | uuid | non-null, FK `tenants.id` |
-| `seat_map_id` | uuid | non-null, FK `seat_maps.id`, on delete cascade (a template owns its seats) |
-| `section` | string | per system-design 8.2 |
-| `row` | string | per system-design 8.2; a PostgreSQL reserved word, safe because Laravel's grammar quotes identifiers |
-| `number` | string | per system-design 8.2 |
-| `position_x` | integer nullable | layout coordinate per system-design 6.2, in layout grid units |
-| `position_y` | integer nullable | layout coordinate per system-design 6.2 |
-| `created_at`, `updated_at` | timestamptz | UTC |
+| Column                     | Type             | Notes                                                                                                                         |
+| -------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `id`                       | uuid             | PK, UUIDv7. Stable identity: Stage 6 `event_seats.seat_id` will reference it, so upserts must preserve it for unchanged seats |
+| `tenant_id`                | uuid             | non-null, FK `tenants.id`                                                                                                     |
+| `seat_map_id`              | uuid             | non-null, FK `seat_maps.id`, on delete cascade (a template owns its seats)                                                    |
+| `section`                  | string           | per system-design 8.2                                                                                                         |
+| `row`                      | string           | per system-design 8.2; a PostgreSQL reserved word, safe because Laravel's grammar quotes identifiers                          |
+| `number`                   | string           | per system-design 8.2                                                                                                         |
+| `position_x`               | integer nullable | layout coordinate per system-design 6.2, in layout grid units                                                                 |
+| `position_y`               | integer nullable | layout coordinate per system-design 6.2                                                                                       |
+| `created_at`, `updated_at` | timestamptz      | UTC                                                                                                                           |
 
 Constraints and indexes:
 

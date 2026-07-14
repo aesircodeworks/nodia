@@ -9633,7 +9633,13 @@ components:
               enum: [409]
             code:
               type: string
-              enum: [order_not_payable, idempotency_key_reuse_mismatch, submerchant_not_active, gateway_not_configured]
+              enum:
+                [
+                  order_not_payable,
+                  idempotency_key_reuse_mismatch,
+                  submerchant_not_active,
+                  gateway_not_configured,
+                ]
       unevaluatedProperties: false
     PaymentMethodNotAvailableProblem:
       description: >-

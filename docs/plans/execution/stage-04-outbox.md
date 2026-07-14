@@ -33,11 +33,11 @@ Verified starting state: Stages 1-3 are Done. Stage 4 is Not started. No `app/Su
 
 Applied Stage 4 code-review findings (blocking/important + one minor). Commits on `feat/api-implementation` after the gate at `956b2ab` / CI at `e71d00c` / journal CI IDs at `f91db35`.
 
-| # | Severity | Finding | Action |
-| --- | --- | --- | --- |
-| 1 | important | Missing Redis/Horizon end-to-end delivery proof (Slice 2 / exit criterion 2). Existing e2e used `QUEUE_CONNECTION=sync` only. | Added `tests/Feature/Support/Outbox/OutboxRedisDeliveryTest.php`: requires reachable Redis (fails hard with a clear message; CI always has `redis:8-alpine`), overrides only this suite to `queue.default=redis` on a dedicated queue `outbox-redis-e2e`, records via `OutboxRecorder` in a tenant transaction, asserts the job landed in Redis (`LLEN == 1`) with zero subscriber effects yet, runs `queue:work redis --once --sleep=0` to pop and handle, asserts exactly one subscriber effect and `OutboxDeliveryStatus::Processed`, then clears Redis keys and restores `sync`. No Horizon daemon; same Redis drivers Horizon uses. |
-| 2 | important | `OutboxDeliveryStatus` leaked into TypeScript client contracts. | Added `#[Hidden]` (`Spatie\TypeScriptTransformer\Attributes\Hidden`) on `App\Support\Outbox\Enums\OutboxDeliveryStatus` (same pattern as event payloads). Ran `composer -d apps/api run types:generate`; `OutboxDeliveryStatus` removed from `packages/api-client/src/generated/index.ts`. |
-| 3 | minor | `OutboxEvent` fillable missing `id` while `OutboxRecorder` mass-assigns a pre-generated UUIDv7. | Added `id` to the `Fillable` attribute on `OutboxEvent`. Unit test `persists an explicit id through mass assignment on create` asserts the supplied id is stored and readable by key. |
+| #   | Severity  | Finding                                                                                                                       | Action                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| --- | --------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | important | Missing Redis/Horizon end-to-end delivery proof (Slice 2 / exit criterion 2). Existing e2e used `QUEUE_CONNECTION=sync` only. | Added `tests/Feature/Support/Outbox/OutboxRedisDeliveryTest.php`: requires reachable Redis (fails hard with a clear message; CI always has `redis:8-alpine`), overrides only this suite to `queue.default=redis` on a dedicated queue `outbox-redis-e2e`, records via `OutboxRecorder` in a tenant transaction, asserts the job landed in Redis (`LLEN == 1`) with zero subscriber effects yet, runs `queue:work redis --once --sleep=0` to pop and handle, asserts exactly one subscriber effect and `OutboxDeliveryStatus::Processed`, then clears Redis keys and restores `sync`. No Horizon daemon; same Redis drivers Horizon uses. |
+| 2   | important | `OutboxDeliveryStatus` leaked into TypeScript client contracts.                                                               | Added `#[Hidden]` (`Spatie\TypeScriptTransformer\Attributes\Hidden`) on `App\Support\Outbox\Enums\OutboxDeliveryStatus` (same pattern as event payloads). Ran `composer -d apps/api run types:generate`; `OutboxDeliveryStatus` removed from `packages/api-client/src/generated/index.ts`.                                                                                                                                                                                                                                                                                                                                               |
+| 3   | minor     | `OutboxEvent` fillable missing `id` while `OutboxRecorder` mass-assigns a pre-generated UUIDv7.                               | Added `id` to the `Fillable` attribute on `OutboxEvent`. Unit test `persists an explicit id through mass assignment on create` asserts the supplied id is stored and readable by key.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 Declined: none.
 
@@ -47,16 +47,15 @@ Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/
 
 Applied one Stage 4 code-review finding (important). Commit on `feat/api-implementation`: `ce99fef`.
 
-| # | Severity | Finding | Action |
-| --- | --- | --- | --- |
-| 1 | important | `AssignRole` recorded `UserRoleChanged` even when the role did not change (same-role PATCH is an intentional no-op). | Added failing Slice 6-style feature test `records nothing when the role_id is unchanged (same-role no-op PATCH)` asserting zero `UserRoleChanged` outbox rows on a successful same-role PATCH. Gated the membership `role_id` update and `OutboxRecorder::record(UserRoleChanged...)` behind `$previousRoleId !== $role->id`, the same condition already used by the last-owner guard. |
+| #   | Severity  | Finding                                                                                                              | Action                                                                                                                                                                                                                                                                                                                                                                                 |
+| --- | --------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | important | `AssignRole` recorded `UserRoleChanged` even when the role did not change (same-role PATCH is an intentional no-op). | Added failing Slice 6-style feature test `records nothing when the role_id is unchanged (same-role no-op PATCH)` asserting zero `UserRoleChanged` outbox rows on a successful same-role PATCH. Gated the membership `role_id` update and `OutboxRecorder::record(UserRoleChanged...)` behind `$previousRoleId !== $role->id`, the same condition already used by the last-owner guard. |
 
 Declined: none.
 
 Test evidence: `composer -d apps/api run lint` (Pint) passed. `composer -d apps/api run analyse` (Larastan) 0 errors. `composer -d apps/api run types:generate` produced no diff. Focused `UserRoleChangedOutboxTest` (6) and `LastOwnerGuardTest` (7) green. `composer -d apps/api run test` (all six suites) passed 1075 tests, 4216 assertions, 0 failures.
 
 ### Decisions and deviations
-
 
 #### task-02: Correlation ID container binding (2026-07-10 03:49 -03)
 
@@ -320,35 +319,33 @@ Local quality gates after all implementation tasks:
 
 HEAD at gate: `956b2ab`. Pushing branch `feat/api-implementation` and watching CI.
 
-
 CI runs for push at e71d00c (all success):
 
-| Workflow | Run ID | Conclusion |
-| --- | --- | --- |
-| API | 29078427537 | success (Pint, Larastan, Pest, Isolation, Architecture, Concurrency, Contract Drift) |
-| Admin | 29078427528 | success |
-| Checkin | 29078427535 | success |
-| Storefront | 29078427574 | success |
-| Packages | 29078427565 | success |
-
+| Workflow   | Run ID      | Conclusion                                                                           |
+| ---------- | ----------- | ------------------------------------------------------------------------------------ |
+| API        | 29078427537 | success (Pint, Larastan, Pest, Isolation, Architecture, Concurrency, Contract Drift) |
+| Admin      | 29078427528 | success                                                                              |
+| Checkin    | 29078427535 | success                                                                              |
+| Storefront | 29078427574 | success                                                                              |
+| Packages   | 29078427565 | success                                                                              |
 
 ### Review rounds (summary)
 
-| Round | Verdict | Actionable | Outcome |
-| --- | --- | --- | --- |
-| 1 | needs-fixes | Redis e2e missing; OutboxDeliveryStatus leaked to TS; minor fillable id | Fixed in `5e09ee5` |
-| 2 | needs-fixes | AssignRole no-op recorded UserRoleChanged | Fixed in `ce99fef` |
-| 3 | approve | 0 | Clean |
+| Round | Verdict     | Actionable                                                              | Outcome            |
+| ----- | ----------- | ----------------------------------------------------------------------- | ------------------ |
+| 1     | needs-fixes | Redis e2e missing; OutboxDeliveryStatus leaked to TS; minor fillable id | Fixed in `5e09ee5` |
+| 2     | needs-fixes | AssignRole no-op recorded UserRoleChanged                               | Fixed in `ce99fef` |
+| 3     | approve     | 0                                                                       | Clean              |
 
 CI after latest review fixes (HEAD `20ac736`):
 
-| Workflow | Run ID | Conclusion |
-| --- | --- | --- |
-| API | 29079404481 | success |
-| Admin | 29079404523 | success |
-| Checkin | 29079404516 | success |
-| Storefront | 29079404505 | success |
-| Packages | 29079404482 | success |
+| Workflow   | Run ID      | Conclusion |
+| ---------- | ----------- | ---------- |
+| API        | 29079404481 | success    |
+| Admin      | 29079404523 | success    |
+| Checkin    | 29079404516 | success    |
+| Storefront | 29079404505 | success    |
+| Packages   | 29079404482 | success    |
 
 ### Final summary (2026-07-10 05:22 -03)
 
@@ -367,4 +364,3 @@ Stage 4 Transactional Outbox completed end to end: tasks 2-14, local gates, CI g
 9. **Met.** Identity payload unit tests exclude email/name; payloads `#[Hidden]`.
 10. **Met.** 1075 tests locally; CI API (Pint, Larastan, Pest, Isolation, Architecture, Concurrency, Contract Drift) green; Support/Outbox architecture constraints enforced.
 11. **Met** by this close-out: status table set to Done.
-

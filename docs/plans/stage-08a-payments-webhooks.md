@@ -54,25 +54,25 @@ Later stages consume from this one:
 
 Per system-design 8.3, one row per payment attempt against an order.
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | uuid | UUIDv7 via `HasUuids`, primary key |
-| `tenant_id` | uuid | non-null |
-| `order_id` | uuid | FK to `orders` |
-| `gateway` | string | adapter identifier, e.g. `fake` |
-| `method` | string | payment method, e.g. `card`, `pix`, `boleto` |
-| `idempotency_key` | string | client-supplied `Idempotency-Key`, scopes API replay only; the gateway-facing key is generated server-side (system-design 7.5) |
-| `request_hash` | string | hash of the canonicalized initiation payload, detects key reuse with a different request |
-| `gateway_reference` | string, nullable | gateway-side payment identifier, set from the adapter response |
-| `amount` | bigint | integer minor units, always the order total at initiation; bare `amount` paired with `currency` per the data-conventions exception for rows that are themselves single monetary facts (system-design 8.3) |
-| `currency` | string(3) | paired with `amount` on the same row (ADR 018) |
-| `fee_amount` | bigint | integer minor units, not null default 0; the gateway fee from the adapter's normalized confirmation, persisted by the confirmation Action on `initiated -> confirmed` |
-| `commission_amount` | bigint | integer minor units, not null default 0; the platform commission persisted by the confirmation Action through a commission resolver that returns zero until Stage 8b lands the tenant commission configuration and wires the rate into the same Action |
-| `status` | string | backed by a `PaymentStatus` enum: `initiated`, `confirmed`, `failed`, `expired` |
-| `failure_code` | string, nullable | normalized gateway decline or expiry reason |
-| `expires_at` | timestamptz, nullable | end of the method's confirmation window; null for synchronous methods |
-| `confirmed_at`, `failed_at` | timestamptz, nullable | transition timestamps |
-| `created_at`, `updated_at` | timestamptz | UTC |
+| Column                      | Type                  | Notes                                                                                                                                                                                                                                                  |
+| --------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`                        | uuid                  | UUIDv7 via `HasUuids`, primary key                                                                                                                                                                                                                     |
+| `tenant_id`                 | uuid                  | non-null                                                                                                                                                                                                                                               |
+| `order_id`                  | uuid                  | FK to `orders`                                                                                                                                                                                                                                         |
+| `gateway`                   | string                | adapter identifier, e.g. `fake`                                                                                                                                                                                                                        |
+| `method`                    | string                | payment method, e.g. `card`, `pix`, `boleto`                                                                                                                                                                                                           |
+| `idempotency_key`           | string                | client-supplied `Idempotency-Key`, scopes API replay only; the gateway-facing key is generated server-side (system-design 7.5)                                                                                                                         |
+| `request_hash`              | string                | hash of the canonicalized initiation payload, detects key reuse with a different request                                                                                                                                                               |
+| `gateway_reference`         | string, nullable      | gateway-side payment identifier, set from the adapter response                                                                                                                                                                                         |
+| `amount`                    | bigint                | integer minor units, always the order total at initiation; bare `amount` paired with `currency` per the data-conventions exception for rows that are themselves single monetary facts (system-design 8.3)                                              |
+| `currency`                  | string(3)             | paired with `amount` on the same row (ADR 018)                                                                                                                                                                                                         |
+| `fee_amount`                | bigint                | integer minor units, not null default 0; the gateway fee from the adapter's normalized confirmation, persisted by the confirmation Action on `initiated -> confirmed`                                                                                  |
+| `commission_amount`         | bigint                | integer minor units, not null default 0; the platform commission persisted by the confirmation Action through a commission resolver that returns zero until Stage 8b lands the tenant commission configuration and wires the rate into the same Action |
+| `status`                    | string                | backed by a `PaymentStatus` enum: `initiated`, `confirmed`, `failed`, `expired`                                                                                                                                                                        |
+| `failure_code`              | string, nullable      | normalized gateway decline or expiry reason                                                                                                                                                                                                            |
+| `expires_at`                | timestamptz, nullable | end of the method's confirmation window; null for synchronous methods                                                                                                                                                                                  |
+| `confirmed_at`, `failed_at` | timestamptz, nullable | transition timestamps                                                                                                                                                                                                                                  |
+| `created_at`, `updated_at`  | timestamptz           | UTC                                                                                                                                                                                                                                                    |
 
 Constraints and indexes:
 
@@ -94,17 +94,17 @@ State transitions, all conditional UPDATEs checked by affected-row count, never 
 
 Raw webhook persistence per system-design 7.4: persist first, always 2xx after persist, process asynchronously. A webhook arrives with no tenant context, so rows carry the sentinel platform tenant (data-conventions: platform-scope rows use the sentinel, never NULL); the tenant-scoped effect lives on `payments` and `orders`.
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | uuid | UUIDv7 primary key |
-| `tenant_id` | uuid | non-null, sentinel platform tenant |
-| `gateway` | string | receiving adapter |
-| `gateway_event_id` | string | the gateway's own event identifier |
-| `payload` | jsonb | raw body as received |
-| `status` | string | enum: `received`, `processed`, `ignored` |
-| `received_at` | timestamptz | |
-| `processed_at` | timestamptz, nullable | |
-| `created_at`, `updated_at` | timestamptz | |
+| Column                     | Type                  | Notes                                    |
+| -------------------------- | --------------------- | ---------------------------------------- |
+| `id`                       | uuid                  | UUIDv7 primary key                       |
+| `tenant_id`                | uuid                  | non-null, sentinel platform tenant       |
+| `gateway`                  | string                | receiving adapter                        |
+| `gateway_event_id`         | string                | the gateway's own event identifier       |
+| `payload`                  | jsonb                 | raw body as received                     |
+| `status`                   | string                | enum: `received`, `processed`, `ignored` |
+| `received_at`              | timestamptz           |                                          |
+| `processed_at`             | timestamptz, nullable |                                          |
+| `created_at`, `updated_at` | timestamptz           |                                          |
 
 Constraints and indexes:
 
@@ -128,24 +128,24 @@ All envelopes follow event-conventions: UUIDv7 `id`, global `sequence`, `type`, 
 
 ### Produced (Payments context, aggregate `payment`)
 
-| Event | Recorded when | Payload |
-| --- | --- | --- |
-| `PaymentInitiated` | payment row created and adapter `createPayment` succeeded | `payment_id`, `order_id`, `gateway`, `method`, `amount` (money), `expires_at` (nullable) |
-| `PaymentConfirmed` | `initiated -> confirmed` transition committed | `payment_id`, `order_id`, `gateway`, `method`, `amount` (money), `fee` (money, the gateway fee from the adapter's normalized confirmation), `gateway_reference`; together with the `fee_amount` and `commission_amount` the confirmation Action persists on the payment row, the payload is deliberately sufficient for the Stage 8b ledger projection |
-| `PaymentFailed` | `initiated -> failed` transition committed | `payment_id`, `order_id`, `gateway`, `method`, `failure_code` |
-| `PaymentExpired` | `initiated -> expired` transition committed | `payment_id`, `order_id`, `gateway`, `method` |
+| Event              | Recorded when                                             | Payload                                                                                                                                                                                                                                                                                                                                                |
+| ------------------ | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PaymentInitiated` | payment row created and adapter `createPayment` succeeded | `payment_id`, `order_id`, `gateway`, `method`, `amount` (money), `expires_at` (nullable)                                                                                                                                                                                                                                                               |
+| `PaymentConfirmed` | `initiated -> confirmed` transition committed             | `payment_id`, `order_id`, `gateway`, `method`, `amount` (money), `fee` (money, the gateway fee from the adapter's normalized confirmation), `gateway_reference`; together with the `fee_amount` and `commission_amount` the confirmation Action persists on the payment row, the payload is deliberately sufficient for the Stage 8b ledger projection |
+| `PaymentFailed`    | `initiated -> failed` transition committed                | `payment_id`, `order_id`, `gateway`, `method`, `failure_code`                                                                                                                                                                                                                                                                                          |
+| `PaymentExpired`   | `initiated -> expired` transition committed               | `payment_id`, `order_id`, `gateway`, `method`                                                                                                                                                                                                                                                                                                          |
 
 `PaymentExpired` is new: system-design 9.3 lists only `PaymentInitiated`, `PaymentConfirmed`, `PaymentFailed` for Payments, but the order state machine (system-design 7.1) distinguishes `expired` from `failed`, and event payload evolution is additive-only so overloading `PaymentFailed` with an expiry flag would blur a fact boundary. Per event-conventions "the catalog in system-design.md section 9.3 is the registry", the same change that introduces the event updates that list.
 
 ### Consumed
 
-| Event | Consumer | Context | Effect |
-| --- | --- | --- | --- |
-| `PaymentConfirmed` | `HandlePaymentConfirmed` | Orders | calls the idempotent `MarkOrderPaid` Action: conditional `awaiting_payment -> paid`, `CommitHold`, `IssueTickets`, `TicketIssued` recorded, all in one transaction |
-| `PaymentFailed` | `HandlePaymentFailed` | Orders | conditional `awaiting_payment -> failed`, `ReleaseHold` |
-| `PaymentExpired` | `HandlePaymentExpired` | Orders | conditional `awaiting_payment -> expired`, `ReleaseHold` |
-| `TicketIssued` | `SendOrderConfirmation` | Orders | one confirmation email per order via Resend, guarded by the `confirmation_sent_at` claim |
-| `TicketIssued` | `GenerateTicketPdf` | Orders | renders the ticket PDF and attaches it to the ticket's `ticket_pdf` single-file media collection |
+| Event              | Consumer                 | Context | Effect                                                                                                                                                             |
+| ------------------ | ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PaymentConfirmed` | `HandlePaymentConfirmed` | Orders  | calls the idempotent `MarkOrderPaid` Action: conditional `awaiting_payment -> paid`, `CommitHold`, `IssueTickets`, `TicketIssued` recorded, all in one transaction |
+| `PaymentFailed`    | `HandlePaymentFailed`    | Orders  | conditional `awaiting_payment -> failed`, `ReleaseHold`                                                                                                            |
+| `PaymentExpired`   | `HandlePaymentExpired`   | Orders  | conditional `awaiting_payment -> expired`, `ReleaseHold`                                                                                                           |
+| `TicketIssued`     | `SendOrderConfirmation`  | Orders  | one confirmation email per order via Resend, guarded by the `confirmation_sent_at` claim                                                                           |
+| `TicketIssued`     | `GenerateTicketPdf`      | Orders  | renders the ticket PDF and attaches it to the ticket's `ticket_pdf` single-file media collection                                                                   |
 
 Idempotence notes:
 

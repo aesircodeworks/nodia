@@ -8,16 +8,16 @@ The system design remains the architectural source of truth. This document is se
 
 Update this table when a phase starts (link its spec folder) and when it merges (mark it done).
 
-| Phase | Status | Spec |
-| --- | --- | --- |
-| Phase 0: Project Foundation | Done | [specs/001-project-foundation](../specs/001-project-foundation/spec.md) |
-| Phase 1: Tenant and Identity Slice | Not started | |
-| Phase 2: Publishable General-Admission Event | Not started | |
-| Phase 3: Inventory Hold and Checkout Slice | Not started | |
-| Phase 4: First Payment and Ticket Issuance | Not started | |
-| Phase 5: Basic Check-in | Not started | |
-| Phase 6: Tenant Operations | Not started | |
-| Phase 7: Production Hardening | Not started | |
+| Phase                                        | Status      | Spec                                                                    |
+| -------------------------------------------- | ----------- | ----------------------------------------------------------------------- |
+| Phase 0: Project Foundation                  | Done        | [specs/001-project-foundation](../specs/001-project-foundation/spec.md) |
+| Phase 1: Tenant and Identity Slice           | Not started |                                                                         |
+| Phase 2: Publishable General-Admission Event | Not started |                                                                         |
+| Phase 3: Inventory Hold and Checkout Slice   | Not started |                                                                         |
+| Phase 4: First Payment and Ticket Issuance   | Not started |                                                                         |
+| Phase 5: Basic Check-in                      | Not started |                                                                         |
+| Phase 6: Tenant Operations                   | Not started |                                                                         |
+| Phase 7: Production Hardening                | Not started |                                                                         |
 
 ## MVP Scope
 
