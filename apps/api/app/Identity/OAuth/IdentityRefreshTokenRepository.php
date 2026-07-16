@@ -3,6 +3,7 @@
 namespace App\Identity\OAuth;
 
 use App\Identity\Actions\RevokeRefreshTokenFamily;
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\Str;
 use Laravel\Passport\Bridge\RefreshTokenRepository as PassportRefreshTokenRepository;
 use Laravel\Passport\Events\RefreshTokenCreated;
@@ -57,17 +58,22 @@ final class IdentityRefreshTokenRepository extends PassportRefreshTokenRepositor
     public const string RaceLostHint = 'Refresh token rotation lost to a concurrent request';
 
     /**
-     * Set by revokeRefreshToken() for the token being rotated away from,
-     * consumed by the very next persistNewRefreshToken() call on this same
-     * instance. Safe because both calls happen once, in that order, per
-     * refresh request, on the one repository instance the
-     * AuthorizationServer singleton hands to both the password and refresh
-     * grants (verified against
-     * League\OAuth2\Server\Grant\RefreshTokenGrant::respondToAccessTokenRequest
-     * before relying on it); null for a brand-new login, where no old
-     * token is being rotated away from.
+     * The family_id of the token being rotated away from lives on a
+     * request-scoped RefreshTokenRotationContext, not a property here: this
+     * repository is captured by Passport's singleton AuthorizationServer
+     * and, under Octane, outlives the request that created it, so a failed
+     * rotation (revoke succeeded, but issuance threw before persist could
+     * clear the field) would otherwise leak the family into the next
+     * request the worker handled. The scoped context is reset at each
+     * request boundary; revokeRefreshToken() writes it and the very next
+     * persistNewRefreshToken() consumes and clears it, both once and in
+     * that order per refresh request (verified against
+     * League\OAuth2\Server\Grant\RefreshTokenGrant::respondToAccessTokenRequest).
      */
-    private ?string $rotatingFamilyId = null;
+    public function __construct(Dispatcher $events, private readonly RefreshTokenRotationContext $rotation)
+    {
+        parent::__construct($events);
+    }
 
     /**
      * family_id is not part of Passport's own schema, so
@@ -76,24 +82,28 @@ final class IdentityRefreshTokenRepository extends PassportRefreshTokenRepositor
      * the constraint before ever running. This mirrors the parent's own
      * insert (Laravel\Passport\Bridge\RefreshTokenRepository) with
      * family_id added to the same forceFill, so the row is correct from
-     * its first write. A brand-new login (no rotatingFamilyId) gets a
+     * its first write. A brand-new login (no rotation family) gets a
      * fresh uuid, never the token's own identifier: refresh token ids are
      * league/oauth2-server's own 40-character hex strings, not valid
      * uuids, and family_id is typed uuid.
      */
     public function persistNewRefreshToken(RefreshTokenEntityInterface $refreshTokenEntity): void
     {
+        // Read and clear the rotation family before any fallible work: if
+        // the save or dispatch below throws, the scoped context must not
+        // retain a family that a later call on this instance would reuse.
+        $familyId = $this->rotation->familyId ?? (string) Str::uuid();
+        $this->rotation->familyId = null;
+
         Passport::refreshToken()->forceFill([
             'id' => $id = $refreshTokenEntity->getIdentifier(),
             'access_token_id' => $accessTokenId = $refreshTokenEntity->getAccessToken()->getIdentifier(),
-            'family_id' => $this->rotatingFamilyId ?? (string) Str::uuid(),
+            'family_id' => $familyId,
             'revoked' => false,
             'expires_at' => $refreshTokenEntity->getExpiryDateTime(),
         ])->save();
 
         $this->events->dispatch(new RefreshTokenCreated($id, $accessTokenId));
-
-        $this->rotatingFamilyId = null;
     }
 
     /**
@@ -118,7 +128,7 @@ final class IdentityRefreshTokenRepository extends PassportRefreshTokenRepositor
             throw OAuthServerException::invalidRefreshToken(self::RaceLostHint);
         }
 
-        $this->rotatingFamilyId = PassportRefreshToken::query()->whereKey($tokenId)->value('family_id');
+        $this->rotation->familyId = PassportRefreshToken::query()->whereKey($tokenId)->value('family_id');
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Identity;
 use App\Identity\Authorization\CapabilityGate;
 use App\Identity\OAuth\IdentityAccessToken;
 use App\Identity\OAuth\IdentityRefreshTokenRepository;
+use App\Identity\OAuth\RefreshTokenRotationContext;
 use App\Support\Outbox\EventTypeRegistry;
 use DateInterval;
 use Illuminate\Support\Facades\Route;
@@ -34,6 +35,13 @@ class IdentityServiceProvider extends ServiceProvider
         // token (stage-03 plan, Slice 2: reuse detection and family
         // revocation, App\Identity\OAuth\IdentityRefreshTokenRepository).
         $this->app->bind(RefreshTokenRepository::class, IdentityRefreshTokenRepository::class);
+
+        // Request-scoped so Octane resets it at each request boundary: the
+        // repository above is captured by Passport's singleton
+        // AuthorizationServer and would otherwise carry a failed rotation's
+        // family_id into the next request the worker handled
+        // (App\Identity\OAuth\RefreshTokenRotationContext).
+        $this->app->scoped(RefreshTokenRotationContext::class);
     }
 
     public function boot(): void
