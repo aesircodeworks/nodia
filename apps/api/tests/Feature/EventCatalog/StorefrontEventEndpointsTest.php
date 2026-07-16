@@ -210,6 +210,16 @@ describe('GET /v1/storefront/events/{event}', function () {
             ->assertConformsToOpenApi()
             ->assertJsonPath('code', 'request.not_found');
     });
+
+    it('returns request.not_found for a malformed, non-uuid event id', function () {
+        // The whereUuid route constraint makes this miss the route so it
+        // renders the standard not-found problem, rather than reaching
+        // whereKey() against the uuid column and raising a 500.
+        $this->getJson('http://'.$this->host.'/v1/storefront/events/not-a-uuid')
+            ->assertNotFound()
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'request.not_found');
+    });
 });
 
 /*

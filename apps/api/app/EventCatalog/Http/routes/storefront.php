@@ -9,4 +9,4 @@ use Illuminate\Support\Facades\Route;
 // seam between the Host-resolved and X-Tenant-Id-resolved populations
 // (system-design 4.1). Read-only, published surface only.
 Route::get('/storefront/events', [StorefrontEventController::class, 'index']);
-Route::get('/storefront/events/{event}', [StorefrontEventController::class, 'show']);
+Route::get('/storefront/events/{event}', [StorefrontEventController::class, 'show'])->whereUuid('event');
