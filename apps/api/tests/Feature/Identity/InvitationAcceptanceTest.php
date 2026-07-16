@@ -111,6 +111,24 @@ it('accepts a valid token, sets the password, and allows login afterwards', func
         ->assertJsonStructure(['access_token']);
 });
 
+it('rejects replaying an already-accepted token with invitation_token_invalid', function () {
+    ['token' => $token] = inviteAndCaptureToken($this->tenantId);
+
+    $this->withoutToken()
+        ->postJson('/v1/auth/staff/invitation/accept', ['token' => $token, 'password' => 'a-real-password'])
+        ->assertNoContent();
+
+    // The same token, redeemed a second time (an attacker replaying a
+    // captured invitation email after the legitimate recipient accepted),
+    // must not reset the password again: the row is consumed, so the guard
+    // renders it identically to an unknown token.
+    $this->withoutToken()
+        ->postJson('/v1/auth/staff/invitation/accept', ['token' => $token, 'password' => 'an-attacker-password'])
+        ->assertUnauthorized()
+        ->assertConformsToOpenApi()
+        ->assertJsonPath('code', 'invitation_token_invalid');
+});
+
 it('rejects an expired token with invitation_token_expired under the fake clock', function () {
     $this->freezeTime();
 

@@ -38,6 +38,7 @@ final class UnscopedTables
             'oauth_refresh_tokens',
             'password_reset_tokens',
             'sessions',
+            'staff_invitation_tokens',
             'staff_password_reset_tokens',
             'users',
         ];

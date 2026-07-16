@@ -10,11 +10,13 @@ use App\Identity\Exceptions\MembershipExistsException;
 use App\Identity\Mail\StaffInvitationMail;
 use App\Identity\Models\Membership;
 use App\Identity\Models\Role;
-use App\Identity\Support\InvitationToken;
+use App\Identity\Models\StaffInvitationToken;
+use App\Identity\Support\InvitationTokenHasher;
 use App\Models\User;
 use App\Support\Outbox\OutboxRecorder;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
@@ -71,7 +73,19 @@ final class InviteUser
 
         $this->outbox->record(UserInvited::fromMembership($membership, $invitedByUserId));
 
-        $token = InvitationToken::issue($user->id);
+        // A high-entropy random string mailed in plaintext; only its sha256
+        // digest is stored, and acceptance consumes the row atomically
+        // (App\Identity\Actions\AcceptInvitation), so a captured token
+        // cannot be replayed once redeemed. Persisted inside the enclosing
+        // request transaction, mirroring RequestPasswordReset's own
+        // single-use-token minting.
+        $token = Str::random(64);
+
+        StaffInvitationToken::query()->create([
+            'user_id' => $user->id,
+            'token_hash' => InvitationTokenHasher::hash($token),
+            'expires_at' => Date::now()->addMinutes(config()->integer('identity.invitation_token_ttl_minutes')),
+        ]);
 
         // Deferred to the enclosing request transaction's commit, not sent
         // from inside it: DB::afterCommit() runs synchronously (no queue,

@@ -9,7 +9,8 @@ use App\Identity\Exceptions\RoleNotFoundException;
 use App\Identity\Mail\StaffInvitationMail;
 use App\Identity\Models\Membership;
 use App\Identity\Models\Role;
-use App\Identity\Support\InvitationToken;
+use App\Identity\Models\StaffInvitationToken;
+use App\Identity\Support\InvitationTokenHasher;
 use App\Models\User;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
@@ -131,7 +132,7 @@ it('throws request.not_found for an unknown role id', function () {
     expect($invoke)->toThrow(RoleNotFoundException::class);
 });
 
-it('mails a StaffInvitationMail carrying a verifiable acceptance token once the transaction commits', function () {
+it('mails a StaffInvitationMail carrying a redeemable acceptance token once the transaction commits', function () {
     Mail::fake();
     $roleId = inviteUserRoleId();
     $inviterId = User::factory()->create()->id;
@@ -141,6 +142,12 @@ it('mails a StaffInvitationMail carrying a verifiable acceptance token once the 
         fn () => app(InviteUser::class)(new InviteUserData('mailed@example.com', 'Mailed Invitee', $roleId), $inviterId),
     );
 
+    $invitedUserId = User::query()->where('email', 'mailed@example.com')->firstOrFail()->id;
+
     Mail::assertSent(StaffInvitationMail::class, fn (StaffInvitationMail $mail): bool => $mail->hasTo('mailed@example.com')
-        && InvitationToken::verify($mail->token) === User::query()->where('email', 'mailed@example.com')->firstOrFail()->id);
+        && StaffInvitationToken::query()
+            ->where('user_id', $invitedUserId)
+            ->where('token_hash', InvitationTokenHasher::hash($mail->token))
+            ->whereNull('consumed_at')
+            ->exists());
 });
