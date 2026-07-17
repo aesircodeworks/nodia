@@ -54,12 +54,23 @@ use Throwable;
  * decline commits the failed payment row and its events, the controller
  * rendering the 402 problem without an exception for exactly that
  * reason.
+ *
+ * The gateway round trip deliberately runs inside the request
+ * transaction while the order row is locked FOR UPDATE: that lock is
+ * what serializes different-key initiations so only one request per
+ * order ever reaches the gateway. The cost is that gateway latency
+ * extends the lock hold time, so the adapter HTTP client must run under
+ * a tight timeout; moving the call outside the transaction would trade
+ * this for a reserve-then-reconcile protocol and is deferred until load
+ * testing shows the lock hold time matters.
  */
 final class InitiatePayment
 {
     public const string MISMATCH_EVENT = 'payment_confirmed_after_hold_expired';
 
     public const string PAID_ARC_FAILED_EVENT = 'payment_confirmed_paid_arc_failed';
+
+    public const string PEND_ARC_FAILED_EVENT = 'payment_pending_pend_arc_failed';
 
     public function __construct(
         private readonly TenantContext $tenantContext,
@@ -344,13 +355,54 @@ final class InitiatePayment
 
         $payment->update(['expires_at' => $expiresAt]);
 
-        $this->transitionOrder(fn () => ($this->markOrderAwaitingPayment)($order->id), $order->id);
-
-        ($this->extendHold)(new ExtendHoldData($order->holdId, $expiresAt));
-
         $this->outbox->record(PaymentInitiated::fromPayment($payment->fresh()));
 
+        try {
+            // The savepoint gives the pend arc the same durability
+            // boundary as the paid arc: the gateway already accepted a
+            // Pending charge keyed by this payment's UUID, so a hold that
+            // died behind the pre-flight check or an order a racing
+            // consumer already moved must never roll back the payment row
+            // and its gateway_reference. A retry would mint a new payment
+            // UUID and a second gateway charge, and the first reference's
+            // webhooks would resolve to no local row.
+            DB::transaction(function () use ($order, $expiresAt): void {
+                $this->transitionOrder(fn () => ($this->markOrderAwaitingPayment)($order->id), $order->id);
+
+                ($this->extendHold)(new ExtendHoldData($order->holdId, $expiresAt));
+            });
+        } catch (Throwable $pendArcFailure) {
+            return $this->compensatePendArcFailure($payment->fresh(), $order, $pendArcFailure);
+        }
+
         return new PaymentInitiationResult($payment->fresh(), replayed: false, declined: false);
+    }
+
+    private function compensatePendArcFailure(Payment $initiated, OrderPaymentContextData $order, Throwable $failure): PaymentInitiationResult
+    {
+        try {
+            ($this->markOrderExpired)($order->id);
+        } catch (InvalidOrderTransitionException) {
+            // A racing consumer already moved the order.
+        }
+
+        $this->activity->record(
+            description: sprintf('Payment %s accepted as pending by the gateway but the pend transition failed; order %s expired, payment flagged for gateway cancellation', $initiated->id, $order->id),
+            causer: null,
+            event: self::PEND_ARC_FAILED_EVENT,
+            properties: ['payment_id' => $initiated->id, 'order_id' => $order->id, 'failure' => $failure->getMessage()],
+        );
+
+        Log::critical('payments.pend_arc_failed_after_gateway_accept', [
+            'payment_id' => $initiated->id,
+            'order_id' => $order->id,
+            'tenant_id' => (string) $this->tenantContext->tenantId(),
+            'exception' => $failure::class,
+            'message' => $failure->getMessage(),
+            'action_required' => 'cancel or expire the pending gateway payment',
+        ]);
+
+        return new PaymentInitiationResult($initiated, replayed: false, declined: false, orderExpired: true);
     }
 
     /**

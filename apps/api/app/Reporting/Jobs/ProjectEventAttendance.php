@@ -34,7 +34,7 @@ use Illuminate\Database\Eloquent\Model;
  * fold()/rowFromModel() format the two scan-timestamp bounds as
  * fixed-width UTC ISO 8601 strings so PHP min()/max() reproduce
  * Postgres's LEAST/GREATEST ordering exactly, including its NULL-
- * ignoring semantics (a duplicate()'s null bounds never move an
+ * ignoring semantics (a duplicate()'s null last bound never moves an
  * already-set one), without needing a live database to compute them.
  */
 final readonly class ProjectEventAttendance implements OutboxSubscriber, ProjectionLockedSubscriber, RebuildableProjection
@@ -111,7 +111,14 @@ final readonly class ProjectEventAttendance implements OutboxSubscriber, Project
             return null;
         }
 
-        return EventAttendanceIncrement::duplicate((string) $event->payload['event_id'], $ticketTypeId);
+        // first_scanned_at names the surviving accepted scan. Folding it
+        // into the first bound corrects first_scan_at when a batch demote
+        // swapped in an earlier scan that never got its own
+        // TicketCheckedIn; on the ordinary losing-duplicate path it
+        // re-folds a value LEAST already holds, which is a no-op.
+        $firstScanAt = CarbonImmutable::parse((string) $event->payload['first_scanned_at'])->utc();
+
+        return EventAttendanceIncrement::duplicate((string) $event->payload['event_id'], $ticketTypeId, $firstScanAt);
     }
 
     private function resolveTicketTypeId(string $ticketId): ?string

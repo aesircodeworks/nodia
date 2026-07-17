@@ -37,7 +37,14 @@ class HoldController
     {
         $model = $this->holdOrFail($hold);
 
-        $seatIds = EventSeat::query()->where('hold_id', $model->id)->pluck('id')->all();
+        // Claim order, not physical row order, so a client that
+        // redisplays or re-submits the seat list preserves the buyer's
+        // selection sequence, matching HoldForOrderData::fromModel.
+        $seatIds = EventSeat::query()
+            ->where('hold_id', $model->id)
+            ->orderBy('hold_claim_position')
+            ->pluck('id')
+            ->all();
 
         return HoldData::fromModel($model, $seatIds);
     }

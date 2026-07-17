@@ -19,9 +19,8 @@ use Illuminate\Support\Str;
  * columns commutative so replay order cannot change them"). Postgres's
  * LEAST/GREATEST ignore NULL arguments (returning NULL only when every
  * argument is NULL), so an increment's NULL timestamps (a
- * DuplicateScanDetected increment carries none) never overwrite an
- * already-set bound, and an insert whose only increment so far is a
- * duplicate leaves both bounds NULL until a checked-in scan arrives.
+ * DuplicateScanDetected increment carries no last bound) never
+ * overwrite an already-set bound.
  */
 final class ApplyEventAttendanceIncrement
 {

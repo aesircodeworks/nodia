@@ -51,7 +51,11 @@ use Illuminate\Support\Str;
  * DuplicateScanDetected for a row other than the one just inserted.
  * TicketCheckedIn is recorded exactly once per ticket, on the very first
  * accepted insert only; a later swap never re-records it (plan, Domain
- * events "Produced", TicketCheckedIn).
+ * events "Produced", TicketCheckedIn). The swap's DuplicateScanDetected
+ * instead carries the winner's instant as first_scanned_at, which the
+ * attendance projection folds into its first_scan_at bound, so
+ * first-scan-wins reporting stays accurate without a second
+ * TicketCheckedIn double-counting the ticket.
  */
 final class ReconcileOfflineScans
 {
