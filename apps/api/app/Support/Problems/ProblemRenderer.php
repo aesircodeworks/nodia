@@ -187,6 +187,7 @@ class ProblemRenderer
             ErrorCode::OrderNotPayable => 'This order is not in a state that accepts payment.',
             ErrorCode::PaymentMethodNotAvailable => 'This payment method is not currently offered for this order.',
             ErrorCode::PaymentDeclined => 'The gateway declined this payment; the order and its hold remain intact for a retry.',
+            ErrorCode::PaymentConfirmedAfterHoldExpired => 'The gateway confirmed this payment after the order hold had already expired; the order is expired and the payment is flagged for refund.',
             ErrorCode::GatewayUnavailable => 'The payment gateway is temporarily unavailable; retry after the interval in the Retry-After header.',
             ErrorCode::GatewayNotConfigured => 'This gateway has no credentials configured for the resolved tenant.',
             ErrorCode::WebhookSignatureInvalid => 'The webhook signature failed verification.',

@@ -21,5 +21,6 @@ final class PaymentInitiationResult
         public readonly Payment $payment,
         public readonly bool $replayed,
         public readonly bool $declined,
+        public readonly bool $orderExpired = false,
     ) {}
 }

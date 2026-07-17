@@ -6330,8 +6330,11 @@ paths:
             was reused with a different payload (code
             idempotency_key_reuse_mismatch), the method's gateway has
             no active sub-merchant account (code submerchant_not_active),
-            or the method's gateway is registered but not configured
-            (code gateway_not_configured).
+            the method's gateway is registered but not configured
+            (code gateway_not_configured), or the gateway confirmed the
+            payment after the order hold had already expired, so the
+            order is expired and the payment flagged for refund (code
+            payment_confirmed_after_hold_expired).
           content:
             application/problem+json:
               schema:
@@ -9620,10 +9623,13 @@ components:
         plan, Endpoints; stage-08c plan, Slice 4; stage-08d plan, Slice
         3): the order is not pending, the Idempotency-Key was reused
         with a different payload, the requested method's gateway has no
-        active sub-merchant account, or the only gateway that could
+        active sub-merchant account, the only gateway that could
         serve the method is registered but not configured (code
         gateway_not_configured, distinct from gateway_unavailable's
-        open-circuit-breaker meaning).
+        open-circuit-breaker meaning), or a synchronous approval landed
+        on a hold that had already died, expiring the order with the
+        confirmed payment flagged for refund (code
+        payment_confirmed_after_hold_expired).
       allOf:
         - $ref: '#/components/schemas/Problem'
         - type: object
@@ -9639,6 +9645,7 @@ components:
                   idempotency_key_reuse_mismatch,
                   submerchant_not_active,
                   gateway_not_configured,
+                  payment_confirmed_after_hold_expired,
                 ]
       unevaluatedProperties: false
     PaymentMethodNotAvailableProblem:

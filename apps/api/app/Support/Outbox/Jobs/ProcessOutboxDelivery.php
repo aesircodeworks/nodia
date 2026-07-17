@@ -2,6 +2,8 @@
 
 namespace App\Support\Outbox\Jobs;
 
+use App\Support\Outbox\DetachedOutboxSubscriber;
+use App\Support\Outbox\Enums\OutboxDeliveryStatus;
 use App\Support\Outbox\KeyedOrderedOutboxSubscriber;
 use App\Support\Outbox\Models\OutboxDelivery;
 use App\Support\Outbox\Models\OutboxEvent;
@@ -105,6 +107,12 @@ class ProcessOutboxDelivery implements ShouldQueue
         $handler = $subscribers->handler($this->subscriber);
         $subscriber = $this->subscriber;
 
+        if ($handler instanceof DetachedOutboxSubscriber) {
+            $this->handleDetached($transactions, $handler, $event);
+
+            return;
+        }
+
         $deferred = false;
 
         $transactions->asTenant($event->tenant_id, function () use ($event, $handler, $subscriber, $ordered, $lock, &$deferred): void {
@@ -147,6 +155,39 @@ class ProcessOutboxDelivery implements ShouldQueue
         if ($deferred) {
             $this->defer();
         }
+    }
+
+    /**
+     * The DetachedOutboxSubscriber arc: the effect runs outside any
+     * delivery transaction, so the network round trip inside the handler
+     * never holds a connection or row lock. Idempotence inverts: the
+     * handler's own conditional claim is the exactly-once guard, and the
+     * delivery is marked processed only after the handler returns, so a
+     * throw leaves it pending for the retry and the sweeper. Duplicate
+     * workers may both invoke the handler; both find the claim taken and
+     * no-op, then race harmlessly on markProcessed.
+     */
+    private function handleDetached(TenantTransaction $transactions, DetachedOutboxSubscriber $handler, OutboxEvent $event): void
+    {
+        $pending = $transactions->asTenant($event->tenant_id, fn (): bool => OutboxDelivery::query()
+            ->where('outbox_event_id', $event->id)
+            ->where('subscriber', $this->subscriber)
+            ->where('status', OutboxDeliveryStatus::Pending)
+            ->exists());
+
+        if (! $pending) {
+            return;
+        }
+
+        $handler->handle($event);
+
+        $transactions->asTenant($event->tenant_id, function () use ($event): void {
+            OutboxDelivery::query()
+                ->where('outbox_event_id', $event->id)
+                ->where('subscriber', $this->subscriber)
+                ->firstOrFail()
+                ->markProcessed();
+        });
     }
 
     /**

@@ -91,6 +91,7 @@ enum ErrorCode: string
     case OrderNotPayable = 'order_not_payable';
     case PaymentMethodNotAvailable = 'payment_method_not_available';
     case PaymentDeclined = 'payment_declined';
+    case PaymentConfirmedAfterHoldExpired = 'payment_confirmed_after_hold_expired';
     case GatewayUnavailable = 'gateway_unavailable';
     case WebhookSignatureInvalid = 'webhook_signature_invalid';
     case WebhookUnparseable = 'webhook_unparseable';
@@ -218,6 +219,7 @@ enum ErrorCode: string
             self::OrderNotPayable => 409,
             self::PaymentMethodNotAvailable => 422,
             self::PaymentDeclined => 402,
+            self::PaymentConfirmedAfterHoldExpired => 409,
             self::GatewayUnavailable => 503,
             self::WebhookSignatureInvalid => 401,
             self::WebhookUnparseable => 422,
@@ -347,6 +349,7 @@ enum ErrorCode: string
             self::OrderNotPayable => 'Order not payable',
             self::PaymentMethodNotAvailable => 'Payment method not available',
             self::PaymentDeclined => 'Payment declined',
+            self::PaymentConfirmedAfterHoldExpired => 'Payment confirmed after hold expired',
             self::GatewayUnavailable => 'Gateway unavailable',
             self::WebhookSignatureInvalid => 'Webhook signature invalid',
             self::WebhookUnparseable => 'Webhook unparseable',

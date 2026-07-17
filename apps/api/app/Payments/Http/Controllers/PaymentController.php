@@ -57,6 +57,14 @@ class PaymentController
 
         $this->audit($result, $request, $activityLogger);
 
+        if ($result->orderExpired) {
+            return ProblemData::fromErrorCode(
+                ErrorCode::PaymentConfirmedAfterHoldExpired,
+                'The gateway confirmed this payment after the order hold had already expired; the order is expired and the payment is flagged for refund.',
+                $request->headers->get('X-Correlation-Id'),
+            )->toProblemResponse();
+        }
+
         if ($result->declined) {
             return ProblemData::fromErrorCode(
                 ErrorCode::PaymentDeclined,

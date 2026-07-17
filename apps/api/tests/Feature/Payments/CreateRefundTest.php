@@ -320,6 +320,24 @@ describe('POST /v1/payments/{payment}/refunds', function (): void {
             ->assertJsonPath('code', 'payment_not_refundable');
     });
 
+    it('rejects a zero-amount payment with payment_not_refundable instead of dividing by zero', function (): void {
+        $fixture = refundFixture($this->tenantId);
+
+        $zeroPayment = app(TenantTransaction::class)->asTenant($this->tenantId, fn () => Payment::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'order_id' => $fixture['orderId'],
+            'status' => PaymentStatus::Confirmed,
+            'money' => Money::of(0, 'USD'),
+        ]));
+
+        $this->postJson('/v1/payments/'.$zeroPayment->id.'/refunds', [
+            'amount' => ['amount' => 1_000, 'currency' => 'USD'],
+        ], refundHeaders($this->tenantId, (string) Str::uuid7()))
+            ->assertStatus(409)
+            ->assertConformsToOpenApi()
+            ->assertJsonPath('code', 'payment_not_refundable');
+    });
+
     it('rejects a refund whose order is not in a refundable status with payment_not_refundable', function (): void {
         $fixture = refundFixture($this->tenantId);
 

@@ -6,6 +6,7 @@ use App\Orders\Enums\OrderStatus;
 use App\Orders\Exceptions\InvalidOrderTransitionException;
 use App\Orders\Exceptions\OrderNotFoundException;
 use App\Orders\Models\Order;
+use Illuminate\Support\Facades\Date;
 
 /**
  * The one way an order status ever changes: a single conditional UPDATE
@@ -21,7 +22,7 @@ trait TransitionsOrderStatus
         $affected = Order::query()
             ->whereKey($orderId)
             ->where('status', $from)
-            ->update(['status' => $to]);
+            ->update(['status' => $to, 'updated_at' => Date::now()]);
 
         if ($affected === 1) {
             return Order::query()->findOrFail($orderId);

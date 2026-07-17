@@ -12,12 +12,27 @@ use App\Inventory\Models\TicketTypeInventory;
 use App\Orders\Enums\OrderStatus;
 use App\Orders\Models\Order;
 use App\Payments\Enums\PaymentStatus;
+use App\Payments\Gateways\FakeGateway;
 use App\Payments\Gateways\FakeGatewayScenarios;
+use App\Payments\Gateways\GatewayAdapter;
+use App\Payments\Gateways\GatewayCapabilities;
+use App\Payments\Gateways\GatewayPaymentRequest;
+use App\Payments\Gateways\GatewayPaymentResult;
+use App\Payments\Gateways\GatewayRefundRequest;
+use App\Payments\Gateways\GatewayRefundResult;
+use App\Payments\Gateways\GatewayRegistry;
+use App\Payments\Gateways\GatewaySubmerchantResult;
+use App\Payments\Gateways\NormalizedPaymentEvent;
+use App\Payments\Gateways\NormalizedPayoutEvent;
+use App\Payments\Gateways\NormalizedSubmerchantEvent;
+use App\Payments\Gateways\ParsedWebhook;
+use App\Payments\Gateways\SubmerchantRegistrationRequest;
 use App\Payments\Models\Payment;
 use App\Support\Outbox\Models\OutboxEvent;
 use App\Support\Tenancy\TenantTransaction;
 use App\Tenancy\Models\Tenant;
 use App\Tenancy\Models\TenantDomain;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -377,6 +392,127 @@ describe('POST /v1/storefront/orders/{order}/payments (sync)', function (): void
 
         $response->assertStatus(409)->assertConformsToOpenApi();
         $response->assertJsonPath('code', 'order_not_payable');
+    });
+
+    it('renders order_not_payable for a dead hold without calling the gateway', function (): void {
+        $fixture = initFixture();
+
+        app(TenantTransaction::class)->asTenant($fixture['tenantId'], function () use ($fixture): void {
+            DB::table('holds')->where('id', $fixture['holdId'])->update(['expires_at' => now()->subMinute()]);
+        });
+
+        $response = initiatePayment($fixture, ['method' => 'card', 'details' => ['token' => 'tok_approve']], (string) Str::uuid7());
+
+        $response->assertStatus(409)->assertConformsToOpenApi();
+        $response->assertJsonPath('code', 'order_not_payable');
+
+        [$paymentCount, $orderStatus] = app(TenantTransaction::class)->asTenant($fixture['tenantId'], fn (): array => [
+            Payment::query()->where('order_id', $fixture['orderId'])->count(),
+            Order::query()->findOrFail($fixture['orderId'])->status,
+        ]);
+
+        expect($paymentCount)->toBe(0)
+            ->and($orderStatus)->toBe(OrderStatus::Pending);
+    });
+
+    it('compensates a sync approve landing on a hold that died mid-flight: payment confirmed, order expired', function (): void {
+        $fixture = initFixture();
+
+        $delegate = app(FakeGateway::class);
+
+        $adapter = new class($delegate, $fixture['holdId']) implements GatewayAdapter
+        {
+            public function __construct(
+                private readonly GatewayAdapter $delegate,
+                private readonly string $holdId,
+            ) {}
+
+            public function identifier(): string
+            {
+                return $this->delegate->identifier();
+            }
+
+            public function capabilities(): GatewayCapabilities
+            {
+                return $this->delegate->capabilities();
+            }
+
+            public function createPayment(GatewayPaymentRequest $request): GatewayPaymentResult
+            {
+                DB::table('holds')->where('id', $this->holdId)->update(['expires_at' => now()->subSecond()]);
+
+                return $this->delegate->createPayment($request);
+            }
+
+            public function parseWebhook(string $body, array $headers): ParsedWebhook
+            {
+                return $this->delegate->parseWebhook($body, $headers);
+            }
+
+            public function normalizeWebhook(array $payload): ?NormalizedPaymentEvent
+            {
+                return $this->delegate->normalizeWebhook($payload);
+            }
+
+            public function normalizeSubmerchantWebhook(array $payload): ?NormalizedSubmerchantEvent
+            {
+                return $this->delegate->normalizeSubmerchantWebhook($payload);
+            }
+
+            public function normalizePayoutWebhook(array $payload): ?NormalizedPayoutEvent
+            {
+                return $this->delegate->normalizePayoutWebhook($payload);
+            }
+
+            public function queryPayment(string $gatewayReference): ?NormalizedPaymentEvent
+            {
+                return $this->delegate->queryPayment($gatewayReference);
+            }
+
+            public function refund(GatewayRefundRequest $request): GatewayRefundResult
+            {
+                return $this->delegate->refund($request);
+            }
+
+            public function queryRefund(string $gatewayReference): ?NormalizedPaymentEvent
+            {
+                return $this->delegate->queryRefund($gatewayReference);
+            }
+
+            public function createSubmerchant(SubmerchantRegistrationRequest $request): GatewaySubmerchantResult
+            {
+                return $this->delegate->createSubmerchant($request);
+            }
+
+            public function fetchSubmerchantStatus(string $gatewayAccountReference): GatewaySubmerchantResult
+            {
+                return $this->delegate->fetchSubmerchantStatus($gatewayAccountReference);
+            }
+
+            public function listPayouts(?CarbonImmutable $since = null): array
+            {
+                return $this->delegate->listPayouts($since);
+            }
+        };
+
+        app()->instance(GatewayRegistry::class, new GatewayRegistry(['fake' => $adapter]));
+
+        $response = initiatePayment($fixture, ['method' => 'card', 'details' => ['token' => 'tok_approve']], (string) Str::uuid7());
+
+        $response->assertStatus(409)->assertConformsToOpenApi();
+        $response->assertJsonPath('code', 'payment_confirmed_after_hold_expired');
+
+        [$payment, $order, $auditCount] = app(TenantTransaction::class)->asTenant($fixture['tenantId'], fn (): array => [
+            Payment::query()->where('order_id', $fixture['orderId'])->firstOrFail(),
+            Order::query()->findOrFail($fixture['orderId']),
+            DB::table('activity_log')->where('event', 'payment_confirmed_after_hold_expired')->count(),
+        ]);
+
+        expect($payment->status)->toBe(PaymentStatus::Confirmed)
+            ->and($order->status)->toBe(OrderStatus::Expired)
+            ->and($auditCount)->toBe(1);
+
+        app()->forgetInstance(GatewayRegistry::class);
     });
 
     it('renders request.not_found for another customer\'s order', function (): void {

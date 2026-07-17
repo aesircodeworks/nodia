@@ -226,6 +226,42 @@ it('accumulates two partial refunds into refunded with selective then remaining 
         ->and($end['voided'])->toBe(2);
 });
 
+it('keeps the order partially refunded while a sibling refund is still processing', function (): void {
+    $fixture = completionFixture($this->tenantId);
+
+    $first = completionRefund($this->tenantId, $fixture['paymentId'], ['amount' => 4_000, 'currency' => 'USD'], [$fixture['ticketIds'][0]]);
+    $second = completionRefund($this->tenantId, $fixture['paymentId'], ['amount' => 6_000, 'currency' => 'USD'], [$fixture['ticketIds'][1]]);
+
+    // Both reservations together cover the payment, but only the first
+    // completes; the open sibling must keep the order off the terminal
+    // refunded status because its reserved share can still fail.
+    deliverRefundWebhook(app(FakeGateway::class)->refundCompletionWebhook('fake_rf_'.$first->id))->assertStatus(200);
+
+    $mid = completionState($this->tenantId, $first->id, $fixture['orderId']);
+
+    expect($mid['refund']->status)->toBe(RefundStatus::Completed)
+        ->and($mid['order']->status)->toBe(OrderStatus::PartiallyRefunded)
+        ->and($mid['voided'])->toBe(1);
+
+    deliverRefundWebhook(app(FakeGateway::class)->refundFailureWebhook('fake_rf_'.$second->id, 'insufficient_gateway_balance'))->assertStatus(200);
+
+    [$order, $payment] = app(TenantTransaction::class)->asTenant($this->tenantId, fn (): array => [
+        Order::query()->findOrFail($fixture['orderId']),
+        Payment::query()->findOrFail($fixture['paymentId']),
+    ]);
+
+    expect($order->status)->toBe(OrderStatus::PartiallyRefunded)
+        ->and($payment->refunded_amount)->toBe(4_000);
+
+    $third = completionRefund($this->tenantId, $fixture['paymentId']);
+    deliverRefundWebhook(app(FakeGateway::class)->refundCompletionWebhook('fake_rf_'.$third->id))->assertStatus(200);
+
+    $end = completionState($this->tenantId, $third->id, $fixture['orderId']);
+
+    expect($end['order']->status)->toBe(OrderStatus::Refunded)
+        ->and($end['voided'])->toBe(2);
+});
+
 it('treats a duplicate completion webhook as one outcome and one void pass', function (): void {
     $fixture = completionFixture($this->tenantId);
     $refund = completionRefund($this->tenantId, $fixture['paymentId']);

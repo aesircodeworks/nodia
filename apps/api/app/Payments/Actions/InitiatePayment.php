@@ -2,9 +2,13 @@
 
 namespace App\Payments\Actions;
 
+use App\Inventory\Actions\CheckHoldCommittable;
 use App\Inventory\Actions\ExtendHold;
 use App\Inventory\Data\ExtendHoldData;
+use App\Inventory\Exceptions\HoldNotCommittableException;
+use App\Orders\Actions\LockOrderForPayment;
 use App\Orders\Actions\MarkOrderAwaitingPayment;
+use App\Orders\Actions\MarkOrderExpired;
 use App\Orders\Actions\MarkOrderPaid;
 use App\Orders\Data\OrderPaymentContextData;
 use App\Orders\Enums\OrderStatus;
@@ -25,6 +29,7 @@ use App\Payments\Gateways\GatewayRegistry;
 use App\Payments\Models\Payment;
 use App\Payments\Support\CircuitBreaker;
 use App\Payments\Support\RequestHash;
+use App\Support\Audit\ActivityLogger;
 use App\Support\Money\Money;
 use App\Support\Outbox\OutboxRecorder;
 use App\Support\Tenancy\TenantContext;
@@ -33,6 +38,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * POST /v1/storefront/orders/{order}/payments (stage-08a plan,
@@ -50,6 +56,8 @@ use Illuminate\Support\Facades\DB;
  */
 final class InitiatePayment
 {
+    public const string MISMATCH_EVENT = 'payment_confirmed_after_hold_expired';
+
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly GatewayRegistry $gateways,
@@ -58,7 +66,11 @@ final class InitiatePayment
         private readonly FailPayment $failPayment,
         private readonly MarkOrderAwaitingPayment $markOrderAwaitingPayment,
         private readonly MarkOrderPaid $markOrderPaid,
+        private readonly MarkOrderExpired $markOrderExpired,
+        private readonly LockOrderForPayment $lockOrder,
+        private readonly CheckHoldCommittable $holdCommittable,
         private readonly ExtendHold $extendHold,
+        private readonly ActivityLogger $activity,
         private readonly OutboxRecorder $outbox,
         private readonly CircuitBreaker $breaker,
         private readonly ResolveEnabledGateways $enabledGateways,
@@ -68,6 +80,22 @@ final class InitiatePayment
     {
         $requestHash = RequestHash::compute($data->method, $data->detailsArray());
 
+        $existing = Payment::query()->where('idempotency_key', $idempotencyKey)->first();
+
+        if ($existing !== null) {
+            return $this->replay($existing, $requestHash, $order->id);
+        }
+
+        // The FOR UPDATE claim serializes different-key initiations on
+        // the order row for the rest of the request transaction; the
+        // status check below then reads the winner's committed state,
+        // never a stale pending snapshot, so only one request per order
+        // ever reaches the gateway.
+        $order = ($this->lockOrder)($order->id);
+
+        // Re-check the key now that a lock loser can see the winner's
+        // committed payment: a same-key race must replay, not fall
+        // through to the status guard and report the order unpayable.
         $existing = Payment::query()->where('idempotency_key', $idempotencyKey)->first();
 
         if ($existing !== null) {
@@ -102,6 +130,14 @@ final class InitiatePayment
         }
 
         $adapter = $this->gateways->get($offered->gateway) ?? throw PaymentMethodNotAvailableException::forMethod($data->method);
+
+        // A hold the sweeper released, or one already past expires_at
+        // that a lagging CancelOrderOnHoldExpired consumer has not yet
+        // canceled the order for, must never reach the gateway: the
+        // charge would confirm against inventory that is gone.
+        if (! ($this->holdCommittable)($order->holdId)) {
+            throw OrderNotPayableException::forOrder($order->id);
+        }
 
         try {
             $result = $adapter->createPayment(new GatewayPaymentRequest(
@@ -216,9 +252,45 @@ final class InitiatePayment
             ?? throw OrderNotPayableException::forOrder($order->id);
 
         $this->transitionOrder(fn () => ($this->markOrderAwaitingPayment)($order->id), $order->id);
-        $this->transitionOrder(fn () => ($this->markOrderPaid)($order->id), $order->id);
+
+        try {
+            // The savepoint scopes a dead-hold refusal to the paid arc:
+            // the confirmed payment, its events, and awaiting_payment
+            // survive so the compensation can commit them, mirroring
+            // HandlePaymentConfirmed's async arc. Throwing here instead
+            // would roll back the whole request and erase the record of
+            // money the gateway already captured.
+            DB::transaction(fn () => $this->transitionOrder(fn () => ($this->markOrderPaid)($order->id), $order->id));
+        } catch (HoldNotCommittableException) {
+            return $this->compensateDeadHold($confirmed, $order);
+        }
 
         return new PaymentInitiationResult($confirmed, replayed: false, declined: false);
+    }
+
+    private function compensateDeadHold(Payment $confirmed, OrderPaymentContextData $order): PaymentInitiationResult
+    {
+        try {
+            ($this->markOrderExpired)($order->id);
+        } catch (InvalidOrderTransitionException) {
+            // A racing expiry consumer already moved the order.
+        }
+
+        $this->activity->record(
+            description: sprintf('Payment %s confirmed after its hold died; order %s expired, payment flagged for refund', $confirmed->id, $order->id),
+            causer: null,
+            event: self::MISMATCH_EVENT,
+            properties: ['payment_id' => $confirmed->id, 'order_id' => $order->id],
+        );
+
+        Log::critical('payments.confirmed_after_hold_expired', [
+            'payment_id' => $confirmed->id,
+            'order_id' => $order->id,
+            'tenant_id' => (string) $this->tenantContext->tenantId(),
+            'action_required' => 'refund the confirmed payment',
+        ]);
+
+        return new PaymentInitiationResult($confirmed, replayed: false, declined: false, orderExpired: true);
     }
 
     private function decline(Payment $payment, string $failureCode): PaymentInitiationResult

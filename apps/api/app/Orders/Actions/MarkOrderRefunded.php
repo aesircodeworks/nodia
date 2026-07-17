@@ -6,6 +6,7 @@ use App\Orders\Enums\OrderStatus;
 use App\Orders\Exceptions\InvalidOrderTransitionException;
 use App\Orders\Exceptions\OrderNotFoundException;
 use App\Orders\Models\Order;
+use Illuminate\Support\Facades\Date;
 
 /**
  * paid or partially_refunded to refunded (system-design 7.1 as amended
@@ -20,7 +21,7 @@ final class MarkOrderRefunded
         $affected = Order::query()
             ->whereKey($orderId)
             ->whereIn('status', [OrderStatus::Paid, OrderStatus::PartiallyRefunded])
-            ->update(['status' => OrderStatus::Refunded]);
+            ->update(['status' => OrderStatus::Refunded, 'updated_at' => Date::now()]);
 
         if ($affected === 1) {
             return Order::query()->findOrFail($orderId);

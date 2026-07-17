@@ -3,6 +3,7 @@
 namespace App\Payments\Actions;
 
 use App\Payments\Enums\RefundStatus;
+use App\Payments\Gateways\GatewayRefundRequest;
 use App\Payments\Gateways\GatewayRegistry;
 use App\Payments\Gateways\WebhookKind;
 use App\Payments\Models\Payment;
@@ -10,6 +11,7 @@ use App\Payments\Models\Refund;
 use App\Support\Tenancy\TenantTransaction;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
 
 /**
  * The missed-refund-webhook backstop (stage-08b plan, Slice 6;
@@ -43,16 +45,20 @@ final readonly class ReconcileProcessingRefunds
 
     private function reconcileOne(Refund $candidate): bool
     {
-        if ($candidate->gateway_reference === null) {
-            return false;
-        }
-
-        $gateway = $this->transactions->asTenant(
+        $payment = $this->transactions->asTenant(
             $candidate->tenant_id,
-            fn (): string => Payment::query()->findOrFail($candidate->payment_id)->gateway,
+            fn (): Payment => Payment::query()->findOrFail($candidate->payment_id),
         );
 
-        $adapter = $this->gateways->get($gateway);
+        // No gateway_reference means the executor claimed processing but
+        // its outcome never landed (a crash between the claim and the
+        // persist). The adapter call is idempotent by the refund's own
+        // key, so re-issuing is safe and resolves the stranded claim.
+        if ($candidate->gateway_reference === null) {
+            return $this->reExecute($candidate, $payment);
+        }
+
+        $adapter = $this->gateways->get($payment->gateway);
 
         $outcome = $adapter?->queryRefund($candidate->gateway_reference);
 
@@ -69,6 +75,37 @@ final readonly class ReconcileProcessingRefunds
         return $applied !== null;
     }
 
+    private function reExecute(Refund $candidate, Payment $payment): bool
+    {
+        $adapter = $this->gateways->get($payment->gateway);
+
+        if ($adapter === null || $payment->gateway_reference === null) {
+            return false;
+        }
+
+        $result = $adapter->refund(new GatewayRefundRequest(
+            refundId: $candidate->id,
+            paymentGatewayReference: $payment->gateway_reference,
+            amount: $candidate->money,
+            idempotencyKey: $candidate->idempotency_key,
+        ));
+
+        $this->transactions->asTenant($candidate->tenant_id, function () use ($candidate, $result): void {
+            if ($result->accepted) {
+                DB::table('refunds')
+                    ->where('id', $candidate->id)
+                    ->where('status', RefundStatus::Processing->value)
+                    ->update(['gateway_reference' => $result->gatewayReference, 'updated_at' => now()]);
+
+                return;
+            }
+
+            ($this->failRefund)($candidate->id, (string) $result->failureCode);
+        });
+
+        return true;
+    }
+
     /**
      * @return Collection<int, Refund>
      */
@@ -78,7 +115,7 @@ final readonly class ReconcileProcessingRefunds
 
         return $this->transactions->asPlatform(
             fn () => Refund::query()
-                ->select('id', 'tenant_id', 'payment_id', 'gateway_reference')
+                ->select('id', 'tenant_id', 'payment_id', 'gateway_reference', 'amount', 'currency', 'idempotency_key')
                 ->where('status', RefundStatus::Processing->value)
                 ->where('updated_at', '<=', $cutoff)
                 ->get(),

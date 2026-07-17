@@ -66,7 +66,9 @@ final class CreateRefund
         $payment = Payment::query()->find($paymentId)
             ?? throw RefundPaymentNotFoundException::forPayment($paymentId);
 
-        if ($payment->status !== PaymentStatus::Confirmed) {
+        // A zero-amount payment (fully discounted order) has nothing to
+        // return, and returnedCommission divides by the payment amount.
+        if ($payment->status !== PaymentStatus::Confirmed || $payment->amount === 0) {
             throw PaymentNotRefundableException::forPayment($paymentId);
         }
 

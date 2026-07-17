@@ -6,6 +6,7 @@ use App\Orders\Enums\OrderStatus;
 use App\Orders\Models\Order;
 use App\Support\Outbox\Models\OutboxEvent;
 use App\Support\Outbox\OutboxSubscriber;
+use Illuminate\Support\Facades\Date;
 
 /**
  * The Orders subscriber for Inventory's HoldExpired (stage-07 plan,
@@ -29,6 +30,6 @@ final readonly class CancelOrderOnHoldExpired implements OutboxSubscriber
         Order::query()
             ->where('hold_id', $event->aggregate_id)
             ->where('status', OrderStatus::Pending)
-            ->update(['status' => OrderStatus::Canceled]);
+            ->update(['status' => OrderStatus::Canceled, 'updated_at' => Date::now()]);
     }
 }

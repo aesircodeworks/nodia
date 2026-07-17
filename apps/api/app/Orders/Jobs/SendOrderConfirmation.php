@@ -10,6 +10,7 @@ use App\Support\Outbox\Models\OutboxEvent;
 use App\Support\Outbox\OutboxSubscriber;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 /**
@@ -33,20 +34,34 @@ final readonly class SendOrderConfirmation implements OutboxSubscriber
     {
         $orderId = (string) $event->payload['order_id'];
 
+        $order = Order::query()->find($orderId);
+
+        if ($order === null || $order->confirmation_sent_at !== null) {
+            return;
+        }
+
+        // Contact resolves before the claim so a missing customer (an
+        // anonymization race, a deleted row) leaves confirmation_sent_at
+        // null and a later delivery can still send once the contact
+        // exists, instead of the claim permanently suppressing the email.
+        $contact = ($this->resolveContact)($order->customer_id);
+
+        if ($contact === null) {
+            Log::critical('orders.confirmation_contact_missing', [
+                'order_id' => $orderId,
+                'customer_id' => $order->customer_id,
+                'tenant_id' => $event->tenant_id,
+            ]);
+
+            return;
+        }
+
         $claimed = DB::table('orders')
             ->where('id', $orderId)
             ->whereNull('confirmation_sent_at')
             ->update(['confirmation_sent_at' => Date::now(), 'updated_at' => Date::now()]);
 
         if ($claimed !== 1) {
-            return;
-        }
-
-        $order = Order::query()->findOrFail($orderId);
-
-        $contact = ($this->resolveContact)($order->customer_id);
-
-        if ($contact === null) {
             return;
         }
 

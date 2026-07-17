@@ -17,7 +17,8 @@ use Illuminate\Support\Facades\Log;
 /**
  * processing to completed (stage-08b plan, Slice 7): one transaction
  * transitions the refund, moves the order to partially_refunded or
- * refunded by whether the reservation now equals the payment amount,
+ * refunded by whether completed refunds now cover the payment amount
+ * with no sibling refund still open,
  * voids the tickets read from the refund row's persisted selection
  * (null voids every issued ticket, the full-refund rule), and records
  * RefundCompleted. The conditional transition makes duplicate webhooks,
@@ -52,7 +53,19 @@ final class CompleteRefund
             }
 
             $payment = Payment::query()->findOrFail($refund->payment_id);
-            $exhausted = $payment->refunded_amount === $payment->amount;
+
+            // refunded_amount is reserved at creation, not completion, so
+            // exhaustion additionally requires that no sibling refund is
+            // still pending or processing: a reservation that later fails
+            // releases its share, and promoting the order to refunded on
+            // reserved-but-unsettled money would leave a terminal order
+            // with less returned than the status claims.
+            $hasOpenSibling = Refund::query()
+                ->where('payment_id', $refund->payment_id)
+                ->whereIn('status', [RefundStatus::Pending, RefundStatus::Processing])
+                ->exists();
+
+            $exhausted = ! $hasOpenSibling && $payment->refunded_amount === $payment->amount;
 
             try {
                 $exhausted
