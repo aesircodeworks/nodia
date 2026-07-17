@@ -68,6 +68,7 @@ trait ReleasesHoldInventory
                 ->update([
                     'status' => EventSeatStatus::Available->value,
                     'hold_id' => null,
+                    'hold_claim_position' => null,
                     'updated_at' => Date::now(),
                 ]);
 

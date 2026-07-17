@@ -37,7 +37,7 @@ final class ConfirmPayment
             return null;
         }
 
-        $commission = $this->commission->resolve($payment->money, $fee);
+        $commission = $this->commission->resolve($payment->money);
 
         $affected = DB::table('payments')
             ->where('id', $paymentId)

@@ -192,11 +192,14 @@ describe('SendOrderConfirmation', function (): void {
         );
 
         // The claim is already taken; running the consumer directly against
-        // the order must not send again.
-        app(TenantTransaction::class)->asTenant($fixture['tenantId'], function () use ($eventId): void {
-            $event = OutboxEvent::query()->findOrFail($eventId);
-            app(SendOrderConfirmation::class)->handle($event);
-        });
+        // the order must not send again. The detached handler manages its
+        // own tenant transactions, so it runs outside any.
+        $event = app(TenantTransaction::class)->asTenant(
+            $fixture['tenantId'],
+            fn () => OutboxEvent::query()->findOrFail($eventId),
+        );
+
+        app(SendOrderConfirmation::class)->handle($event);
 
         Mail::assertSentCount(1);
     });

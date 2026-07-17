@@ -33,8 +33,12 @@ class HoldForOrderData extends Data
 
     public static function fromModel(Hold $hold): self
     {
+        // Claim order, not physical row order: ticket issuance pairs
+        // attendee names to seats positionally, so the reload must
+        // reproduce the sequence the buyer selected the seats in.
         $seatIdsByTicketType = EventSeat::query()
             ->where('hold_id', $hold->id)
+            ->orderBy('hold_claim_position')
             ->get(['id', 'ticket_type_id'])
             ->groupBy('ticket_type_id')
             ->map(fn ($seats) => $seats->pluck('id')->all())

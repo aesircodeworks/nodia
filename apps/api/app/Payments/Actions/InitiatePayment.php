@@ -39,6 +39,7 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * POST /v1/storefront/orders/{order}/payments (stage-08a plan,
@@ -57,6 +58,8 @@ use Illuminate\Support\Facades\Log;
 final class InitiatePayment
 {
     public const string MISMATCH_EVENT = 'payment_confirmed_after_hold_expired';
+
+    public const string PAID_ARC_FAILED_EVENT = 'payment_confirmed_paid_arc_failed';
 
     public function __construct(
         private readonly TenantContext $tenantContext,
@@ -263,6 +266,12 @@ final class InitiatePayment
             DB::transaction(fn () => $this->transitionOrder(fn () => ($this->markOrderPaid)($order->id), $order->id));
         } catch (HoldNotCommittableException) {
             return $this->compensateDeadHold($confirmed, $order);
+        } catch (Throwable $paidArcFailure) {
+            // Any other paid-arc failure (ticket issuance, a constraint
+            // violation) gets the same durability treatment: the payment
+            // row is the only record of money the gateway captured, so it
+            // must never roll back behind a propagated exception.
+            return $this->compensatePaidArcFailure($confirmed, $order, $paidArcFailure);
         }
 
         return new PaymentInitiationResult($confirmed, replayed: false, declined: false);
@@ -287,6 +296,33 @@ final class InitiatePayment
             'payment_id' => $confirmed->id,
             'order_id' => $order->id,
             'tenant_id' => (string) $this->tenantContext->tenantId(),
+            'action_required' => 'refund the confirmed payment',
+        ]);
+
+        return new PaymentInitiationResult($confirmed, replayed: false, declined: false, orderExpired: true);
+    }
+
+    private function compensatePaidArcFailure(Payment $confirmed, OrderPaymentContextData $order, Throwable $failure): PaymentInitiationResult
+    {
+        try {
+            ($this->markOrderExpired)($order->id);
+        } catch (InvalidOrderTransitionException) {
+            // A racing consumer already moved the order.
+        }
+
+        $this->activity->record(
+            description: sprintf('Payment %s confirmed but the paid transition failed; order %s expired, payment flagged for refund', $confirmed->id, $order->id),
+            causer: null,
+            event: self::PAID_ARC_FAILED_EVENT,
+            properties: ['payment_id' => $confirmed->id, 'order_id' => $order->id, 'failure' => $failure->getMessage()],
+        );
+
+        Log::critical('payments.paid_arc_failed_after_capture', [
+            'payment_id' => $confirmed->id,
+            'order_id' => $order->id,
+            'tenant_id' => (string) $this->tenantContext->tenantId(),
+            'exception' => $failure::class,
+            'message' => $failure->getMessage(),
             'action_required' => 'refund the confirmed payment',
         ]);
 

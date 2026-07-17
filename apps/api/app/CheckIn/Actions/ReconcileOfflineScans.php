@@ -330,7 +330,12 @@ final class ReconcileOfflineScans
                     ->where('tenant_id', $tenantId)
                     ->where('ticket_id', $ticketId)
                     ->where('result', CheckInResult::Accepted->value)
-                    ->whereRaw('(scanned_at, client_scan_id) > (?, ?)', [$scannedAt->toDateTimeString(), $clientScanId])
+                    // The bound literal keeps its UTC offset and casts
+                    // explicitly: a bare Y-m-d H:i:s string would be read
+                    // under the session TimeZone, letting this row
+                    // comparison disagree with beats(), which compares
+                    // full instants.
+                    ->whereRaw('(scanned_at, client_scan_id) > (?::timestamptz, ?)', [$scannedAt->utc()->format('Y-m-d H:i:s.uP'), $clientScanId])
                     ->update(['result' => CheckInResult::Duplicate->value, 'updated_at' => Date::now()]);
 
                 if ($demoted !== 1) {

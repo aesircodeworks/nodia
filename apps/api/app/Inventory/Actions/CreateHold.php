@@ -220,6 +220,8 @@ final class CreateHold
             ]);
 
         if ($affected === count($seatIds)) {
+            $this->recordClaimPositions($holdId, $seatIds);
+
             return;
         }
 
@@ -231,6 +233,31 @@ final class CreateHold
             ->all();
 
         throw SeatUnavailableException::forSeats(array_values(array_diff($seatIds, $claimed)));
+    }
+
+    /**
+     * Persists the buyer's selection order onto the claimed seats, so
+     * seat reloads at issuance pair attendee names to the seats they
+     * were listed against instead of physical row order.
+     *
+     * @param  list<string>  $seatIds
+     */
+    private function recordClaimPositions(string $holdId, array $seatIds): void
+    {
+        $cases = implode(' ', array_fill(0, count($seatIds), 'when ?::uuid then ?::smallint'));
+        $in = implode(', ', array_fill(0, count($seatIds), '?::uuid'));
+
+        $bindings = [];
+
+        foreach ($seatIds as $position => $seatId) {
+            $bindings[] = $seatId;
+            $bindings[] = $position;
+        }
+
+        DB::update(
+            "update event_seats set hold_claim_position = case id {$cases} end where hold_id = ?::uuid and id in ({$in})",
+            [...$bindings, $holdId, ...$seatIds],
+        );
     }
 
     /**

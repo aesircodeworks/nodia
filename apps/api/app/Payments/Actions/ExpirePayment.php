@@ -13,7 +13,9 @@ use Illuminate\Support\Facades\DB;
  * initiated to expired (stage-08a plan, Data model "payments"), applied
  * by the sweeper and by conversion-time validation. Zero rows affected
  * returns null: racing a confirming webhook resolves to exactly one
- * terminal status.
+ * terminal status. The expiry window is evaluated inside the mutating
+ * statement, mirroring ConfirmPayment, so a caller holding a still-open
+ * initiated payment cannot terminalize it early.
  */
 final class ExpirePayment
 {
@@ -26,6 +28,8 @@ final class ExpirePayment
         $affected = DB::table('payments')
             ->where('id', $paymentId)
             ->where('status', PaymentStatus::Initiated->value)
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<=', Date::now())
             ->update([
                 'status' => PaymentStatus::Expired->value,
                 'failure_code' => 'payment_window_expired',

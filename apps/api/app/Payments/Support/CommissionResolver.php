@@ -21,7 +21,7 @@ final class CommissionResolver
         private readonly CommissionCalculator $calculator,
     ) {}
 
-    public function resolve(Money $amount, Money $fee): Money
+    public function resolve(Money $amount): Money
     {
         $config = ($this->commissionConfig)($this->tenantContext->tenantId());
 

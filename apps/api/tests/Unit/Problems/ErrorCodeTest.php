@@ -89,6 +89,7 @@ test('the registry holds exactly the known codes', function () {
         'order_not_payable',
         'payment_method_not_available',
         'payment_declined',
+        'payment_confirmed_after_hold_expired',
         'gateway_unavailable',
         'webhook_signature_invalid',
         'webhook_unparseable',
