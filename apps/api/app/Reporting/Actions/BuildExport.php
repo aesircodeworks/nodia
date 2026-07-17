@@ -5,6 +5,7 @@ namespace App\Reporting\Actions;
 use App\Reporting\Models\Export;
 use App\Reporting\Support\Export\CsvExportWriter;
 use App\Reporting\Support\Export\ExportSourceRegistry;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -28,11 +29,9 @@ use Throwable;
  * never free text alone"); nothing is attached to the export in that
  * case, so a failure never leaves a completed-looking attachment behind.
  *
- * The CSV is built on a php://temp stream (spills to disk past PHP's own
- * threshold, never a path this class manages itself) and attached
- * through addMediaFromString(), mirroring
- * App\Orders\Jobs\GenerateTicketPdf's own posture rather than writing to
- * and cleaning up a real temp file.
+ * The CSV is built directly into a temporary file and attached from that
+ * path. No full-file string is ever materialized in PHP heap, so the
+ * cursor-paginated source remains memory-bounded for large exports.
  */
 final readonly class BuildExport
 {
@@ -53,17 +52,29 @@ final readonly class BuildExport
             $export = Export::query()->findOrFail($exportId);
             $source = $this->sources->get($export->type);
 
-            $stream = fopen('php://temp', 'w+b');
+            $stream = tmpfile();
 
-            $rowCount = $this->writer->write($source, $export->tenant_id, $export->parameters, $stream);
+            if ($stream === false) {
+                throw new RuntimeException('Unable to create a temporary export file.');
+            }
 
-            rewind($stream);
-            $csv = stream_get_contents($stream);
-            fclose($stream);
+            try {
+                $metadata = stream_get_meta_data($stream);
+                $temporaryPath = $metadata['uri'] ?? null;
 
-            $export->addMediaFromString($csv)
-                ->usingFileName("export-{$export->id}.csv")
-                ->toMediaCollection('export_file');
+                if (! is_string($temporaryPath)) {
+                    throw new RuntimeException('Unable to resolve the temporary export file.');
+                }
+
+                $rowCount = $this->writer->write($source, $export->tenant_id, $export->parameters, $stream);
+                fflush($stream);
+
+                $export->addMedia($temporaryPath)
+                    ->usingFileName("export-{$export->id}.csv")
+                    ->toMediaCollection('export_file');
+            } finally {
+                fclose($stream);
+            }
 
             Export::complete($exportId, $rowCount);
         } catch (Throwable $exception) {

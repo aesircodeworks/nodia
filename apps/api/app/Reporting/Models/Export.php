@@ -67,6 +67,7 @@ class Export extends Model implements HasMedia, HasMediaCapability
     public function registerMediaCollections(): void
     {
         $this->addMediaCollection('export_file')
+            ->useDisk(config()->string('media.protected_disk'))
             ->singleFile()
             ->acceptsMimeTypes(['text/csv']);
     }

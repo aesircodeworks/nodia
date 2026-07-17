@@ -21,6 +21,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Protected Generated Media Disk
+    |--------------------------------------------------------------------------
+    |
+    | Ticket PDFs and exports contain credentials or personal data. Their
+    | collections explicitly use this private disk instead of the public
+    | marketing-media default.
+    |
+    */
+
+    'protected_disk' => env('PROTECTED_MEDIA_DISK', 'protected-media'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Conversion Widths
     |--------------------------------------------------------------------------
     |

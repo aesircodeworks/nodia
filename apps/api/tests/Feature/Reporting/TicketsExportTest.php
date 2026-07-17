@@ -35,7 +35,7 @@ use Tests\Support\PostgresTestDatabase;
 beforeEach(function (): void {
     PostgresTestDatabase::use();
     MigratedDatabase::ensure();
-    Storage::fake('media');
+    Storage::fake(config()->string('media.protected_disk'));
 });
 
 afterEach(function (): void {
@@ -142,7 +142,7 @@ function ticketsExportFixture(): array
 function readTicketsExportCsv(Export $export): array
 {
     $path = $export->getMedia('export_file')->first()->getPathRelativeToRoot();
-    $contents = Storage::disk('media')->get($path);
+    $contents = Storage::disk(config()->string('media.protected_disk'))->get($path);
 
     $lines = array_filter(explode("\n", trim($contents)));
 

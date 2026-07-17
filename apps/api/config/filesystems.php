@@ -69,8 +69,9 @@ return [
         // path prefix rather than a separate bucket. 'public' visibility
         // is the stage-05c plan's own Risks recommendation (public-read
         // bucket for marketing images: event covers, galleries, tenant
-        // logos; revisit when Stage 8a adds ticket PDFs, which must stay
-        // private and therefore must not reuse this disk).
+        // logos). Protected generated attachments use the separate
+        // protected-media disk below and never inherit this disk's public
+        // visibility.
         'media' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
@@ -83,6 +84,23 @@ return [
             'visibility' => 'public',
             'throw' => false,
             'report' => false,
+        ],
+
+        // QR-bearing tickets and customer/reporting exports are authorized
+        // through short-lived URLs. They must therefore remain private even
+        // when the marketing media disk is configured public-read.
+        'protected-media' => [
+            'driver' => 's3',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION'),
+            'bucket' => env('AWS_BUCKET'),
+            'url' => env('AWS_URL'),
+            'endpoint' => env('AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'visibility' => 'private',
+            'throw' => true,
+            'report' => true,
         ],
 
     ],

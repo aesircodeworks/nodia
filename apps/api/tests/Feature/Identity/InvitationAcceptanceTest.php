@@ -129,6 +129,32 @@ it('rejects replaying an already-accepted token with invitation_token_invalid', 
         ->assertJsonPath('code', 'invitation_token_invalid');
 });
 
+it('does not let a membership invitation replace an established password', function (): void {
+    $user = User::factory()->create([
+        'email' => 'established-invitee@example.com',
+        'password' => 'established-password',
+    ]);
+
+    ['token' => $token] = inviteAndCaptureToken($this->tenantId, $user->email);
+
+    $this->withoutToken()
+        ->postJson('/v1/auth/staff/invitation/accept', [
+            'token' => $token,
+            'password' => 'invitation-password',
+        ])
+        ->assertNoContent();
+
+    $this->withoutToken()->postJson('/v1/auth/staff/token', [
+        'email' => $user->email,
+        'password' => 'established-password',
+    ])->assertOk();
+
+    $this->withoutToken()->postJson('/v1/auth/staff/token', [
+        'email' => $user->email,
+        'password' => 'invitation-password',
+    ])->assertUnauthorized();
+});
+
 it('rejects an expired token with invitation_token_expired under the fake clock', function () {
     $this->freezeTime();
 

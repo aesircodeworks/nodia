@@ -3,7 +3,9 @@
 namespace App\Identity\OAuth;
 
 use App\Identity\Actions\RevokeRefreshTokenFamily;
+use App\Models\User;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Passport\Bridge\RefreshTokenRepository as PassportRefreshTokenRepository;
 use Laravel\Passport\Events\RefreshTokenCreated;
@@ -70,7 +72,7 @@ final class IdentityRefreshTokenRepository extends PassportRefreshTokenRepositor
      * that order per refresh request (verified against
      * League\OAuth2\Server\Grant\RefreshTokenGrant::respondToAccessTokenRequest).
      */
-    public function __construct(Dispatcher $events, private readonly RefreshTokenRotationContext $rotation)
+    public function __construct(Dispatcher $events)
     {
         parent::__construct($events);
     }
@@ -92,8 +94,9 @@ final class IdentityRefreshTokenRepository extends PassportRefreshTokenRepositor
         // Read and clear the rotation family before any fallible work: if
         // the save or dispatch below throws, the scoped context must not
         // retain a family that a later call on this instance would reuse.
-        $familyId = $this->rotation->familyId ?? (string) Str::uuid();
-        $this->rotation->familyId = null;
+        $rotation = app(RefreshTokenRotationContext::class);
+        $familyId = $rotation->familyId ?? (string) Str::uuid();
+        $rotation->familyId = null;
 
         Passport::refreshToken()->forceFill([
             'id' => $id = $refreshTokenEntity->getIdentifier(),
@@ -128,7 +131,9 @@ final class IdentityRefreshTokenRepository extends PassportRefreshTokenRepositor
             throw OAuthServerException::invalidRefreshToken(self::RaceLostHint);
         }
 
-        $this->rotation->familyId = PassportRefreshToken::query()->whereKey($tokenId)->value('family_id');
+        app(RefreshTokenRotationContext::class)->familyId = PassportRefreshToken::query()
+            ->whereKey($tokenId)
+            ->value('family_id');
     }
 
     /**
@@ -143,6 +148,8 @@ final class IdentityRefreshTokenRepository extends PassportRefreshTokenRepositor
      */
     public function isRefreshTokenRevoked(string $tokenId): bool
     {
+        $this->lockStaffIdentity($tokenId);
+
         $token = PassportRefreshToken::query()->whereKey($tokenId)->first(['revoked', 'family_id']);
 
         if ($token === null) {
@@ -156,5 +163,28 @@ final class IdentityRefreshTokenRepository extends PassportRefreshTokenRepositor
         app(RevokeRefreshTokenFamily::class)((string) $token->family_id);
 
         return true;
+    }
+
+    /**
+     * Staff refresh actions run inside a transaction. Locking their user
+     * before the grant validates or replaces the old pair serializes the
+     * whole rotation against password reset's matching user-row lock.
+     */
+    private function lockStaffIdentity(string $tokenId): void
+    {
+        if (DB::transactionLevel() === 0) {
+            return;
+        }
+
+        $userId = DB::table('oauth_refresh_tokens')
+            ->join('oauth_access_tokens', 'oauth_access_tokens.id', '=', 'oauth_refresh_tokens.access_token_id')
+            ->join('oauth_clients', 'oauth_clients.id', '=', 'oauth_access_tokens.client_id')
+            ->where('oauth_refresh_tokens.id', $tokenId)
+            ->where('oauth_clients.provider', 'users')
+            ->value('oauth_access_tokens.user_id');
+
+        if ($userId !== null) {
+            User::query()->whereKey($userId)->lockForUpdate()->first();
+        }
     }
 }

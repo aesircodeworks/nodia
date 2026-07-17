@@ -40,7 +40,7 @@ use Tests\Support\TenantStaff;
 beforeEach(function (): void {
     PostgresTestDatabase::use();
     MigratedDatabase::ensure();
-    Storage::fake('media');
+    Storage::fake(config()->string('media.protected_disk'));
     Queue::fake();
 
     $this->tenantId = app(TenantTransaction::class)->asPlatform(fn () => Tenant::factory()->create()->id);

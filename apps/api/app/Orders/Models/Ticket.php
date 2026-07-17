@@ -59,6 +59,7 @@ class Ticket extends Model implements HasMedia, HasMediaCapability
     public function registerMediaCollections(): void
     {
         $this->addMediaCollection('ticket_pdf')
+            ->useDisk(config()->string('media.protected_disk'))
             ->singleFile()
             ->acceptsMimeTypes(['application/pdf']);
     }

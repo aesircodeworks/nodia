@@ -98,6 +98,7 @@ final readonly class ArchiveActivityLog
                 'row_count' => $rows->count(),
                 'checksum' => $checksum,
                 'archived_at' => Date::now(),
+                'completed_at' => Date::now(),
             ]);
 
             DB::selectOne('select set_config(?, ?, true)', [

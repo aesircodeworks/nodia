@@ -53,6 +53,7 @@ final class InviteUser
                 'name' => $data->name,
                 'email' => $data->email,
                 'password' => Str::password(40),
+                'password_initialized' => false,
             ]);
         }
 

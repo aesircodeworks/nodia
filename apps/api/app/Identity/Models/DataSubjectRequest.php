@@ -65,6 +65,7 @@ class DataSubjectRequest extends Model implements HasMedia, HasMediaCapability
     public function registerMediaCollections(): void
     {
         $this->addMediaCollection('data_subject_export')
+            ->useDisk(config()->string('media.protected_disk'))
             ->singleFile()
             ->acceptsMimeTypes(['application/json']);
     }

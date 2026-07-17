@@ -14,28 +14,21 @@ use Laravel\Passport\Token as PassportToken;
  * family on detected refresh-token reuse: a password reset must end every
  * session the compromised or forgotten password could have started,
  * whichever family it belongs to. Both UPDATEs are conditioned on revoked
- * = false, so they are naturally idempotent.
+ * = false, so they are naturally idempotent. ConfirmPasswordReset holds
+ * the user's row lock while calling this action, and every staff token
+ * issuance path holds the same lock for its entire OAuth transaction.
  */
 final class RevokeAllUserTokens
 {
     public function __invoke(string $userId): void
     {
-        $liveAccessTokenIds = PassportToken::query()
-            ->where('user_id', $userId)
-            ->where('revoked', false)
-            ->pluck('id');
-
-        if ($liveAccessTokenIds->isEmpty()) {
-            return;
-        }
-
-        PassportToken::query()
-            ->whereIn('id', $liveAccessTokenIds)
+        PassportRefreshToken::query()
+            ->whereIn('access_token_id', PassportToken::query()->select('id')->where('user_id', $userId))
             ->where('revoked', false)
             ->update(['revoked' => true]);
 
-        PassportRefreshToken::query()
-            ->whereIn('access_token_id', $liveAccessTokenIds)
+        PassportToken::query()
+            ->where('user_id', $userId)
             ->where('revoked', false)
             ->update(['revoked' => true]);
     }

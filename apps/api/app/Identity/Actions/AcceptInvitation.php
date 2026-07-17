@@ -8,26 +8,26 @@ use App\Identity\Exceptions\InvitationTokenInvalidException;
 use App\Identity\Models\StaffInvitationToken;
 use App\Identity\Support\InvitationTokenHasher;
 use App\Models\User;
+use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 
 /**
  * POST /v1/auth/staff/invitation/accept (stage-03 plan, task breakdown
  * item 9). Redeems the single-use token InviteUser mailed and sets the
- * user's first password. The affected-row-count guard
- * (App\Identity\Actions\ConsumeInvitationToken) decides success before any
- * other lookup runs; only on its failure does this class look the row up
- * again, purely to distinguish invitation_token_expired (a live row whose
- * expiry passed) from invitation_token_invalid (unknown, tampered, or
- * already consumed), mirroring App\Identity\Actions\ConfirmPasswordReset's
- * own precedent. Making acceptance single-use is what stops a still-valid
- * token from replaying into a password reset, taking over the account
- * even after the legitimate recipient accepted.
+ * user's first password. password_initialized distinguishes an initial
+ * credential invitation from a later membership invitation for an
+ * established global user. The user row lock, conditional credential
+ * update, and sibling-token invalidation make the first acceptance the
+ * only invitation that can establish a password; later invitations can
+ * never act as password resets.
  *
  * Not named in the Domain events section: invitation acceptance sets first
  * credentials, it does not itself change a membership or role, so there is
  * no outbox attachment point here (UserInvited already recorded at
  * InviteUser's own point). No token revocation either, unlike
- * ConfirmPasswordReset: this is a first credential, so the user holds no
- * live sessions to revoke.
+ * ConfirmPasswordReset: the only credential-changing path is a first
+ * credential, so the user holds no live sessions to revoke.
  */
 final class AcceptInvitation
 {
@@ -35,31 +35,44 @@ final class AcceptInvitation
 
     public function __invoke(AcceptInvitationData $data): void
     {
-        $tokenHash = InvitationTokenHasher::hash($data->token);
+        DB::transaction(function () use ($data): void {
+            $tokenHash = InvitationTokenHasher::hash($data->token);
+            $invitationToken = StaffInvitationToken::query()->where('token_hash', $tokenHash)->first();
 
-        if (! ($this->consume)($tokenHash)) {
-            $existing = StaffInvitationToken::query()->where('token_hash', $tokenHash)->first();
-
-            if ($existing !== null && $existing->consumed_at === null) {
-                throw InvitationTokenExpiredException::make();
+            if ($invitationToken === null) {
+                throw InvitationTokenInvalidException::make();
             }
 
-            throw InvitationTokenInvalidException::make();
-        }
+            $user = User::query()->whereKey($invitationToken->user_id)->lockForUpdate()->first();
 
-        $invitationToken = StaffInvitationToken::query()->where('token_hash', $tokenHash)->firstOrFail();
+            if ($user === null) {
+                throw InvitationTokenInvalidException::make();
+            }
 
-        $user = User::query()->find($invitationToken->user_id);
+            if (! ($this->consume)($tokenHash)) {
+                $invitationToken->refresh();
 
-        if ($user === null) {
-            // The token's own hash already matched a live, just-consumed
-            // row; a missing user only happens if the account was deleted
-            // after the token was issued, which Stage 3 has no path for
-            // yet. Rendered identically to a tampered token so the response
-            // never distinguishes the two.
-            throw InvitationTokenInvalidException::make();
-        }
+                if ($invitationToken->consumed_at === null) {
+                    throw InvitationTokenExpiredException::make();
+                }
 
-        $user->update(['password' => $data->password]);
+                throw InvitationTokenInvalidException::make();
+            }
+
+            User::query()
+                ->whereKey($user->id)
+                ->where('password_initialized', false)
+                ->update([
+                    'password' => Hash::make($data->password),
+                    'password_initialized' => true,
+                    'updated_at' => Date::now(),
+                ]);
+
+            $now = Date::now();
+            StaffInvitationToken::query()
+                ->where('user_id', $user->id)
+                ->whereNull('consumed_at')
+                ->update(['consumed_at' => $now, 'updated_at' => $now]);
+        });
     }
 }

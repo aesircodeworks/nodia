@@ -19,11 +19,10 @@ use Throwable;
  * config('retention.outbox_archival_days') to one NDJSON object storage
  * segment, writes the archive_segments manifest row, and deletes the
  * source rows only once the uploaded object's checksum, read back from
- * storage, matches the checksum computed before upload: a disk that
- * cannot be reached, or a checksum that fails to verify, leaves every
- * source row in place and writes no manifest row (archive-then-delete,
- * never delete-then-archive, ArchiveActivityLog's own precedent from
- * task breakdown item 9).
+ * storage, matches the checksum computed before upload. Manifests remain
+ * incomplete until every per-tenant deletion commits; a later run first
+ * verifies and recovers incomplete manifests. Deterministic object keys
+ * and a unique source range make overlapping runs converge on one segment.
  *
  * Resolves the plan's open question on system-design 9.1's "archived ...
  * independent of delivery state": read as the archival *schedule* not
@@ -74,10 +73,11 @@ final readonly class ArchiveOutboxEvents
             );
         }
 
+        $recovered = $this->recoverIncompleteSegments();
         $cutoff = Date::now()->subDays($days);
 
-        /** @var array<string, list<string>>|null $idsByTenant */
-        $idsByTenant = $this->transactions->asPlatform(function () use ($cutoff, $batchSize): ?array {
+        /** @var array{segment_id: string, ids_by_tenant: array<string, list<string>>}|null $batch */
+        $batch = $this->transactions->asPlatform(function () use ($cutoff, $batchSize): ?array {
             $candidates = DB::table('outbox_events')
                 ->where('occurred_at', '<', $cutoff)
                 ->orderBy('sequence')
@@ -118,8 +118,17 @@ final readonly class ArchiveOutboxEvents
                 ->implode("\n")."\n";
 
             $checksum = hash('sha256', $content);
+            $first = $eligible[0];
+            $last = $eligible[count($eligible) - 1];
+            $rangeFrom = (string) $first->sequence;
+            $rangeTo = (string) $last->sequence;
             $disk = config()->string('retention.archive_disk');
-            $objectKey = sprintf('archive-segments/outbox_events/%s.ndjson', Str::uuid7());
+            $objectKey = sprintf(
+                'archive-segments/outbox_events/%s-%s-%s.ndjson',
+                $rangeFrom,
+                $rangeTo,
+                $checksum,
+            );
 
             try {
                 $storage = Storage::disk($disk);
@@ -138,18 +147,36 @@ final readonly class ArchiveOutboxEvents
                 );
             }
 
-            $first = $eligible[0];
-            $last = $eligible[count($eligible) - 1];
+            $segmentId = (string) Str::uuid7();
+            $now = Date::now();
 
-            ArchiveSegment::create([
-                'source' => ArchiveSegmentSource::OutboxEvents,
-                'range_from' => (string) $first->sequence,
-                'range_to' => (string) $last->sequence,
+            DB::table('archive_segments')->insertOrIgnore([
+                'id' => $segmentId,
+                'source' => ArchiveSegmentSource::OutboxEvents->value,
+                'range_from' => $rangeFrom,
+                'range_to' => $rangeTo,
                 'object_key' => $objectKey,
                 'row_count' => count($eligible),
                 'checksum' => $checksum,
-                'archived_at' => Date::now(),
+                'archived_at' => $now,
+                'completed_at' => null,
+                'created_at' => $now,
+                'updated_at' => $now,
             ]);
+
+            $segment = ArchiveSegment::query()
+                ->where('source', ArchiveSegmentSource::OutboxEvents)
+                ->where('range_from', $rangeFrom)
+                ->where('range_to', $rangeTo)
+                ->firstOrFail();
+
+            if ($segment->checksum !== $checksum
+                || $segment->object_key !== $objectKey
+                || $segment->row_count !== count($eligible)) {
+                throw new RuntimeException(
+                    "Archive range {$rangeFrom}-{$rangeTo} already exists with different content.",
+                );
+            }
 
             $byTenant = [];
 
@@ -157,25 +184,109 @@ final readonly class ArchiveOutboxEvents
                 $byTenant[$row->tenant_id][] = $row->id;
             }
 
-            return $byTenant;
+            return ['segment_id' => $segment->id, 'ids_by_tenant' => $byTenant];
         });
 
-        if ($idsByTenant === null) {
-            return 0;
+        if ($batch === null) {
+            return $recovered;
         }
 
-        $archived = 0;
+        $archived = $this->deleteRows($batch['ids_by_tenant']);
+
+        $this->completeSegment($batch['segment_id']);
+
+        return $recovered + $archived;
+    }
+
+    private function recoverIncompleteSegments(): int
+    {
+        $segments = $this->transactions->asPlatform(
+            fn () => ArchiveSegment::query()
+                ->where('source', ArchiveSegmentSource::OutboxEvents)
+                ->whereNull('completed_at')
+                ->orderBy('range_from')
+                ->get(),
+        );
+
+        $recovered = 0;
+
+        foreach ($segments as $segment) {
+            $idsByTenant = [];
+
+            foreach ($this->verifiedRows($segment) as $row) {
+                $idsByTenant[$row['tenant_id']][] = $row['id'];
+            }
+
+            $recovered += $this->deleteRows($idsByTenant);
+            $this->completeSegment($segment->id);
+        }
+
+        return $recovered;
+    }
+
+    /**
+     * @param  array<string, list<string>>  $idsByTenant
+     */
+    private function deleteRows(array $idsByTenant): int
+    {
+        $deleted = 0;
 
         foreach ($idsByTenant as $tenantId => $ids) {
-            $this->transactions->asTenant($tenantId, function () use ($ids): void {
+            $deleted += $this->transactions->asTenant($tenantId, function () use ($ids): int {
                 DB::table('outbox_deliveries')->whereIn('outbox_event_id', $ids)->delete();
-                DB::table('outbox_events')->whereIn('id', $ids)->delete();
-            });
 
-            $archived += count($ids);
+                return DB::table('outbox_events')->whereIn('id', $ids)->delete();
+            });
         }
 
-        return $archived;
+        return $deleted;
+    }
+
+    private function completeSegment(string $segmentId): void
+    {
+        $this->transactions->asPlatform(
+            fn () => ArchiveSegment::query()
+                ->whereKey($segmentId)
+                ->whereNull('completed_at')
+                ->update(['completed_at' => Date::now(), 'updated_at' => Date::now()]),
+        );
+    }
+
+    /**
+     * @return list<array{id: string, tenant_id: string}>
+     */
+    private function verifiedRows(ArchiveSegment $segment): array
+    {
+        try {
+            $content = Storage::disk(config()->string('retention.archive_disk'))->get($segment->object_key);
+        } catch (Throwable $e) {
+            throw new RuntimeException(
+                "Cannot recover archive segment {$segment->id}: {$e->getMessage()}",
+                previous: $e,
+            );
+        }
+
+        if ($content === null || hash('sha256', $content) !== $segment->checksum) {
+            throw new RuntimeException("Cannot recover archive segment {$segment->id}: checksum mismatch.");
+        }
+
+        $rows = [];
+
+        foreach (explode("\n", trim($content)) as $line) {
+            if ($line === '') {
+                continue;
+            }
+
+            /** @var array{id: string, tenant_id: string} $row */
+            $row = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
+            $rows[] = $row;
+        }
+
+        if (count($rows) !== $segment->row_count) {
+            throw new RuntimeException("Cannot recover archive segment {$segment->id}: row count mismatch.");
+        }
+
+        return $rows;
     }
 
     /**

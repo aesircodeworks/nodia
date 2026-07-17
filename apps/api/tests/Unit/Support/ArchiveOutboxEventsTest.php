@@ -104,6 +104,57 @@ it('archives exactly the configured batch size, keeping the segment boundary det
     expect($remainingAfterSecond)->toBe(0);
 });
 
+it('recovers an incomplete manifest by deleting its still-live source rows without writing a duplicate segment', function (): void {
+    $this->freezeTime();
+    Storage::fake(config()->string('retention.archive_disk'));
+    config()->set('retention.outbox_archival_days', 2);
+    config()->set('retention.outbox_archive_batch_size', 100);
+
+    $inserted = insertArchivableOutboxEvent($this->tenantId, now()->subDays(3)->toDateTimeString());
+    $row = app(TenantTransaction::class)->asPlatform(
+        fn () => DB::table('outbox_events')->where('id', $inserted['id'])->first(),
+    );
+
+    $content = json_encode([
+        'id' => $row->id,
+        'sequence' => (int) $row->sequence,
+        'type' => $row->type,
+        'tenant_id' => $row->tenant_id,
+        'aggregate_type' => $row->aggregate_type,
+        'aggregate_id' => $row->aggregate_id,
+        'correlation_id' => $row->correlation_id,
+        'occurred_at' => (string) $row->occurred_at,
+        'payload' => json_decode((string) $row->payload, true, 512, JSON_THROW_ON_ERROR),
+        'created_at' => (string) $row->created_at,
+        'updated_at' => (string) $row->updated_at,
+    ], JSON_THROW_ON_ERROR)."\n";
+
+    $objectKey = 'archive-segments/outbox_events/incomplete.ndjson';
+    Storage::disk(config()->string('retention.archive_disk'))->put($objectKey, $content);
+
+    ArchiveSegment::query()->create([
+        'source' => ArchiveSegmentSource::OutboxEvents,
+        'range_from' => (string) $row->sequence,
+        'range_to' => (string) $row->sequence,
+        'object_key' => $objectKey,
+        'row_count' => 1,
+        'checksum' => hash('sha256', $content),
+        'archived_at' => now(),
+        'completed_at' => null,
+    ]);
+
+    expect(app(ArchiveOutboxEvents::class)())->toBe(1)
+        ->and(ArchiveSegment::query()->where('source', ArchiveSegmentSource::OutboxEvents)->count())->toBe(1)
+        ->and(ArchiveSegment::query()->where('source', ArchiveSegmentSource::OutboxEvents)->sole()->completed_at)->not->toBeNull();
+
+    $stillLive = app(TenantTransaction::class)->asTenant(
+        $this->tenantId,
+        fn () => DB::table('outbox_events')->where('id', $inserted['id'])->exists(),
+    );
+
+    expect($stillLive)->toBeFalse();
+});
+
 it('refuses to run and deletes no row when object storage is unreachable', function (): void {
     $this->freezeTime();
     config()->set('retention.outbox_archival_days', 2);

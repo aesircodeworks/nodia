@@ -31,7 +31,7 @@ use Tests\Support\PostgresTestDatabase;
 beforeEach(function (): void {
     PostgresTestDatabase::use();
     MigratedDatabase::ensure();
-    Storage::fake('media');
+    Storage::fake(config()->string('media.protected_disk'));
     Mail::fake();
 });
 
@@ -151,7 +151,7 @@ describe('GenerateTicketPdf', function (): void {
                     ->and($media->first()->mime_type)->toBe('application/pdf')
                     ->and($media->first()->size)->toBeGreaterThan(500);
 
-                $bytes = Storage::disk('media')->get($media->first()->getPathRelativeToRoot());
+                $bytes = Storage::disk(config()->string('media.protected_disk'))->get($media->first()->getPathRelativeToRoot());
 
                 expect(substr($bytes, 0, 5))->toBe('%PDF-');
             }

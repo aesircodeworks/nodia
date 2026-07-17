@@ -25,6 +25,7 @@ use Illuminate\Support\Carbon;
  * @property int $row_count
  * @property string $checksum
  * @property Carbon $archived_at
+ * @property Carbon|null $completed_at
  * @property Carbon $created_at
  * @property Carbon $updated_at
  */
@@ -36,6 +37,7 @@ use Illuminate\Support\Carbon;
     'row_count',
     'checksum',
     'archived_at',
+    'completed_at',
 ])]
 class ArchiveSegment extends Model
 {
@@ -52,6 +54,7 @@ class ArchiveSegment extends Model
             'source' => ArchiveSegmentSource::class,
             'row_count' => 'integer',
             'archived_at' => 'datetime',
+            'completed_at' => 'datetime',
         ];
     }
 }

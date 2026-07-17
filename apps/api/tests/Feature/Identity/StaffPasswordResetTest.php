@@ -189,6 +189,29 @@ describe('POST /v1/auth/staff/password/reset/confirm', function (): void {
             ->assertJson(['code' => 'reset_token_invalid']);
     });
 
+    it('invalidates every sibling reset token when one reset succeeds', function (): void {
+        $user = User::factory()->create(['email' => 'sibling-reset@example.com']);
+        $firstToken = requestPasswordResetToken($user->email);
+        $siblingToken = requestPasswordResetToken($user->email);
+
+        test()->postJson('/v1/auth/staff/password/reset/confirm', [
+            'token' => $firstToken,
+            'password' => 'the-winning-password',
+        ])->assertNoContent();
+
+        test()->postJson('/v1/auth/staff/password/reset/confirm', [
+            'token' => $siblingToken,
+            'password' => 'a-stale-password',
+        ])
+            ->assertUnauthorized()
+            ->assertJson(['code' => 'reset_token_invalid']);
+
+        test()->postJson('/v1/auth/staff/token', [
+            'email' => $user->email,
+            'password' => 'the-winning-password',
+        ])->assertOk();
+    });
+
     it('fails request validation for a missing token or a too-short password', function (): void {
         test()->postJson('/v1/auth/staff/password/reset/confirm', ['token' => '', 'password' => 'x'])
             ->assertStatus(422)

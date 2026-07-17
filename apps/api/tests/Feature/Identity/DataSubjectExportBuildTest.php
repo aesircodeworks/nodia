@@ -42,7 +42,7 @@ use Tests\Support\PostgresTestDatabase;
 beforeEach(function (): void {
     PostgresTestDatabase::use();
     MigratedDatabase::ensure();
-    Storage::fake('media');
+    Storage::fake(config()->string('media.protected_disk'));
 });
 
 afterEach(function (): void {
@@ -168,7 +168,7 @@ function readDataSubjectExportDocument(string $tenantId, string $requestId): arr
     return app(TenantTransaction::class)->asTenant($tenantId, function () use ($requestId): array {
         $request = DataSubjectRequest::query()->findOrFail($requestId);
         $media = $request->getMedia('data_subject_export')->first();
-        $contents = Storage::disk('media')->get($media->getPathRelativeToRoot());
+        $contents = Storage::disk(config()->string('media.protected_disk'))->get($media->getPathRelativeToRoot());
 
         return json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
     });

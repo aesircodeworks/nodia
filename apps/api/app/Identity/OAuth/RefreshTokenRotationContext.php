@@ -12,13 +12,10 @@ namespace App\Identity\OAuth;
  * rather than held as a property on the repository: Passport's
  * AuthorizationServer is a container singleton that captures one
  * repository instance and, under Octane, survives across every request a
- * worker handles. If token issuance throws after revoke set the family
- * but before persist could clear it (a persistence blip, a listener
- * throwing), a property on that captured repository would leak the family
- * into the next request the worker handled. A scoped binding is reset at
- * each request boundary, so the leak cannot cross requests; the repository
- * resolves this holder fresh per request instead of remembering the value
- * itself.
+ * worker handles. The captured repository resolves this scoped holder
+ * inside each operation instead of constructor-injecting and retaining the
+ * first request's instance. A failed issuance can therefore never leak its
+ * family into the next Octane request.
  */
 final class RefreshTokenRotationContext
 {

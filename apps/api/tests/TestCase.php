@@ -24,6 +24,7 @@ abstract class TestCase extends BaseTestCase
         // faked media disk by default; media-focused tests that fake it
         // again in their own beforeEach simply re-fake harmlessly.
         Storage::fake('media');
+        Storage::fake(config()->string('media.protected_disk'));
 
         config()->set('spectator.sources.local.base_path', dirname(OpenApiSpec::path()));
         Spectator::using(basename(OpenApiSpec::path()));

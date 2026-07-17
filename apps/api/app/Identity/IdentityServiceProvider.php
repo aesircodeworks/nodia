@@ -36,11 +36,10 @@ class IdentityServiceProvider extends ServiceProvider
         // revocation, App\Identity\OAuth\IdentityRefreshTokenRepository).
         $this->app->bind(RefreshTokenRepository::class, IdentityRefreshTokenRepository::class);
 
-        // Request-scoped so Octane resets it at each request boundary: the
-        // repository above is captured by Passport's singleton
-        // AuthorizationServer and would otherwise carry a failed rotation's
-        // family_id into the next request the worker handled
-        // (App\Identity\OAuth\RefreshTokenRotationContext).
+        // The repository captured by Passport's singleton resolves this
+        // holder inside each repository operation. Octane therefore swaps
+        // the scoped instance at the request boundary even though the
+        // repository itself remains captured by AuthorizationServer.
         $this->app->scoped(RefreshTokenRotationContext::class);
     }
 

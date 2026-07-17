@@ -197,3 +197,84 @@ it('accepts an inclusive starting sequence that falls inside an archived segment
             (int) $early[2]->sequence,
         ]);
 });
+
+it('fails replay when a selected archive object is missing', function (): void {
+    $this->freezeTime();
+    config()->set('retention.outbox_archival_days', 2);
+    config()->set('retention.outbox_archive_batch_size', 100);
+
+    recordArchiveBoundarySeries($this->tenantId, 'missing', 1);
+    $this->travel(3)->days();
+    app(ArchiveOutboxEvents::class)();
+
+    $segment = ArchiveSegment::query()->where('source', ArchiveSegmentSource::OutboxEvents)->sole();
+    Storage::disk(config()->string('retention.archive_disk'))->delete($segment->object_key);
+
+    app(SubscriberRegistry::class)->register(
+        ProjectionTestSubscriber::NAME,
+        [FixtureDomainEvent::TYPE],
+        new ProjectionTestSubscriber,
+    );
+
+    expect(fn () => app(OutboxReplay::class)->replay(ProjectionTestSubscriber::NAME))
+        ->toThrow(RuntimeException::class);
+});
+
+it('fails replay when a selected archive object does not match its manifest checksum', function (): void {
+    $this->freezeTime();
+    config()->set('retention.outbox_archival_days', 2);
+    config()->set('retention.outbox_archive_batch_size', 100);
+
+    recordArchiveBoundarySeries($this->tenantId, 'corrupt', 1);
+    $this->travel(3)->days();
+    app(ArchiveOutboxEvents::class)();
+
+    $segment = ArchiveSegment::query()->where('source', ArchiveSegmentSource::OutboxEvents)->sole();
+    Storage::disk(config()->string('retention.archive_disk'))->put($segment->object_key, "corrupted\n");
+
+    app(SubscriberRegistry::class)->register(
+        ProjectionTestSubscriber::NAME,
+        [FixtureDomainEvent::TYPE],
+        new ProjectionTestSubscriber,
+    );
+
+    expect(fn () => app(OutboxReplay::class)->replay(ProjectionTestSubscriber::NAME))
+        ->toThrow(RuntimeException::class, 'checksum');
+});
+
+it('deduplicates a legacy event repeated across overlapping archive segments', function (): void {
+    $this->freezeTime();
+    config()->set('retention.outbox_archival_days', 2);
+    config()->set('retention.outbox_archive_batch_size', 100);
+
+    recordArchiveBoundarySeries($this->tenantId, 'duplicate', 1);
+    $this->travel(3)->days();
+    app(ArchiveOutboxEvents::class)();
+
+    $segment = ArchiveSegment::query()->where('source', ArchiveSegmentSource::OutboxEvents)->sole();
+    $disk = Storage::disk(config()->string('retention.archive_disk'));
+    $content = $disk->get($segment->object_key);
+    $duplicateKey = 'archive-segments/outbox_events/legacy-duplicate.ndjson';
+    $disk->put($duplicateKey, $content);
+
+    ArchiveSegment::query()->create([
+        'source' => ArchiveSegmentSource::OutboxEvents,
+        'range_from' => $segment->range_from,
+        'range_to' => (string) ((int) $segment->range_to + 1),
+        'object_key' => $duplicateKey,
+        'row_count' => $segment->row_count,
+        'checksum' => $segment->checksum,
+        'archived_at' => now(),
+        'completed_at' => now(),
+    ]);
+
+    $subscriber = new ProjectionTestSubscriber;
+    app(SubscriberRegistry::class)->register(
+        ProjectionTestSubscriber::NAME,
+        [FixtureDomainEvent::TYPE],
+        $subscriber,
+    );
+
+    expect(app(OutboxReplay::class)->replay(ProjectionTestSubscriber::NAME))->toBe(1)
+        ->and($subscriber->appliedCount())->toBe(1);
+});

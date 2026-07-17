@@ -7,6 +7,7 @@ use App\Identity\Exceptions\ClaimTokenInvalidException;
 use App\Identity\Exceptions\CustomerAlreadyClaimedException;
 use App\Identity\Models\Customer;
 use App\Identity\Support\ClaimToken;
+use Illuminate\Support\Facades\Hash;
 
 /**
  * POST /v1/auth/customer/claim/confirm (stage-03 plan, task breakdown
@@ -15,9 +16,9 @@ use App\Identity\Support\ClaimToken;
  * on (ADR 007). A customer already holding a password (claimed earlier,
  * or created through registration rather than guest checkout) is denied
  * customer_already_claimed rather than silently overwriting an existing
- * credential; this is also what makes replaying a still-valid claim
- * token after its first successful use harmless, since no single-use
- * tracking exists on the token itself (App\Identity\Support\ClaimToken).
+ * credential. The password write is one conditional UPDATE guarded by
+ * password IS NULL and its affected-row count, so overlapping uses of the
+ * same still-valid token have exactly one winner.
  *
  * An anonymized customer (stage-12 plan, Slice 1 Feature tests: "the
  * guest-claim flow rejects the anonymized customer") also carries a null
@@ -35,6 +36,20 @@ final class ClaimGuestAccount
     {
         $customerId = ClaimToken::verify($data->token);
 
+        $affected = Customer::query()
+            ->whereKey($customerId)
+            ->whereNull('password')
+            ->whereNull('anonymized_at')
+            ->update([
+                'password' => Hash::make($data->password),
+                'email_verified_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+        if ($affected === 1) {
+            return;
+        }
+
         $customer = Customer::query()->find($customerId);
 
         if ($customer === null || $customer->anonymized_at !== null) {
@@ -48,13 +63,6 @@ final class ClaimGuestAccount
             throw ClaimTokenInvalidException::make();
         }
 
-        if ($customer->password !== null) {
-            throw CustomerAlreadyClaimedException::make();
-        }
-
-        $customer->update([
-            'password' => $data->password,
-            'email_verified_at' => now(),
-        ]);
+        throw CustomerAlreadyClaimedException::make();
     }
 }

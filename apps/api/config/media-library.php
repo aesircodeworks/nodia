@@ -61,10 +61,12 @@ return [
     'conversions_disk_name' => env('MEDIA_CONVERSIONS_DISK', null),
 
     /*
-     * The maximum file size of an item in bytes.
-     * Adding a larger file will result in an exception.
+     * MediaLibrary applies this ceiling globally, including to generated
+     * exports. HTTP image uploads have their own 10 MB validation ceiling in
+     * config/media.php, so the package-level guard must not reject an
+     * otherwise valid cursor-built export.
      */
-    'max_file_size' => 1024 * 1024 * 10, // 10MB
+    'max_file_size' => PHP_INT_MAX,
 
     /*
      * Uploads whose file name contains any of these extensions will be rejected.

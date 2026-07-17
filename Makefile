@@ -35,7 +35,7 @@ setup: .env $(APP_ENV_FILES)
 	@grep -q '^APP_KEY=base64:' apps/api/.env || php apps/api/artisan key:generate
 	@test -f apps/api/storage/oauth-private.key || php apps/api/artisan passport:keys
 
-## Start postgres, redis, minio, and the api container, then apply migrations.
+## Start infrastructure, API, Horizon, and scheduler containers, then apply migrations.
 #
 # --build, not a bare `up -d`: the api image bakes the source in at build time
 # (no bind mount), so without it Compose happily starts the last image that

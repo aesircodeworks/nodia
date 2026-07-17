@@ -94,3 +94,18 @@ it('mints a fresh family for a brand-new login when the context is empty', funct
         ->and(Str::isUuid($familyId))->toBeTrue()
         ->and(app(RefreshTokenRotationContext::class)->familyId)->toBeNull();
 });
+
+it('resolves a new scoped context when a captured repository crosses an Octane request boundary', function (): void {
+    $capturedRepository = app(IdentityRefreshTokenRepository::class);
+    $staleFamily = (string) Str::uuid();
+    app(RefreshTokenRotationContext::class)->familyId = $staleFamily;
+
+    app()->forgetScopedInstances();
+
+    $entity = rotationRefreshTokenEntity();
+    $capturedRepository->persistNewRefreshToken($entity);
+
+    expect(PassportRefreshToken::query()->whereKey($entity->getIdentifier())->value('family_id'))
+        ->not->toBe($staleFamily)
+        ->and(app(RefreshTokenRotationContext::class)->familyId)->toBeNull();
+});

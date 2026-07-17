@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Support\Audit\ActivityLogger;
 use App\Support\Tenancy\TenantTransaction;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Passport\Client;
 use League\OAuth2\Server\AuthorizationServer;
@@ -71,6 +72,11 @@ final class IssueStaffToken
 
     public function __invoke(StaffTokenRequestData $data): TokenPairData
     {
+        return DB::transaction(fn (): TokenPairData => $this->issue($data));
+    }
+
+    private function issue(StaffTokenRequestData $data): TokenPairData
+    {
         $user = $this->authenticate($data->email, $data->password);
 
         ($this->mfaChallenge)($user, $data->mfaCode);
@@ -132,7 +138,7 @@ final class IssueStaffToken
 
     private function authenticate(string $email, string $password): User
     {
-        $user = User::query()->where('email', $email)->first();
+        $user = User::query()->where('email', $email)->lockForUpdate()->first();
 
         if ($user === null || ! Hash::check($password, $user->password)) {
             throw InvalidCredentialsException::becauseAuthenticationFailed();

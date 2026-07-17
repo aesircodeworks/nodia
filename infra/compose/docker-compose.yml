@@ -76,11 +76,11 @@ services:
       "
 
   api:
-    build:
+    build: &api-build
       context: ../../apps/api
       dockerfile: Dockerfile
     restart: unless-stopped
-    depends_on:
+    depends_on: &api-depends
       postgres:
         condition: service_healthy
       redis:
@@ -89,7 +89,7 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
-    environment:
+    environment: &api-environment
       APP_ENV: ${APP_ENV:-local}
       APP_DEBUG: ${APP_DEBUG:-true}
       APP_KEY: ${APP_KEY}
@@ -118,6 +118,7 @@ services:
       # /v1/health storage check probes the provisioned object store instead
       # of the container filesystem.
       FILESYSTEM_DISK: ${FILESYSTEM_DISK:-s3}
+      PROTECTED_MEDIA_DISK: ${PROTECTED_MEDIA_DISK:-protected-media}
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-nodia}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-nodia12345}
       AWS_DEFAULT_REGION: us-east-1
@@ -146,6 +147,20 @@ services:
       timeout: 3s
       retries: 5
       start_period: 20s
+
+  horizon:
+    build: *api-build
+    restart: unless-stopped
+    depends_on: *api-depends
+    environment: *api-environment
+    command: ['php', 'artisan', 'horizon']
+
+  scheduler:
+    build: *api-build
+    restart: unless-stopped
+    depends_on: *api-depends
+    environment: *api-environment
+    command: ['php', 'artisan', 'schedule:work']
 
 volumes:
   postgres-data:

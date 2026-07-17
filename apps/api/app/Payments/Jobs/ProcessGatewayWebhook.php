@@ -134,7 +134,10 @@ final class ProcessGatewayWebhook implements ShouldQueue
     {
         $refund = $tx->asPlatform(function () use ($row, $normalized): ?Refund {
             $refund = Refund::query()
-                ->where('gateway_reference', $normalized->gatewayReference)
+                ->select('refunds.*')
+                ->join('payments', 'payments.id', '=', 'refunds.payment_id')
+                ->where('refunds.gateway_reference', $normalized->gatewayReference)
+                ->where('payments.gateway', $row->gateway)
                 ->first();
 
             app(ActivityLogger::class)->record(

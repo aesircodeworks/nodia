@@ -22,7 +22,7 @@ use Tests\Support\PostgresTestDatabase;
 beforeEach(function (): void {
     PostgresTestDatabase::use();
     MigratedDatabase::ensure();
-    Storage::fake('media');
+    Storage::fake(config()->string('media.protected_disk'));
 });
 
 afterEach(function (): void {

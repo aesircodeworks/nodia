@@ -9,6 +9,8 @@ use App\Support\Tenancy\TenantTransaction;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
+use Throwable;
 
 /**
  * Rescans outbox_events in global sequence order past the stability window
@@ -29,7 +31,9 @@ use Illuminate\Support\Facades\Storage;
  * same global sequence order it would have been in had nothing ever been
  * archived: archived rows are always well past the stability window (the
  * archival window is months, the stability window seconds), so no
- * separate stability filter applies to them.
+ * separate stability filter applies to them. Every selected object must
+ * exist and match its manifest checksum and row count. Legacy overlap is
+ * deduplicated by event id before handlers run.
  */
 final readonly class OutboxReplay
 {
@@ -101,6 +105,7 @@ final readonly class OutboxReplay
         return $archived
             ->concat($live)
             ->sortBy(fn (OutboxEvent $event): int => (int) $event->sequence)
+            ->unique(fn (OutboxEvent $event): string => $event->id)
             ->values();
     }
 
@@ -128,16 +133,31 @@ final readonly class OutboxReplay
                 continue;
             }
 
-            $content = $disk->get($segment->object_key);
+            try {
+                $content = $disk->get($segment->object_key);
+            } catch (Throwable $e) {
+                throw new RuntimeException(
+                    "Archive segment {$segment->id} could not be read.",
+                    previous: $e,
+                );
+            }
 
             if ($content === null || trim($content) === '') {
-                continue;
+                throw new RuntimeException("Archive segment {$segment->id} is missing or empty.");
             }
+
+            if (! hash_equals($segment->checksum, hash('sha256', $content))) {
+                throw new RuntimeException("Archive segment {$segment->id} failed checksum verification.");
+            }
+
+            $decodedRowCount = 0;
 
             foreach (explode("\n", trim($content)) as $line) {
                 if ($line === '') {
                     continue;
                 }
+
+                $decodedRowCount++;
 
                 /** @var array<string, mixed> $decoded */
                 $decoded = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
@@ -151,6 +171,10 @@ final readonly class OutboxReplay
                 }
 
                 $events->push($this->hydrate($decoded));
+            }
+
+            if ($decodedRowCount !== $segment->row_count) {
+                throw new RuntimeException("Archive segment {$segment->id} failed row-count verification.");
             }
         }
 
