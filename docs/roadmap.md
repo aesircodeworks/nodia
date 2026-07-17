@@ -8,6 +8,8 @@ The system design remains the architectural source of truth. This document is se
 
 Update this table when a phase starts (link its spec folder) and when it merges (mark it done).
 
+Note: the backend work for all phases is done. The API was built through the [Nodia API implementation plan](api-implementation-plan.md) and its stage plans, which supersede the API portions of the phases below. The phase rows now track only the remaining frontend slices (storefront, admin, check-in PWA), which are still at the Phase 0 skeleton stage.
+
 | Phase                                        | Status      | Spec                                                                    |
 | -------------------------------------------- | ----------- | ----------------------------------------------------------------------- |
 | Phase 0: Project Foundation                  | Done        | [specs/001-project-foundation](../specs/001-project-foundation/spec.md) |

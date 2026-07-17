@@ -1,6 +1,6 @@
 # Stage 9: Check-in and Offline Reconciliation
 
-Status: Not started. This stage delivers the full check-in contract from system-design 11, not the roadmap Phase 5 reduced version. Per the master plan, Stage 9 is independent of Stages 10 and 11 and can start once Stage 7 merges; only end-to-end coverage that starts from a purchase waits on slices 8a through 8c (8d, blocked on the ADR, is never a gate).
+Status: Done. This stage delivers the full check-in contract from system-design 11, not the roadmap Phase 5 reduced version. Per the master plan, Stage 9 is independent of Stages 10 and 11 and can start once Stage 7 merges; only end-to-end coverage that starts from a purchase waits on slices 8a through 8c (8d, blocked on the ADR, is never a gate).
 
 ## Scope and non-goals
 
