@@ -2,7 +2,7 @@
 
 ## 1. Executive Summary
 
-This document describes the system architecture for Nodia, a white-label, multi-tenant SaaS platform for event management. The platform enables organizers to create and manage events, sell tickets, and receive payouts, while providing attendees with a reliable purchasing experience. The design prioritizes the problems that make or break ticketing platforms: inventory correctness under concurrency, money flow to organizers, asynchronous payment methods, and enforceable tenant isolation.
+This document describes the system architecture for Nodia, a white-label, multi-tenant SaaS platform for event management. The platform enables tenants to create and manage events, sell tickets, and receive payouts, while providing attendees with a reliable purchasing experience. The design prioritizes the problems that make or break ticketing platforms: inventory correctness under concurrency, money flow to tenants, asynchronous payment methods, and enforceable tenant isolation.
 
 Key features:
 
@@ -82,7 +82,7 @@ graph TD
 ### 3.1 Bounded Contexts
 
 - **Tenancy**: tenant lifecycle, domains, branding, locale configuration, gateway configuration.
-- **Identity**: staff users, memberships, roles, permissions, customer accounts, authentication.
+- **Identity**: users, memberships, roles, permissions, customer accounts, authentication.
 - **Event Catalog**: events, venues, seat maps, ticket types, categories, translations, search.
 - **Inventory**: quantity accounting, holds, seat allocation. Owns the invariant that nothing is ever oversold.
 - **Orders**: checkout, order state machine, promo codes, tickets.
@@ -97,6 +97,8 @@ The boundary rule: a context may invoke another context's Actions (passing and r
 ### 3.2 Directory Structure
 
 The API application follows the standard Laravel skeleton, with one folder per bounded context under `app/`. Migrations, factories, and seeders stay in the conventional central `database/` directory. Each context ships a service provider that registers its routes, event subscriptions, and policies.
+
+Stage 10's high-demand waiting room (rate-limit tiers, purchase counters, queue, gatekeeper, and admission tokens) lives entirely under `Inventory/` rather than a separate `Support/OnSale` context: every piece of it exists to protect the hold path Inventory already owns, and the availability read cache fronts Inventory's own reads, so no context boundary would be served by splitting it out.
 
 ```
 apps/api/
@@ -143,10 +145,12 @@ apps/api/
       Data/
       EventCatalogServiceProvider.php
     Inventory/
-      Models/                     TicketTypeInventory, EventSeat, Hold, HoldItem
+      Models/                     TicketTypeInventory, EventSeat, Hold, HoldItem, PurchaseCounter
       Actions/                    CreateHold, ExtendHold, ReleaseHold, CommitHold, MaterializeEventSeats
       Events/                     HoldCreated, HoldExpired, HoldReleased
       Console/                    ReleaseExpiredHolds (scheduled sweeper)
+      Support/                    RateLimiterKeys, PurchaseCounters (guarded upsert/decrement); the stage-10
+                                   waiting room's queue, gatekeeper, and admission-token machinery land here too
       Http/
         Controllers/
         Requests/
@@ -169,7 +173,7 @@ apps/api/
       Models/                     Payment, Refund, LedgerEntry, Payout
       Gateways/                   GatewayAdapter interface plus one adapter per gateway
       Actions/                    InitiatePayment, ConfirmPayment, ExecuteRefund, IngestWebhook
-      Events/                     PaymentInitiated, PaymentConfirmed, PaymentFailed, RefundInitiated, RefundCompleted, PayoutExecuted
+      Events/                     PaymentInitiated, PaymentConfirmed, PaymentFailed, PaymentExpired, RefundInitiated, RefundCompleted, PayoutExecuted
       Jobs/                       ProjectLedgerEntries, ProcessGatewayWebhook
       Console/                    ReconcilePendingPayments (scheduled poller)
       Http/
@@ -238,25 +242,25 @@ graph TD
 
 ### 4.3 Cross-Tenant Operations
 
-Platform administration (support, billing, aggregate analytics) uses a separate database role for which RLS policies allow cross-tenant reads. This role is only assumable by platform-scope staff, and every use is recorded in the activity log.
+Platform administration (support, billing, aggregate analytics) uses a separate database role for which RLS policies allow cross-tenant reads. This role is only assumable by platform-scope staff, and every use is recorded in the activity log. One sanctioned system use exists beyond staff: webhook processing assumes this role to resolve the target tenant from an unauthenticated gateway callback (section 7.4), and every such use is activity-logged like any staff use.
 
 ## 5. Identity Model
 
 Two distinct identity populations with different lifecycles, credentials, and data-protection treatment. They are separate models, not one table with a type flag.
 
-### 5.1 Staff Users
+### 5.1 Users
 
 Employees of tenants (and of the platform itself). Staff are the default Laravel `users` table and `App\Models\User` model, following framework conventions (`password`, `remember_token`, timestamps). A user is a platform-level identity that gains access to tenants through memberships:
 
 - `users`: global identity (email unique platform-wide), credentials, MFA settings.
-- `memberships`: links a user to a tenant with a role. One person can administer multiple tenants (agencies, multi-brand organizers) with a single login.
+- `memberships`: links a user to a tenant with a role. One person can administer multiple tenants (agencies, businesses operating several brands) with a single login.
 - Platform administrators are users with a platform-scope membership instead of a tenant membership.
 
 Staff authenticate against the admin portal and the check-in PWA. MFA is mandatory for platform-scope staff and for tenant roles that include payout or refund permissions.
 
 ### 5.2 Customers
 
-Attendees who buy tickets. Customers are tenant-scoped: the same email address can hold independent accounts under different tenants, which is what white-labeling implies (the attendee has a relationship with the organizer's brand, not with the platform).
+Attendees who buy tickets. Customers are tenant-scoped: the same email address can hold independent accounts under different tenants, which is what white-labeling implies (the attendee has a relationship with the tenant's brand, not with the platform).
 
 - `customers`: `tenant_id` plus email, unique per tenant. Password is nullable to support guest checkout; a guest record can later be claimed by setting credentials via email verification.
 - Customers never gain administrative permissions and never appear in the staff permission system.
@@ -308,7 +312,7 @@ sequenceDiagram
 
 - Seat maps are defined per venue as reusable templates (`seat_maps`, `seats` with section, row, number and layout coordinates).
 - Publishing an event with reserved seating materializes `event_seats`: one row per sellable seat per event, carrying status (`available`, `held`, `sold`, `blocked`). A unique constraint on `(event_id, seat_id)` plus the conditional status transitions make double-booking structurally impossible.
-- Organizers can reconfigure a materialized map per event (block seats, change ticket type zoning) without touching the venue template.
+- Tenants can reconfigure a materialized map per event (block seats, change ticket type zoning) without touching the venue template.
 
 ### 6.3 General Admission
 
@@ -328,6 +332,8 @@ stateDiagram-v2
     pending --> canceled: buyer abandons
     paid --> partially_refunded: partial refund
     paid --> refunded: full refund
+    partially_refunded --> partially_refunded: further partial refund
+    partially_refunded --> refunded: final partial exhausts the payment
     expired --> [*]
     failed --> [*]
 ```
@@ -347,9 +353,9 @@ The platform maintains a set of gateway adapters; tenants enable any subset of t
 The platform is the merchant of record. All chosen gateways must support marketplace or split-payment operation (sub-merchant onboarding), such as Stripe Connect, Adyen for Platforms, Pagar.me, or Mercado Pago marketplace mode.
 
 - Tenants onboard as sub-merchants through the gateway's KYC flow; the platform never handles KYC documents directly.
-- Every `paid` order produces double-entry ledger entries: gross charge, gateway fee, platform commission, organizer net. The ledger (`ledger_entries`) is append-only and is the source of truth for balances.
-- Payouts to organizers are executed by the gateway on a per-tenant schedule; `payouts` records mirror gateway payout objects and reconcile against ledger balances.
-- Refunds debit the organizer balance; commission handling on refunds is a per-tenant policy flag (returned or retained).
+- Every `paid` order produces double-entry ledger entries: gross charge, gateway fee, platform commission, tenant net. The ledger (`ledger_entries`) is append-only and is the source of truth for balances.
+- Payouts to tenants are executed by the gateway on a per-tenant schedule; `payouts` records mirror gateway payout objects and reconcile against ledger balances.
+- Refunds debit the tenant balance; commission handling on refunds is a per-tenant policy flag (returned or retained).
 
 ### 7.4 Asynchronous Payment Methods
 
@@ -357,7 +363,7 @@ Card payments confirm synchronously; Pix and boleto (Brazil) and some EU bank me
 
 - Initiating a payment moves the order to `awaiting_payment` and extends the inventory hold to the payment method's expiration window (Pix: typically 30 minutes; boleto: up to 3 days).
 - Confirmation arrives via gateway webhooks: a dedicated ingestion endpoint per gateway verifies the signature, persists the raw event, and enqueues a normalized `PaymentConfirmed` or `PaymentFailed` for the order state machine. Webhook processing is idempotent by gateway event ID.
-- Because a boleto hold locks inventory for days, slow methods are configurable per event; organizers disable them for high-demand on-sales and the platform disables them automatically when remaining inventory drops below a threshold.
+- Because a boleto hold locks inventory for days, slow methods are configurable per event; tenants disable them for high-demand on-sales and the platform disables them automatically when remaining inventory drops below a threshold.
 - A scheduled poller reconciles `awaiting_payment` orders against the gateway as a fallback for missed webhooks.
 
 ### 7.5 Card Data and PCI Scope
@@ -391,6 +397,7 @@ erDiagram
         json supported_locales
         json enabled_gateways
         json payout_schedule
+        string settlement_currency
     }
 
     TENANT_DOMAIN {
@@ -450,6 +457,8 @@ erDiagram
 ```
 
 `ACTIVITY_LOG` is spatie/laravel-activitylog's table with its published migration adjusted for UUID keys and an added non-null `tenant_id` under RLS (platform-scope entries use a sentinel platform tenant). Tenant branding assets and other file attachments live in spatie/laravel-medialibrary's polymorphic `media` table, not drawn here.
+
+`TENANT.settlement_currency` is a single ISO 4217 code (stage-05a addition, additive migration on top of Stage 2's original `tenants` table), the currency every one of the tenant's `TICKET_TYPE` rows must match (section 12, ADR 018). It has no dedicated admin endpoint yet; `App\Tenancy\Actions\ResolveTenantSettlementCurrency` is the only sanctioned read of it, consumed by EventCatalog's ticket type currency validation without EventCatalog ever touching Tenancy's tables directly (section 3.1).
 
 ### 8.2 Catalog and Inventory
 
@@ -716,12 +725,13 @@ Should an extracted service or throughput ever demand a dedicated broker, the ou
 
 ### 9.3 Event Types
 
-1. **Identity**: UserInvited, UserRoleChanged, CustomerRegistered
-2. **Catalog**: EventCreated, EventUpdated, EventPublished, EventCanceled
-3. **Inventory**: HoldCreated, HoldExpired, HoldReleased
-4. **Orders**: OrderCreated, TicketIssued, TicketCanceled, TicketRefunded
-5. **Payments**: PaymentInitiated, PaymentConfirmed, PaymentFailed, RefundInitiated, RefundCompleted, PayoutExecuted
-6. **Check-in**: TicketCheckedIn, DuplicateScanDetected
+1. **Tenancy**: TenantCreated, DomainVerified
+2. **Identity**: UserInvited, UserRoleChanged, CustomerRegistered, CustomerAnonymized
+3. **Catalog**: EventCreated, EventUpdated, EventPublished, EventCanceled
+4. **Inventory**: HoldCreated, HoldExpired, HoldReleased
+5. **Orders**: OrderCreated, TicketIssued, TicketCanceled, TicketRefunded
+6. **Payments**: PaymentInitiated, PaymentConfirmed, PaymentFailed, PaymentExpired, RefundInitiated, RefundCompleted, PayoutExecuted
+7. **Check-in**: TicketCheckedIn, DuplicateScanDetected
 
 ## 10. High-Demand On-Sales
 
@@ -739,7 +749,7 @@ Check-in is its own client application, separate from the admin portal: an offli
 - Devices sync the event's ticket manifest (ticket IDs, signature keys, status) before doors open.
 - **Offline operation**: scans validate the QR signature locally against the synced manifest and record check-ins to local storage (IndexedDB via a service worker). Duplicate detection is local-first (already scanned on this device or in the synced manifest).
 - **Reconciliation**: queued scans sync when connectivity returns. Cross-device duplicates (same ticket scanned offline on two devices) are resolved first-scan-wins by timestamp; later scans are flagged as `DuplicateScanDetected` for staff follow-up rather than silently dropped.
-- Devices authenticate as staff users with a check-in role scoped to specific events; manifest keys rotate per event.
+- Devices authenticate as staff with a check-in role scoped to specific events; manifest keys rotate per event.
 
 ## 12. Internationalization
 
@@ -769,7 +779,7 @@ Check-in is its own client application, separate from the admin portal: an offli
 
 - Capability-based authorization (section 5.3) evaluated on every request.
 - MFA mandatory for platform staff and financially privileged tenant roles.
-- Append-only activity log (spatie/laravel-activitylog) for all staff actions, all cross-tenant platform operations, and all financial mutations; log rows are never updated or deleted inside the application.
+- Append-only activity log (spatie/laravel-activitylog) for all staff actions, all cross-tenant platform operations, and all financial mutations; log rows are never updated by application code, and are never deleted except by the scheduled retention pruner (section 14.3), which archives rows past their retention window to object storage before removing them from PostgreSQL. No ordinary request path, tenant-scoped or cross-tenant platform, can delete a row; the pruner's delete is a narrowly scoped path restricted to rows past the window it supplies, distinct from the database privileges every other write path uses.
 
 ### 14.3 GDPR and LGPD
 
@@ -836,7 +846,7 @@ Open source first; commodity portable services where no open source project fits
 /apps
   /api          Laravel monolith (internal structure in section 3.2)
   /storefront   Next.js buyer-facing app
-  /admin        Next.js organizer and platform portal
+  /admin        Next.js tenant and platform portal
   /checkin      Offline-first check-in PWA
 /packages
   /api-client   TypeScript types and client generated from laravel-data objects
@@ -900,6 +910,28 @@ The edge proxy is Caddy, the same server FrankenPHP embeds. Tenant custom domain
 - Load testing of the on-sale path specifically (waiting room admission through payment initiation), not just average traffic.
 - End-to-end purchase, refund, and check-in flows including offline check-in reconciliation.
 
-## 19. Conclusion
+## 19. Glossary
 
-This design centers the four concerns that determine whether a ticketing platform is viable: inventory that cannot oversell, a clear money path from buyer through platform to organizer, first-class asynchronous payments, and tenant isolation enforced by the database rather than by convention. Around that core, the design leans on Laravel's own conventions and a small set of proven packages so that custom code is spent only where the domain demands it, while the domain event contracts and the orchestrator-agnostic container discipline preserve every extraction and scaling option for later, to be exercised only when evidence demands it. The decisions that shaped this document are individually recorded in `docs/decisions/`.
+The ubiquitous language for all domain artifacts: documents, code, schema, domain events, and API contracts. Within any artifact, every term below resolves to exactly one model concept. Terms owned by a single bounded context are defined by that context; other contexts either reference the shared concept (as they do via `tenant_id`) or use their own precisely defined local term, translated explicitly at the boundary. ADRs and specs merged before this glossary existed retain their original wording; all new writing follows it.
+
+| Term         | Definition                                                                                                                                                                                                            |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Platform     | Nodia itself: the operator of the multi-tenant system and the merchant of record.                                                                                                                                     |
+| Tenant       | The business renting the platform. Owns its domains, branding, events, ticket types, orders, and customer base; onboards with a payment gateway as a sub-merchant and receives payouts. Owned by the Tenancy context. |
+| User         | A staff identity: one row in `users`, platform-global, holding credentials and MFA settings. Gains tenant access only through memberships. Customers are never users. Owned by the Identity context.                  |
+| Staff        | The human population that users represent: people working for a tenant or for the platform. Qualifies roles and groups (platform-scope staff, check-in staff); never a model name.                                    |
+| Membership   | The link granting one user access to one tenant under one role. Platform administrators hold platform-scope memberships instead of tenant memberships. Owned by the Identity context.                                 |
+| Customer     | An attendee identity: a tenant-scoped row in `customers`, unique per tenant by email, password nullable for guest checkout. Never holds roles or capabilities. Owned by the Identity context.                         |
+| Buyer        | A customer in the act of purchasing.                                                                                                                                                                                  |
+| Attendee     | The person a ticket admits; may differ from the buyer.                                                                                                                                                                |
+| Sub-merchant | A tenant as registered with a payment gateway for split payments and payouts. Owned by the Payments context.                                                                                                          |
+| KYC          | Know Your Customer: the gateway's legally mandated identity verification of a sub-merchant. The customer in the acronym is the gateway's customer, meaning the tenant; never a Customer.                              |
+
+Retired terms, not to be used in any new writing:
+
+- **Organizer**: ambiguous between the tenant (a business) and a user (a person). Write "tenant" for the business and "user" or a role-qualified staff phrase for the person.
+- **Staff user**: redundant; customers are never users, so the qualifier adds only doubt. Write "user" for the identity and "staff" for the population.
+
+## 20. Conclusion
+
+This design centers the four concerns that determine whether a ticketing platform is viable: inventory that cannot oversell, a clear money path from buyer through platform to tenant, first-class asynchronous payments, and tenant isolation enforced by the database rather than by convention. Around that core, the design leans on Laravel's own conventions and a small set of proven packages so that custom code is spent only where the domain demands it, while the domain event contracts and the orchestrator-agnostic container discipline preserve every extraction and scaling option for later, to be exercised only when evidence demands it. The decisions that shaped this document are individually recorded in `docs/decisions/`.

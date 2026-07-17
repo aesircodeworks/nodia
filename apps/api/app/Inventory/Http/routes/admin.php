@@ -1,0 +1,36 @@
+<?php
+
+// Registered under the tenancy.admin group (Passport staff bearer plus
+// X-Tenant-Id membership validation) via App\Inventory\InventoryServiceProvider
+// (stage-06 plan, task breakdown item 7, TDD Slice 3). Gated by the same
+// events.view capability App\EventCatalog\Http\Controllers\
+// TicketTypeController's own read routes use, since this is another read
+// on the same top-level ticket-types resource, just from the Inventory
+// context.
+
+use App\Http\Middleware\RecordActivityAudit;
+use App\Http\Middleware\RequireCapability;
+use App\Identity\Capability;
+use App\Inventory\Http\Controllers\EventSeatController;
+use App\Inventory\Http\Controllers\TicketTypeInventoryController;
+use Illuminate\Support\Facades\Route;
+
+Route::middleware(RequireCapability::class.':'.Capability::EventsView->value)->group(function (): void {
+    Route::get('/ticket-types/{ticket_type}/inventory', [TicketTypeInventoryController::class, 'show'])->whereUuid('ticket_type');
+});
+
+// Task breakdown item 11 (TDD Slice 7): the admin seat management surface,
+// gated by events.manage_seating (task breakdown item 10a) rather than
+// events.view, since it mutates seat state.
+Route::middleware(RequireCapability::class.':'.Capability::EventsManageSeating->value)->group(function (): void {
+    Route::get('/events/{event}/seats', [EventSeatController::class, 'index'])->whereUuid('event');
+
+    // Blocking, unblocking, and rezoning seats is a staff mutation of seat
+    // state and the inventory counters behind it, so it carries the same
+    // append-only activity-log entry every other tenant-admin mutation does
+    // (system-design 14.2). The GET above stays outside the middleware:
+    // RecordActivityAudit covers mutations, not reads.
+    Route::middleware(RecordActivityAudit::class)->group(function (): void {
+        Route::patch('/events/{event}/seats', [EventSeatController::class, 'update'])->whereUuid('event');
+    });
+});

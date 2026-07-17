@@ -53,10 +53,7 @@ export function HealthStatus({ baseUrl }: { baseUrl: string }) {
   }
 
   const failedChecks = (
-    Object.entries(state.result.problem.checks) as [
-      'database' | 'redis' | 'storage',
-      CheckResult,
-    ][]
+    Object.entries(state.result.problem.checks) as ['database' | 'redis' | 'storage', CheckResult][]
   ).filter(([, result]) => result === 'failed');
 
   return (

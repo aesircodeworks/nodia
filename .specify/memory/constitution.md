@@ -38,7 +38,7 @@ Rationale: concurrent checkout is where ticketing platforms fail; the invariant 
 
 Monetary values are integer minor units in `*_amount` columns, each paired with a `currency` code on the same row. Floats and decimals for money are forbidden; an amount MUST never exist without a currency. The ledger is append-only: no UPDATE or DELETE on ledger entries, corrections are new entries. Clients MUST never compute totals from other amounts; totals come from the API.
 
-Rationale: the ledger is the source of truth for organizer balances and payouts; exactness and auditability are legal obligations, not preferences.
+Rationale: the ledger is the source of truth for tenant balances and payouts; exactness and auditability are legal obligations, not preferences.
 
 ### IV. Domain Events Through the Transactional Outbox
 

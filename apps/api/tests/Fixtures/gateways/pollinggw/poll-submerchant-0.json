@@ -1,0 +1,13 @@
+{
+    "request": {
+        "method": "GET",
+        "url": "https://sandbox.pollinggw.test/v1/submerchants/sm_1"
+    },
+    "response": {
+        "status": 200,
+        "body": {
+            "id": "sm_1",
+            "status": "pending"
+        }
+    }
+}

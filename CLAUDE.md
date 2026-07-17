@@ -41,6 +41,8 @@ php artisan test --filter=SomeTest          # single test
 composer types:generate   # regenerate TS contract types (see below)
 ```
 
+The full Pest suite takes longer than Composer's 300s script timeout, so `composer test` gets killed partway through with no failing test to point at. That kill is a tooling artifact, not a red suite. Run the whole suite as `./vendor/bin/pest` (roughly 7 minutes) and treat its result as the real one; `composer test` is still fine for anything that finishes inside the window.
+
 Frontend single test: `pnpm --filter storefront exec vitest run path/to/file.test.ts` (same for `admin`, `checkin`, or a package name).
 
 ## Architecture

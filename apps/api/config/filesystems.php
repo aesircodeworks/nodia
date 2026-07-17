@@ -60,6 +60,49 @@ return [
             'report' => false,
         ],
 
+        // spatie/laravel-medialibrary's disk (config/media-library.php
+        // disk_name), same S3-compatible backend as the generic 's3' disk
+        // above (any S3-compatible store; MinIO for development and
+        // self-hosted deployments, system-design 15.3), addressed through
+        // the same bucket and partitioned per tenant by
+        // App\Support\Media\TenantPathGenerator's tenant_id/media_uuid/
+        // path prefix rather than a separate bucket. 'public' visibility
+        // is the stage-05c plan's own Risks recommendation (public-read
+        // bucket for marketing images: event covers, galleries, tenant
+        // logos). Protected generated attachments use the separate
+        // protected-media disk below and never inherit this disk's public
+        // visibility.
+        'media' => [
+            'driver' => 's3',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION'),
+            'bucket' => env('AWS_BUCKET'),
+            'url' => env('AWS_URL'),
+            'endpoint' => env('AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'visibility' => 'public',
+            'throw' => false,
+            'report' => false,
+        ],
+
+        // QR-bearing tickets and customer/reporting exports are authorized
+        // through short-lived URLs. They must therefore remain private even
+        // when the marketing media disk is configured public-read.
+        'protected-media' => [
+            'driver' => 's3',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION'),
+            'bucket' => env('AWS_BUCKET'),
+            'url' => env('AWS_URL'),
+            'endpoint' => env('AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'visibility' => 'private',
+            'throw' => true,
+            'report' => true,
+        ],
+
     ],
 
     /*

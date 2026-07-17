@@ -10,7 +10,7 @@
     "build": "pnpm --if-present -r run build && composer -d apps/api run analyse",
     "lint": "pnpm --if-present -r run lint && composer -d apps/api run lint",
     "typecheck": "pnpm --if-present -r run typecheck",
-    "test": "pnpm --if-present -r run test && composer -d apps/api run test",
+    "test": "pnpm --if-present -r run test && cd apps/api && ./vendor/bin/pest --colors=always",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -23,6 +23,7 @@
     "eslint-plugin-react-refresh": "^0.5.3",
     "globals": "^17.7.0",
     "prettier": "^3.9.4",
+    "tailwindcss": "^4.3.2",
     "typescript-eslint": "^8.63.0"
   }
 }

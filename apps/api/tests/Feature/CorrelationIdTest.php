@@ -1,11 +1,15 @@
 <?php
 
+use App\Support\Correlation\CorrelationId;
 use Illuminate\Support\Facades\Route;
 
 beforeEach(function () {
     Route::get('/__correlation-probe', fn () => response()->noContent());
     Route::get('/__correlation-throwing-probe', function () {
         throw new RuntimeException('boom');
+    });
+    Route::get('/__correlation-binding-probe', function (CorrelationId $correlationId) {
+        return response()->json(['correlation_id' => $correlationId->get()]);
     });
 });
 
@@ -24,6 +28,29 @@ test('generates a UUIDv7 correlation id and echoes it when the header is absent'
     $response->assertNoContent();
 
     expect($response->headers->get('X-Correlation-Id'))
+        ->toMatch('/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/');
+});
+
+test('binds a client-provided X-Correlation-Id for the request', function () {
+    $response = $this->withHeader('X-Correlation-Id', 'client-provided-id')
+        ->getJson('/__correlation-binding-probe');
+
+    $response->assertOk()
+        ->assertExactJson(['correlation_id' => 'client-provided-id']);
+
+    expect($response->headers->get('X-Correlation-Id'))->toBe('client-provided-id');
+});
+
+test('binds the generated correlation id for the request when the header is absent', function () {
+    $response = $this->getJson('/__correlation-binding-probe');
+
+    $response->assertOk();
+
+    $bound = $response->json('correlation_id');
+    $echoed = $response->headers->get('X-Correlation-Id');
+
+    expect($bound)
+        ->toBe($echoed)
         ->toMatch('/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/');
 });
 

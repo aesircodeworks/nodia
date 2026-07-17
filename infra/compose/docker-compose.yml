@@ -19,11 +19,12 @@ services:
       POSTGRES_USER: ${DB_USERNAME:-nodia}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-nodia}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - '${DB_PORT:-5432}:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./postgres/create-test-database.sh:/docker-entrypoint-initdb.d/create-test-database.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-nodia} -d ${DB_DATABASE:-nodia_api}"]
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME:-nodia} -d ${DB_DATABASE:-nodia_api}']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -33,11 +34,11 @@ services:
     image: redis:8-alpine
     restart: unless-stopped
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - '${REDIS_PORT:-6379}:6379'
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -51,12 +52,12 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-nodia}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-nodia12345}
     ports:
-      - "${MINIO_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - '${MINIO_PORT:-9000}:9000'
+      - '${MINIO_CONSOLE_PORT:-9001}:9001'
     volumes:
       - minio-data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -64,7 +65,7 @@ services:
 
   minio-init:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z
-    restart: "no"
+    restart: 'no'
     depends_on:
       minio:
         condition: service_healthy
@@ -75,11 +76,11 @@ services:
       "
 
   api:
-    build:
+    build: &api-build
       context: ../../apps/api
       dockerfile: Dockerfile
     restart: unless-stopped
-    depends_on:
+    depends_on: &api-depends
       postgres:
         condition: service_healthy
       redis:
@@ -88,7 +89,7 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
-    environment:
+    environment: &api-environment
       APP_ENV: ${APP_ENV:-local}
       APP_DEBUG: ${APP_DEBUG:-true}
       APP_KEY: ${APP_KEY}
@@ -117,22 +118,49 @@ services:
       # /v1/health storage check probes the provisioned object store instead
       # of the container filesystem.
       FILESYSTEM_DISK: ${FILESYSTEM_DISK:-s3}
+      PROTECTED_MEDIA_DISK: ${PROTECTED_MEDIA_DISK:-protected-media}
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-nodia}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-nodia12345}
       AWS_DEFAULT_REGION: us-east-1
       AWS_BUCKET: ${MINIO_BUCKET:-nodia}
       AWS_ENDPOINT: http://minio:9000
-      AWS_USE_PATH_STYLE_ENDPOINT: "true"
+      AWS_USE_PATH_STYLE_ENDPOINT: 'true'
 
       OCTANE_SERVER: frankenphp
+
+      # On-sale throttles and the admission-token key, forwarded so a load run
+      # can raise the storefront rate limits without editing this file
+      # (infra/load/run.sh sets them). Every default here is the same value
+      # config/onsale.php already falls back to, so an ordinary `make up` keeps
+      # production behavior.
+      ONSALE_BROWSE_RATE_MAX_ATTEMPTS: ${ONSALE_BROWSE_RATE_MAX_ATTEMPTS:-120}
+      ONSALE_QUEUE_ENTRY_RATE_MAX_ATTEMPTS: ${ONSALE_QUEUE_ENTRY_RATE_MAX_ATTEMPTS:-20}
+      ONSALE_QUEUE_POLL_RATE_MAX_ATTEMPTS: ${ONSALE_QUEUE_POLL_RATE_MAX_ATTEMPTS:-30}
+      ONSALE_HOLD_CREATION_IP_RATE_MAX_ATTEMPTS: ${ONSALE_HOLD_CREATION_IP_RATE_MAX_ATTEMPTS:-10}
+      ONSALE_HOLD_CREATION_CUSTOMER_RATE_MAX_ATTEMPTS: ${ONSALE_HOLD_CREATION_CUSTOMER_RATE_MAX_ATTEMPTS:-20}
+      ONSALE_ADMISSION_TOKEN_SIGNING_KEY: ${ONSALE_ADMISSION_TOKEN_SIGNING_KEY:-}
     ports:
-      - "${API_PORT:-8000}:8000"
+      - '${API_PORT:-8000}:8000'
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/v1/health"]
+      test: ['CMD', 'curl', '-f', 'http://127.0.0.1:8000/v1/health']
       interval: 10s
       timeout: 3s
       retries: 5
       start_period: 20s
+
+  horizon:
+    build: *api-build
+    restart: unless-stopped
+    depends_on: *api-depends
+    environment: *api-environment
+    command: ['php', 'artisan', 'horizon']
+
+  scheduler:
+    build: *api-build
+    restart: unless-stopped
+    depends_on: *api-depends
+    environment: *api-environment
+    command: ['php', 'artisan', 'schedule:work']
 
 volumes:
   postgres-data:

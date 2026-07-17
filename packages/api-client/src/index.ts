@@ -13,8 +13,7 @@ export type HealthDegradedProblem = {
 };
 
 export type HealthResult =
-  | { healthy: true; report: HealthReportData }
-  | { healthy: false; problem: HealthDegradedProblem };
+  { healthy: true; report: HealthReportData } | { healthy: false; problem: HealthDegradedProblem };
 
 export class ApiError extends Error {
   readonly status: number;
@@ -62,5 +61,8 @@ export async function getHealth(
     }
   }
 
-  throw new ApiError(`Unexpected response from GET /v1/health: ${response.status}`, response.status);
+  throw new ApiError(
+    `Unexpected response from GET /v1/health: ${response.status}`,
+    response.status,
+  );
 }

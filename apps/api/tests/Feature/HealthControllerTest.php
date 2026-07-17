@@ -35,7 +35,10 @@ test('exposes no hostnames, ports, versions, or connection details in the degrad
     config()->set('database.redis.health.host', '127.0.0.1');
     config()->set('database.redis.health.port', 1);
 
-    $degraded = $this->getJson('/__health')->assertStatus(503)->getContent();
+    $degraded = $this->getJson('/__health')
+        ->assertStatus(503)
+        ->assertJsonPath('type', '/problems/health-degraded')
+        ->getContent();
 
     $secrets = ['127.0.0.1', '6379', 'phpredis', 'sqlite', 'pgsql', 'localhost', 'password'];
 

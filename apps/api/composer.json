@@ -6,15 +6,24 @@
     "license": "proprietary",
     "require": {
         "php": "^8.4",
+        "dompdf/dompdf": "^3.1",
         "laravel/framework": "^13.8",
+        "laravel/horizon": "^5.47",
         "laravel/octane": "^2.17",
+        "laravel/passport": "^13.0",
         "laravel/tinker": "^3.0",
         "league/flysystem-aws-s3-v3": "^3.0",
+        "pragmarx/google2fa": "^9.0",
+        "spatie/laravel-activitylog": "^5.0",
         "spatie/laravel-data": "^4.23",
+        "spatie/laravel-medialibrary": "^11.23",
+        "spatie/laravel-query-builder": "^7.3",
+        "spatie/laravel-translatable": "^6.14",
         "spatie/laravel-typescript-transformer": "^3.3"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
+        "hotmeteor/spectator": "^3.0",
         "larastan/larastan": "^3.10",
         "laravel/pail": "^1.2.5",
         "laravel/pao": "^1.0.6",
@@ -22,7 +31,8 @@
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.6",
         "pestphp/pest": "^4.7",
-        "pestphp/pest-plugin-laravel": "^4.1"
+        "pestphp/pest-plugin-laravel": "^4.1",
+        "spatie/fork": "^1.2"
     },
     "autoload": {
         "psr-4": {
@@ -34,7 +44,12 @@
     "autoload-dev": {
         "psr-4": {
             "Tests\\": "tests/"
-        }
+        },
+        "files": [
+            "tests/Isolation/Support/helpers.php",
+            "tests/Support/Outbox/helpers.php",
+            "tests/Support/Reporting/helpers.php"
+        ]
     },
     "scripts": {
         "setup": [

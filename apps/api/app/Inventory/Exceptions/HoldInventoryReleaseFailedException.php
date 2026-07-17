@@ -1,0 +1,61 @@
+<?php
+
+namespace App\Inventory\Exceptions;
+
+use App\Support\Problems\ErrorCode;
+use App\Support\Problems\HasErrorCode;
+use RuntimeException;
+
+/**
+ * Raised when the held-decrement guard in
+ * App\Inventory\Actions\Concerns\ReleasesHoldInventory affects zero rows:
+ * the ticket_type_inventory counter is missing or holds fewer units than
+ * the hold item being released or expired. An active hold's units are
+ * always counted into `held` at claim time, so this is a broken
+ * invariant, not a user error; it surfaces as a generic server fault so
+ * the surrounding release or expiry transaction rolls back rather than
+ * recording HoldReleased or HoldExpired against inconsistent inventory.
+ */
+final class HoldInventoryReleaseFailedException extends RuntimeException implements HasErrorCode
+{
+    public static function forTicketType(string $ticketTypeId, int $quantity): self
+    {
+        return new self(sprintf(
+            'Could not release %d held units for ticket type "%s": counter missing or below the held quantity.',
+            $quantity,
+            $ticketTypeId,
+        ));
+    }
+
+    public static function forSeats(string $holdId, int $expected, int $affected): self
+    {
+        return new self(sprintf(
+            'Could not return %d held seats for hold "%s" to available: only %d rows matched the held guard.',
+            $expected,
+            $holdId,
+            $affected,
+        ));
+    }
+
+    /**
+     * Mirrors forTicketType for the stage-10 purchase counter
+     * (App\Inventory\Support\PurchaseCounters::decrement, stage-10 plan
+     * Data model "purchase_counters"): a nonzero counted_quantity always
+     * came from a successful increment at hold creation, so a zero-row
+     * decrement means the counter row is missing or already below the
+     * recorded amount, a broken invariant rather than a user error.
+     */
+    public static function forPurchaseCounter(string $ticketTypeId, int $counted): self
+    {
+        return new self(sprintf(
+            'Could not release %d counted units for ticket type "%s": counter missing or below the counted quantity.',
+            $counted,
+            $ticketTypeId,
+        ));
+    }
+
+    public function errorCode(): ErrorCode
+    {
+        return ErrorCode::ServerInternalError;
+    }
+}

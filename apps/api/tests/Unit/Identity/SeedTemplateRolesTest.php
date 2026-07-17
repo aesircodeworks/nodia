@@ -1,0 +1,108 @@
+<?php
+
+use App\Identity\Actions\SeedTemplateRoles;
+use App\Identity\Capability;
+use App\Identity\Models\Role;
+use Tests\Support\MigratedDatabase;
+use Tests\Support\PostgresTestDatabase;
+
+/*
+ * The template seeder's idempotence (stage-03 plan, Task breakdown item
+ * 4): the seed_template_roles migration already ran the action once as
+ * part of MigratedDatabase's migrate:fresh, so calling it again here
+ * proves repeated invocation neither duplicates rows nor throws, without
+ * this test standing up its own migration harness. Runs against the real
+ * Postgres test database (as PassportMigrationsTest does) under the
+ * default, unrestricted connection: nothing here exercises RLS, only the
+ * updateOrCreate idempotence.
+ */
+
+beforeEach(function (): void {
+    PostgresTestDatabase::use();
+    MigratedDatabase::ensure();
+});
+
+it('seeds exactly the five named template roles', function () {
+    $names = Role::query()->whereNull('tenant_id')->orderBy('name')->pluck('name');
+
+    expect($names->all())->toBe(['Box Office', 'Check-in Agent', 'Event Manager', 'Finance', 'Owner']);
+});
+
+it('does not duplicate rows when run a second time', function () {
+    $before = Role::query()->whereNull('tenant_id')->count();
+
+    app(SeedTemplateRoles::class)->handle();
+
+    $after = Role::query()->whereNull('tenant_id')->count();
+
+    expect($before)->toBe(5)
+        ->and($after)->toBe(5);
+});
+
+it('leaves every template capability set unchanged across repeated invocations', function () {
+    $before = Role::query()->whereNull('tenant_id')->orderBy('name')->pluck('capabilities', 'name');
+
+    app(SeedTemplateRoles::class)->handle();
+
+    $after = Role::query()->whereNull('tenant_id')->orderBy('name')->pluck('capabilities', 'name');
+
+    expect($after->all())->toBe($before->all());
+});
+
+it('grants the Owner template every capability except tenants.manage', function () {
+    $owner = Role::query()->whereNull('tenant_id')->where('name', 'Owner')->firstOrFail();
+
+    $expected = array_values(array_map(
+        fn (Capability $capability): string => $capability->value,
+        array_filter(Capability::cases(), fn (Capability $capability): bool => $capability !== Capability::TenantsManage),
+    ));
+
+    expect($owner->capabilities)->toEqualCanonicalizing($expected);
+});
+
+it('grants the Event Manager template checkin.manage', function () {
+    $eventManager = Role::query()->whereNull('tenant_id')->where('name', 'Event Manager')->firstOrFail();
+
+    expect($eventManager->capabilities)->toContain(Capability::CheckinManage->value);
+});
+
+it('grants the Finance template every financially privileged capability', function () {
+    $finance = Role::query()->whereNull('tenant_id')->where('name', 'Finance')->firstOrFail();
+
+    expect($finance->capabilities)->toContain(
+        Capability::OrdersRefund->value,
+        Capability::PayoutsView->value,
+        Capability::PayoutsManage->value,
+    );
+});
+
+it('grants reports.view and reports.export to Owner and Finance, and only reports.view to Event Manager', function () {
+    $templates = Role::query()->whereNull('tenant_id')->orderBy('name')->pluck('capabilities', 'name');
+
+    expect($templates['Owner'])->toContain(Capability::ReportsView->value, Capability::ReportsExport->value)
+        ->and($templates['Finance'])->toContain(Capability::ReportsView->value, Capability::ReportsExport->value)
+        ->and($templates['Event Manager'])->toContain(Capability::ReportsView->value)
+        ->and($templates['Event Manager'])->not->toContain(Capability::ReportsExport->value);
+});
+
+it('grants neither reporting capability to Box Office or Check-in Agent', function () {
+    $templates = Role::query()->whereNull('tenant_id')->orderBy('name')->pluck('capabilities', 'name');
+
+    foreach (['Box Office', 'Check-in Agent'] as $name) {
+        expect($templates[$name])
+            ->not->toContain(Capability::ReportsView->value)
+            ->not->toContain(Capability::ReportsExport->value);
+    }
+});
+
+it('grants customers.erase and customers.export to Owner only', function () {
+    $templates = Role::query()->whereNull('tenant_id')->orderBy('name')->pluck('capabilities', 'name');
+
+    expect($templates['Owner'])->toContain(Capability::CustomersErase->value, Capability::CustomersExport->value);
+
+    foreach (['Box Office', 'Check-in Agent', 'Event Manager', 'Finance'] as $name) {
+        expect($templates[$name])
+            ->not->toContain(Capability::CustomersErase->value)
+            ->not->toContain(Capability::CustomersExport->value);
+    }
+});
